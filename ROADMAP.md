@@ -59,11 +59,11 @@ alterar los IDs.
 | DOM-JOB-001 | S2.08-S2.10 | `job_state` | verificado | Pipeline, fallo y cancelación explícitos; suite de dominio integrada pasa. |
 | DOM-SPEAKER-001 | S2.06, S2.07 | `timeline_models` | verificado | Speaker rename monotónico y SpeakerTurn acústico separado; 28 pruebas pasan. |
 | PERSIST-PORT-001 | S2.11 | `domain_core` | verificado | Ocho Protocols no exponen SQL/Session; tests estructurales pasan. |
-| PERSIST-REPO-001 | S2.12 | `domain_core` | en curso | Adapter SQLAlchemy Core para los ocho ports asignado. |
-| PERSIST-MIG-001 | S2.13 | `timeline_models` | en curso | Migración Alembic inicial alineada a metadata asignada. |
-| PERSIST-WAL-001 | S2.14 | `job_state` | en curso | Factory SQLite con WAL, claves foráneas y prueba file-backed asignada. |
+| PERSIST-REPO-001 | S2.12 | `domain_core` | verificado | 24 pruebas: adapters Core, sync Words y validación contra Segment padre. |
+| PERSIST-MIG-001 | S2.13 | `backend_cli` | verificado | Upgrade/downgrade y wheel instalado con config/revisión Alembic pasan. |
+| PERSIST-WAL-001 | S2.14 | `job_state` | verificado | 6 pruebas file-backed pasan: WAL, FK, timeout y reapertura real. |
 | VERIFY-DOM-001 | S2.15 | `job_state` | verificado | 198 pruebas unitarias; arquitectura limpia, Ruff y Pyright pasan. |
-| VERIFY-SQL-001 | S2.16, S2.17 | por asignar | pendiente | Espera adapter SQLite y migración. |
+| VERIFY-SQL-001 | S2.16, S2.17 | `job_state` | verificado | 16 pruebas file-backed cubren 8 adapters y recuperación tras reapertura. |
 
 ---
 
@@ -108,12 +108,12 @@ ejecuta `voz` y se ve la UI local. No instalar Whisper en esta sección.
 - [x] **S2.09** Probar transiciones válidas de jobs.
 - [x] **S2.10** Probar rechazo de transiciones inválidas.
 - [x] **S2.11** Definir ports de repositories.
-- [ ] **S2.12** Implementar repositories SQLite.
-- [ ] **S2.13** Crear migración Alembic inicial.
-- [ ] **S2.14** Activar SQLite WAL mediante el adapter.
+- [x] **S2.12** Implementar repositories SQLite.
+- [x] **S2.13** Crear migración Alembic inicial.
+- [x] **S2.14** Activar SQLite WAL mediante el adapter.
 - [x] **S2.15** Añadir pruebas unitarias de entidades e invariantes.
-- [ ] **S2.16** Añadir pruebas de integración de repositories SQLite.
-- [ ] **S2.17** Verificar recuperación de proyectos y jobs tras reinicio.
+- [x] **S2.16** Añadir pruebas de integración de repositories SQLite.
+- [x] **S2.17** Verificar recuperación de proyectos y jobs tras reinicio.
 
 **Criterio de salida:** proyectos y jobs sobreviven un reinicio sin que el
 dominio dependa de SQLite.
