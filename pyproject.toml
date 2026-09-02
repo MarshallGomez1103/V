@@ -11,7 +11,9 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [{ name = "VOZ contributors" }]
 dependencies = [
+  "alembic>=1.14,<2",
   "fastapi>=0.115,<1",
+  "sqlalchemy>=2.0,<3",
   "typer>=0.12,<1",
   "uvicorn>=0.30,<1",
 ]

@@ -50,6 +50,21 @@ Cuando un paquete termine, conserva su fila como historial breve hasta el
 siguiente corte coordinado; después puede moverse a un changelog de trabajo sin
 alterar los IDs.
 
+## Trabajo activo — Sección 2
+
+| Paquete | IDs | Agente | Estado | Último logro verificable |
+| --- | --- | --- | --- | --- |
+| DOM-CORE-001 | S2.01-S2.03 | `domain_core` | verificado | Project, MediaAsset y Transcript: 39 pruebas focalizadas y checks estrictos pasan. |
+| DOM-TIME-001 | S2.04, S2.05 | `timeline_models` | verificado | Segment y Word validan offsets/pertenencia; suite de dominio integrada pasa. |
+| DOM-JOB-001 | S2.08-S2.10 | `job_state` | verificado | Pipeline, fallo y cancelación explícitos; suite de dominio integrada pasa. |
+| DOM-SPEAKER-001 | S2.06, S2.07 | `timeline_models` | verificado | Speaker rename monotónico y SpeakerTurn acústico separado; 28 pruebas pasan. |
+| PERSIST-PORT-001 | S2.11 | `domain_core` | verificado | Ocho Protocols no exponen SQL/Session; tests estructurales pasan. |
+| PERSIST-REPO-001 | S2.12 | `domain_core` | en curso | Adapter SQLAlchemy Core para los ocho ports asignado. |
+| PERSIST-MIG-001 | S2.13 | `timeline_models` | en curso | Migración Alembic inicial alineada a metadata asignada. |
+| PERSIST-WAL-001 | S2.14 | `job_state` | en curso | Factory SQLite con WAL, claves foráneas y prueba file-backed asignada. |
+| VERIFY-DOM-001 | S2.15 | `job_state` | verificado | 198 pruebas unitarias; arquitectura limpia, Ruff y Pyright pasan. |
+| VERIFY-SQL-001 | S2.16, S2.17 | por asignar | pendiente | Espera adapter SQLite y migración. |
+
 ---
 
 ## Sección 1 — Bootstrap del repositorio
@@ -82,21 +97,21 @@ ejecuta `voz` y se ve la UI local. No instalar Whisper en esta sección.
 
 ## Sección 2 — Dominio y persistencia
 
-- [ ] **S2.01** Modelar `Project` con identidad e invariantes.
-- [ ] **S2.02** Modelar `MediaAsset` sin rutas expuestas a la UI.
-- [ ] **S2.03** Modelar `Transcript`.
-- [ ] **S2.04** Modelar `Segment` con offsets válidos.
-- [ ] **S2.05** Modelar `Word` con offsets válidos.
-- [ ] **S2.06** Modelar `Speaker` editable.
-- [ ] **S2.07** Modelar `SpeakerTurn` separado de identidad acústica.
-- [ ] **S2.08** Modelar la máquina de estados de `TranscriptionJob`.
-- [ ] **S2.09** Probar transiciones válidas de jobs.
-- [ ] **S2.10** Probar rechazo de transiciones inválidas.
-- [ ] **S2.11** Definir ports de repositories.
+- [x] **S2.01** Modelar `Project` con identidad e invariantes.
+- [x] **S2.02** Modelar `MediaAsset` sin rutas expuestas a la UI.
+- [x] **S2.03** Modelar `Transcript`.
+- [x] **S2.04** Modelar `Segment` con offsets válidos.
+- [x] **S2.05** Modelar `Word` con offsets válidos.
+- [x] **S2.06** Modelar `Speaker` editable.
+- [x] **S2.07** Modelar `SpeakerTurn` separado de identidad acústica.
+- [x] **S2.08** Modelar la máquina de estados de `TranscriptionJob`.
+- [x] **S2.09** Probar transiciones válidas de jobs.
+- [x] **S2.10** Probar rechazo de transiciones inválidas.
+- [x] **S2.11** Definir ports de repositories.
 - [ ] **S2.12** Implementar repositories SQLite.
 - [ ] **S2.13** Crear migración Alembic inicial.
 - [ ] **S2.14** Activar SQLite WAL mediante el adapter.
-- [ ] **S2.15** Añadir pruebas unitarias de entidades e invariantes.
+- [x] **S2.15** Añadir pruebas unitarias de entidades e invariantes.
 - [ ] **S2.16** Añadir pruebas de integración de repositories SQLite.
 - [ ] **S2.17** Verificar recuperación de proyectos y jobs tras reinicio.
 
