@@ -44,7 +44,7 @@ explícita.
 | BOOT-DOC-001 | S1.17, S1.18 | `docs_governance` | verificado | Reglas y roadmap creados; estructura, IDs y Markdown comprobados. |
 | BOOT-DOC-002 | S1.20, S1.21 | `docs_governance` | verificado | ADR-0001 y setup Bazzite creados; enlaces y estructura comprobados. |
 | BOOT-DOC-003 | S16.01 | `docs_governance` | verificado | README creado sin afirmar ASR implementado; enlaces comprobados. |
-| BOOT-VERIFY-001 | S1.22 | `root` | pendiente | Falta repetir instalación y arranque desde un checkout limpio. |
+| BOOT-VERIFY-001 | S1.22 | `root` | verificado | Checkout limpio en Bazzite: locks, checks, Home/API HTTP y apagado limpio verificados. |
 
 Cuando un paquete termine, conserva su fila como historial breve hasta el
 siguiente corte coordinado; después puede moverse a un changelog de trabajo sin
@@ -75,7 +75,7 @@ alterar los IDs.
 - [x] **S1.19** Crear `.ai/` local y asegurar sus exclusiones de Git.
 - [x] **S1.20** Registrar ADR-0001 del monolito modular.
 - [x] **S1.21** Documentar el setup de desarrollo en Bazzite.
-- [ ] **S1.22** Verificar instalación limpia, arranque de `voz` y Home local en Bazzite.
+- [x] **S1.22** Verificar instalación limpia, arranque de `voz` y Home local en Bazzite.
 
 **Criterio de salida:** desde un checkout limpio se instala el proyecto, se
 ejecuta `voz` y se ve la UI local. No instalar Whisper en esta sección.
