@@ -65,6 +65,16 @@ alterar los IDs.
 | VERIFY-DOM-001 | S2.15 | `job_state` | verificado | 198 pruebas unitarias; arquitectura limpia, Ruff y Pyright pasan. |
 | VERIFY-SQL-001 | S2.16, S2.17 | `job_state` | verificado | 16 pruebas file-backed cubren 8 adapters y recuperación tras reapertura. |
 
+## Trabajo activo — Sección 3
+
+| Paquete | IDs | Agente | Estado | Último logro verificable |
+| --- | --- | --- | --- | --- |
+| INGEST-PROBE-001 | S3.01-S3.03 | `media_probe` | verificado | 9 pruebas validan port, ffprobe real, streams/codecs y extensión irrelevante. |
+| INGEST-STORE-001 | S3.04 | `media_import` | verificado | 13 pruebas validan copia inmutable, SHA-256 durante copia y publicación segura. |
+| INGEST-FIX-001 | S3.11-S3.13 | `media_fixtures` | verificado | 6 fixtures sintéticos licenciados pasan hash, ffprobe y decodificación FFmpeg. |
+| INGEST-APP-001 | S3.05, S3.06, S3.08 | `media_pipeline` | en curso | Probe, storage y repository listos para orquestación y persistencia end-to-end. |
+| INGEST-NORM-001 | S3.07, S3.09, S3.10 | `media_normalize` | en curso | Fixtures y FFmpeg local verificados; normalización recuperable asignada. |
+
 ---
 
 ## Sección 1 — Bootstrap del repositorio
@@ -120,19 +130,19 @@ dominio dependa de SQLite.
 
 ## Sección 3 — Ingestión multimedia
 
-- [ ] **S3.01** Definir `MediaProbePort`.
-- [ ] **S3.02** Implementar el adapter ffprobe.
-- [ ] **S3.03** Validar por streams/codecs y no solo por extensión.
-- [ ] **S3.04** Copiar el original de forma segura e inmutable.
+- [x] **S3.01** Definir `MediaProbePort`.
+- [x] **S3.02** Implementar el adapter ffprobe.
+- [x] **S3.03** Validar por streams/codecs y no solo por extensión.
+- [x] **S3.04** Copiar el original de forma segura e inmutable.
 - [ ] **S3.05** Calcular y persistir el hash del original.
 - [ ] **S3.06** Extraer duración, codec, sample rate y channels.
 - [ ] **S3.07** Normalizar a audio mono de 16 kHz para inferencia.
 - [ ] **S3.08** Conservar reproducción/exportación desde el original.
 - [ ] **S3.09** Reportar progreso de normalización.
 - [ ] **S3.10** Cancelar la normalización sin dejar artefactos corruptos.
-- [ ] **S3.11** Añadir fixture WAV con licencia compatible.
-- [ ] **S3.12** Añadir fixtures MP3 y M4A con licencia compatible.
-- [ ] **S3.13** Añadir fixtures OGG, OPUS y WebM con licencia compatible.
+- [x] **S3.11** Añadir fixture WAV con licencia compatible.
+- [x] **S3.12** Añadir fixtures MP3 y M4A con licencia compatible.
+- [x] **S3.13** Añadir fixtures OGG, OPUS y WebM con licencia compatible.
 - [ ] **S3.14** Mapear archivo corrupto a error tipado.
 - [ ] **S3.15** Limpiar temporales de éxito, fallo y cancelación.
 - [ ] **S3.16** Probar import contra path traversal y nombres inseguros.
