@@ -72,8 +72,11 @@ alterar los IDs.
 | INGEST-PROBE-001 | S3.01-S3.03 | `media_probe` | verificado | 9 pruebas validan port, ffprobe real, streams/codecs y extensión irrelevante. |
 | INGEST-STORE-001 | S3.04 | `media_import` | verificado | 13 pruebas validan copia inmutable, SHA-256 durante copia y publicación segura. |
 | INGEST-FIX-001 | S3.11-S3.13 | `media_fixtures` | verificado | 6 fixtures sintéticos licenciados pasan hash, ffprobe y decodificación FFmpeg. |
-| INGEST-APP-001 | S3.05, S3.06, S3.08 | `media_pipeline` | en curso | Probe, storage y repository listos para orquestación y persistencia end-to-end. |
-| INGEST-NORM-001 | S3.07, S3.09, S3.10 | `media_normalize` | en curso | Fixtures y FFmpeg local verificados; normalización recuperable asignada. |
+| INGEST-APP-001 | S3.05, S3.06, S3.14 | `s3_import_reaudit` | verificado | 30 pruebas focales cubren copia inmutable, metadata persistida, corruptos y rollback ante interrupción. |
+| INGEST-NORM-001 | S3.07, S3.10, S3.15 | `s3_normalizer_close` | verificado | 16 pruebas cubren PCM mono 16 kHz, cancelación, fsync, cierre de pipes y cleanup observable. |
+| INGEST-PROGRESS-001 | S3.09 | `cold_norm_audit` | verificado | El progreso es monotónico, acotado y termina en la duración conocida. |
+| INGEST-PROBE-FIX-001 | S3.03 | `ingest_audit2` | verificado | Regresiones cubren alias dca/dts y duraciones extremas sin excepción cruda. |
+| INGEST-STORE-FIX-001 | S3.08, S3.16 | `s3_storage_reaudit` | verificado | 49 pruebas cubren reapertura, jerarquía durable, UUID, symlinks, nombres inseguros y cierre de descriptores. |
 
 ---
 
@@ -134,18 +137,18 @@ dominio dependa de SQLite.
 - [x] **S3.02** Implementar el adapter ffprobe.
 - [x] **S3.03** Validar por streams/codecs y no solo por extensión.
 - [x] **S3.04** Copiar el original de forma segura e inmutable.
-- [ ] **S3.05** Calcular y persistir el hash del original.
-- [ ] **S3.06** Extraer duración, codec, sample rate y channels.
-- [ ] **S3.07** Normalizar a audio mono de 16 kHz para inferencia.
-- [ ] **S3.08** Conservar reproducción/exportación desde el original.
-- [ ] **S3.09** Reportar progreso de normalización.
-- [ ] **S3.10** Cancelar la normalización sin dejar artefactos corruptos.
+- [x] **S3.05** Calcular y persistir el hash del original.
+- [x] **S3.06** Extraer duración, codec, sample rate y channels.
+- [x] **S3.07** Normalizar a audio mono de 16 kHz para inferencia.
+- [x] **S3.08** Conservar reproducción/exportación desde el original.
+- [x] **S3.09** Reportar progreso de normalización.
+- [x] **S3.10** Cancelar la normalización sin dejar artefactos corruptos.
 - [x] **S3.11** Añadir fixture WAV con licencia compatible.
 - [x] **S3.12** Añadir fixtures MP3 y M4A con licencia compatible.
 - [x] **S3.13** Añadir fixtures OGG, OPUS y WebM con licencia compatible.
-- [ ] **S3.14** Mapear archivo corrupto a error tipado.
-- [ ] **S3.15** Limpiar temporales de éxito, fallo y cancelación.
-- [ ] **S3.16** Probar import contra path traversal y nombres inseguros.
+- [x] **S3.14** Mapear archivo corrupto a error tipado.
+- [x] **S3.15** Limpiar temporales de éxito, fallo y cancelación.
+- [x] **S3.16** Probar import contra path traversal y nombres inseguros.
 
 **Criterio de salida:** VOZ ingiere formatos comunes que FFmpeg puede decodificar
 y genera audio normalizado reproducible sin modificar el original.

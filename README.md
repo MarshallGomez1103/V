@@ -5,11 +5,13 @@ largas de clases, entrevistas y reuniones. La meta es ofrecer un workspace web
 local con waveform, timeline, segmentos editables y hablantes, sin convertir un
 proveedor cloud en requisito.
 
-> **Estado actual: skeleton ejecutable.** La CLI, la API health y la Home local
-> ya funcionan como una sola aplicación instalable, pero todavía no existe un
-> motor ASR integrado. En particular, este repositorio aún no transcribe audio
-> con Faster Whisper, whisper.cpp, OpenAI o ElevenLabs. Consulta el
-> [roadmap](ROADMAP.md) para ver qué fue realmente verificado.
+> **Estado actual: ingestión backend verificable.** La CLI, la API health y la
+> Home local funcionan como una sola aplicación instalable. El backend ya puede
+> inspeccionar, conservar y normalizar medios localmente, aunque la selección de
+> archivos todavía no está conectada a la UI y aún no existe un motor ASR
+> integrado. Este repositorio todavía no transcribe audio con Faster Whisper,
+> whisper.cpp, OpenAI o ElevenLabs. Consulta el [roadmap](ROADMAP.md) para ver
+> qué fue realmente verificado.
 
 ## Visión
 
@@ -88,7 +90,9 @@ Infrastructure adapters: SQLite, FFmpeg, ASR, diarization, cloud
 
 El dominio no depende de FastAPI, SQLAlchemy, FFmpeg, torch ni SDKs externos.
 Los detalles y consecuencias están documentados en
-[ADR-0001](docs/adr/0001-modular-monolith.md).
+[ADR-0001](docs/adr/0001-modular-monolith.md). La frontera multimedia y sus
+garantías de integridad están en
+[ADR-0003](docs/adr/0003-ffmpeg-ingestion.md).
 
 ## Desarrollo local
 
@@ -160,4 +164,6 @@ corresponda.
 - [Roadmap ejecutable](ROADMAP.md)
 - [Reglas de ingeniería](AGENTS.md)
 - [ADR-0001: monolito modular](docs/adr/0001-modular-monolith.md)
+- [ADR-0002: persistencia SQLite](docs/adr/0002-sqlite-persistence.md)
+- [ADR-0003: ingestión FFmpeg](docs/adr/0003-ffmpeg-ingestion.md)
 - [Setup de desarrollo en Bazzite](docs/development/setup-bazzite.md)

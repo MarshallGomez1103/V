@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import sys
+import unicodedata
 from contextlib import suppress
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from voz.application.ports.media_storage import (
@@ -18,6 +21,9 @@ from voz.domain.entities.media_asset import MediaAsset
 
 _COPY_CHUNK_BYTES = 1024 * 1024
 _READ_ONLY_MODE = 0o444
+_UNSAFE_BIDI_CLASSES = frozenset(
+    {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
+)
 
 
 class FileSystemMediaStorage:
@@ -49,9 +55,10 @@ class FileSystemMediaStorage:
         source_fd = self._open_stable_regular_source(source_path)
         directory_fd: int | None = None
         temporary_name: str | None = None
+        published = False
         try:
             source_before = os.fstat(source_fd)
-            directory_fd = self._open_originals_directory(project_id)
+            directory_fd = self._create_originals_directory(project_id)
             self._reject_existing_destination(
                 directory_fd=directory_fd,
                 destination_name=destination.name,
@@ -76,6 +83,7 @@ class FileSystemMediaStorage:
                 temporary_name=temporary_name,
                 destination_name=destination.name,
             )
+            published = True
             return ImportedOriginal(
                 media_asset=media_asset,
                 bytes_copied=bytes_copied,
@@ -88,12 +96,29 @@ class FileSystemMediaStorage:
                 "The original could not be stored due to a filesystem error.",
             ) from error
         finally:
-            os.close(source_fd)
+            active_error = sys.exception()
+            cleanup_error: MediaStorageError | None = None
+            with suppress(OSError):
+                os.close(source_fd)
             if directory_fd is not None:
                 if temporary_name is not None:
-                    with suppress(OSError):
-                        os.unlink(temporary_name, dir_fd=directory_fd)
-                os.close(directory_fd)
+                    try:
+                        self._remove_temporary(
+                            directory_fd=directory_fd,
+                            temporary_name=temporary_name,
+                            published=published,
+                        )
+                    except MediaStorageError as error:
+                        cleanup_error = error
+                with suppress(OSError):
+                    os.close(directory_fd)
+            if cleanup_error is not None:
+                if active_error is not None:
+                    active_error.add_note(
+                        f"Additional media-storage cleanup failure: {cleanup_error}"
+                    )
+                else:
+                    raise cleanup_error
 
     def original_path_for(self, project_id: UUID, media_asset_id: UUID) -> Path:
         """Resolve an infrastructure-only path for an original identity."""
@@ -107,6 +132,99 @@ class FileSystemMediaStorage:
             / f"{media_asset_id}.original"
         )
 
+    def open_original(
+        self,
+        *,
+        project_id: UUID,
+        media_asset_id: UUID,
+    ) -> BinaryIO:
+        """Open a stored original without returning its host path to callers."""
+        self._require_uuid(project_id, field="project_id")
+        self._require_uuid(media_asset_id, field="media_asset_id")
+        directory_fd = self._open_existing_originals_directory(project_id)
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        try:
+            try:
+                original_fd = os.open(
+                    f"{media_asset_id}.original",
+                    flags,
+                    dir_fd=directory_fd,
+                )
+            except FileNotFoundError as error:
+                raise MediaStorageError(
+                    MediaStorageErrorCode.ORIGINAL_NOT_FOUND,
+                    "The requested original is not available.",
+                ) from error
+            except OSError as error:
+                raise MediaStorageError(
+                    MediaStorageErrorCode.UNSAFE_STORAGE_PATH,
+                    "The stored original could not be opened safely.",
+                ) from error
+
+            try:
+                original_stat = os.fstat(original_fd)
+            except OSError as error:
+                with suppress(OSError):
+                    os.close(original_fd)
+                raise MediaStorageError(
+                    MediaStorageErrorCode.IO_ERROR,
+                    "The stored original could not be inspected.",
+                ) from error
+            if not stat.S_ISREG(original_stat.st_mode):
+                os.close(original_fd)
+                raise MediaStorageError(
+                    MediaStorageErrorCode.UNSAFE_STORAGE_PATH,
+                    "The stored original is not a regular file.",
+                )
+            try:
+                return os.fdopen(original_fd, "rb", closefd=True)
+            except (OSError, ValueError) as error:
+                with suppress(OSError):
+                    os.close(original_fd)
+                raise MediaStorageError(
+                    MediaStorageErrorCode.IO_ERROR,
+                    "The stored original could not be opened for reading.",
+                ) from error
+        finally:
+            os.close(directory_fd)
+
+    def discard_original(
+        self,
+        *,
+        project_id: UUID,
+        media_asset_id: UUID,
+    ) -> None:
+        """Idempotently remove an exact UUID-derived original after rollback."""
+        self._require_uuid(project_id, field="project_id")
+        self._require_uuid(media_asset_id, field="media_asset_id")
+        try:
+            directory_fd = self._open_existing_originals_directory(project_id)
+        except MediaStorageError as error:
+            if error.code is MediaStorageErrorCode.ORIGINAL_NOT_FOUND:
+                return
+            raise
+        try:
+            try:
+                os.unlink(f"{media_asset_id}.original", dir_fd=directory_fd)
+            except FileNotFoundError:
+                return
+            except OSError as error:
+                raise MediaStorageError(
+                    MediaStorageErrorCode.IO_ERROR,
+                    "The original could not be discarded during rollback.",
+                ) from error
+            try:
+                os.fsync(directory_fd)
+            except OSError as error:
+                raise MediaStorageError(
+                    MediaStorageErrorCode.IO_ERROR,
+                    "The original was removed, but removal durability could not "
+                    "be confirmed.",
+                ) from error
+        finally:
+            os.close(directory_fd)
+
     @staticmethod
     def _require_uuid(value: object, *, field: str) -> None:
         if not isinstance(value, UUID):
@@ -114,17 +232,37 @@ class FileSystemMediaStorage:
 
     @staticmethod
     def _validate_display_name(name: str) -> str:
-        if not name.strip() or name in {".", ".."} or "/" in name or "\\" in name:
+        contains_unsafe_control = any(
+            unicodedata.category(character) in {"Cc", "Cf"}
+            or unicodedata.bidirectional(character) in _UNSAFE_BIDI_CLASSES
+            for character in name
+        )
+        if (
+            not name.strip()
+            or name in {".", ".."}
+            or "/" in name
+            or "\\" in name
+            or contains_unsafe_control
+        ):
             raise MediaStorageError(
                 MediaStorageErrorCode.UNSAFE_DISPLAY_NAME,
                 "The source filename is not safe to display.",
             )
         return name
 
-    def _open_originals_directory(self, project_id: UUID) -> int:
-        """Create and open the UUID-only directory chain without symlinks."""
+    def _create_originals_directory(self, project_id: UUID) -> int:
+        """Create and open the UUID-only directory chain durably."""
+        return self._open_originals_directory(project_id, create=True)
+
+    def _open_existing_originals_directory(self, project_id: UUID) -> int:
+        """Open the UUID-only directory chain without creating it."""
+        return self._open_originals_directory(project_id, create=False)
+
+    def _open_originals_directory(self, project_id: UUID, *, create: bool) -> int:
+        """Open a UUID-only directory chain without following symlinks."""
         try:
-            self._storage_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if create:
+                self._storage_root.mkdir(mode=0o700, parents=True, exist_ok=True)
             root_lstat = self._storage_root.lstat()
             if stat.S_ISLNK(root_lstat.st_mode):
                 raise OSError("storage root is a symbolic link")
@@ -133,9 +271,29 @@ class FileSystemMediaStorage:
             directory_flags |= getattr(os, "O_NOFOLLOW", 0)
             current_fd = os.open(self._storage_root, directory_flags)
             try:
+                root_fstat = os.fstat(current_fd)
+                if not stat.S_ISDIR(root_fstat.st_mode) or not os.path.samestat(
+                    root_lstat,
+                    root_fstat,
+                ):
+                    raise OSError("storage root changed while it was being opened")
                 for component in ("projects", str(project_id), "originals"):
-                    with suppress(FileExistsError):
-                        os.mkdir(component, mode=0o700, dir_fd=current_fd)
+                    if create:
+                        created = False
+                        try:
+                            os.mkdir(component, mode=0o700, dir_fd=current_fd)
+                            created = True
+                        except FileExistsError:
+                            pass
+                        if created:
+                            try:
+                                os.fsync(current_fd)
+                            except OSError as error:
+                                raise MediaStorageError(
+                                    MediaStorageErrorCode.IO_ERROR,
+                                    "The media storage directory could not be "
+                                    "created durably.",
+                                ) from error
                     next_fd = os.open(component, directory_flags, dir_fd=current_fd)
                     os.close(current_fd)
                     current_fd = next_fd
@@ -143,6 +301,16 @@ class FileSystemMediaStorage:
                 os.close(current_fd)
                 raise
             return current_fd
+        except FileNotFoundError as error:
+            if create:
+                raise MediaStorageError(
+                    MediaStorageErrorCode.UNSAFE_STORAGE_PATH,
+                    "The configured media storage path is unsafe.",
+                ) from error
+            raise MediaStorageError(
+                MediaStorageErrorCode.ORIGINAL_NOT_FOUND,
+                "The requested original is not available.",
+            ) from error
         except OSError as error:
             raise MediaStorageError(
                 MediaStorageErrorCode.UNSAFE_STORAGE_PATH,
@@ -205,7 +373,19 @@ class FileSystemMediaStorage:
                 "The selected source could not be opened safely.",
             ) from error
 
-        source_fstat = os.fstat(source_fd)
+        try:
+            source_fstat = os.fstat(source_fd)
+        except OSError as error:
+            with suppress(OSError):
+                os.close(source_fd)
+            raise MediaStorageError(
+                MediaStorageErrorCode.IO_ERROR,
+                "The selected source could not be inspected after opening.",
+            ) from error
+        except BaseException:
+            with suppress(OSError):
+                os.close(source_fd)
+            raise
         if not stat.S_ISREG(source_fstat.st_mode) or not os.path.samestat(
             source_lstat,
             source_fstat,
@@ -272,14 +452,29 @@ class FileSystemMediaStorage:
         digest = hashlib.sha256()
         bytes_copied = 0
         try:
-            with os.fdopen(temporary_fd, "wb", closefd=True) as output:
+            try:
+                output = os.fdopen(temporary_fd, "wb", closefd=True)
+            except (OSError, ValueError) as error:
+                with suppress(OSError):
+                    os.close(temporary_fd)
+                raise MediaStorageError(
+                    MediaStorageErrorCode.IO_ERROR,
+                    "The temporary original could not be opened for writing.",
+                ) from error
+            except BaseException:
+                with suppress(OSError):
+                    os.close(temporary_fd)
+                raise
+            with output:
                 while chunk := os.read(source_fd, _COPY_CHUNK_BYTES):
                     output.write(chunk)
                     digest.update(chunk)
                     bytes_copied += len(chunk)
                 output.flush()
-                os.fsync(output.fileno())
                 os.fchmod(output.fileno(), _READ_ONLY_MODE)
+                os.fsync(output.fileno())
+        except MediaStorageError:
+            raise
         except OSError as error:
             raise MediaStorageError(
                 MediaStorageErrorCode.IO_ERROR,
@@ -325,6 +520,59 @@ class FileSystemMediaStorage:
             raise MediaStorageError(
                 MediaStorageErrorCode.IO_ERROR,
                 "The original could not be published atomically.",
+            ) from error
+
+        try:
+            os.fsync(directory_fd)
+        except OSError as publish_error:
+            rollback_confirmed = True
+            try:
+                os.unlink(destination_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                rollback_confirmed = False
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                rollback_confirmed = False
+
+            if not rollback_confirmed:
+                raise MediaStorageError(
+                    MediaStorageErrorCode.IO_ERROR,
+                    "The original publication failed and rollback could not be "
+                    "confirmed.",
+                ) from publish_error
+            raise MediaStorageError(
+                MediaStorageErrorCode.IO_ERROR,
+                "The original publication failed and was rolled back.",
+            ) from publish_error
+
+    @staticmethod
+    def _remove_temporary(
+        *,
+        directory_fd: int,
+        temporary_name: str,
+        published: bool,
+    ) -> None:
+        try:
+            os.unlink(temporary_name, dir_fd=directory_fd)
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            state = "after publication" if published else "after the failed import"
+            raise MediaStorageError(
+                MediaStorageErrorCode.IO_ERROR,
+                f"Temporary original cleanup failed {state}.",
+            ) from error
+
+        try:
+            os.fsync(directory_fd)
+        except OSError as error:
+            raise MediaStorageError(
+                MediaStorageErrorCode.IO_ERROR,
+                "The temporary original was removed, but cleanup durability could "
+                "not be confirmed.",
             ) from error
 
 

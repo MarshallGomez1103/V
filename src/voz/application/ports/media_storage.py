@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import BinaryIO, Protocol, runtime_checkable
 from uuid import UUID
 
 from voz.domain.entities.media_asset import MediaAsset
@@ -23,6 +23,7 @@ class MediaStorageErrorCode(StrEnum):
     UNSAFE_DISPLAY_NAME = "unsafe_display_name"
     UNSAFE_STORAGE_PATH = "unsafe_storage_path"
     IO_ERROR = "io_error"
+    ORIGINAL_NOT_FOUND = "original_not_found"
 
 
 class MediaStorageError(RuntimeError):
@@ -63,6 +64,24 @@ class MediaStoragePort(Protocol):
         media_type: str | None = None,
     ) -> ImportedOriginal:
         """Copy one regular file and return its persistable metadata."""
+        ...
+
+    def open_original(
+        self,
+        *,
+        project_id: UUID,
+        media_asset_id: UUID,
+    ) -> BinaryIO:
+        """Open an immutable original by identity without exposing its path."""
+        ...
+
+    def discard_original(
+        self,
+        *,
+        project_id: UUID,
+        media_asset_id: UUID,
+    ) -> None:
+        """Idempotently remove an original during compensating rollback."""
         ...
 
 

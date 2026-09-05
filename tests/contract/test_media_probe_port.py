@@ -1,6 +1,7 @@
 """Contract tests for media inspection adapters."""
 
-from pathlib import Path
+from io import BytesIO
+from typing import BinaryIO
 
 from voz.application.ports.media_probe import (
     MediaProbePort,
@@ -11,7 +12,7 @@ from voz.application.ports.media_probe import (
 
 
 class _ContractProbe:
-    def probe(self, source: Path) -> MediaProbeResult:
+    def probe(self, source: BinaryIO) -> MediaProbeResult:
         del source
         return MediaProbeResult(
             format_names=("wav",),
@@ -37,7 +38,7 @@ def test_port_is_structural_and_returns_path_free_metadata() -> None:
     adapter = _ContractProbe()
     probe = _accept_media_probe(adapter)
 
-    result = probe.probe(Path("/private/recordings/class.wav"))
+    result = probe.probe(BytesIO(b"media"))
 
     assert isinstance(adapter, MediaProbePort)
     assert result.format_names == ("wav",)

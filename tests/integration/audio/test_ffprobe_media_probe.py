@@ -27,11 +27,14 @@ def test_real_ffprobe_accepts_media_content_with_unrelated_extension(
     source = tmp_path / "class.notes"
     _write_silent_pcm_wav(source)
 
-    result = FfprobeMediaProbe().probe(source)
+    with source.open("rb") as original:
+        original.seek(7)
+        result = FfprobeMediaProbe().probe(original)
 
     assert "wav" in result.format_names
     assert result.duration_ms == 100
     assert result.audio_streams == (result.streams[0],)
+    assert result.streams[0].index == 0
     assert result.streams[0].kind is MediaStreamKind.AUDIO
     assert result.streams[0].codec_name == "pcm_s16le"
     assert result.streams[0].sample_rate_hz == 16_000
@@ -45,8 +48,8 @@ def test_real_ffprobe_rejects_corrupt_file_despite_audio_extension(
     source = tmp_path / "not-really-audio.wav"
     source.write_bytes(b"this is not media")
 
-    with pytest.raises(MediaProbeError) as captured:
-        FfprobeMediaProbe().probe(source)
+    with source.open("rb") as original, pytest.raises(MediaProbeError) as captured:
+        FfprobeMediaProbe().probe(original)
 
     assert captured.value.code is MediaProbeFailureCode.INVALID_MEDIA
     assert source.name not in captured.value.user_message

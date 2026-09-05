@@ -5,8 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import BinaryIO, Protocol, runtime_checkable
 
 _SAFE_METADATA_TOKEN = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}", re.ASCII)
 
@@ -110,10 +109,10 @@ class MediaProbeError(RuntimeError):
 
 @runtime_checkable
 class MediaProbePort(Protocol):
-    """Inspect an infrastructure-owned source and return safe media metadata."""
+    """Inspect an already-open immutable original and return safe metadata."""
 
-    def probe(self, source: Path) -> MediaProbeResult:
-        """Inspect media contents without relying on the filename extension."""
+    def probe(self, source: BinaryIO) -> MediaProbeResult:
+        """Inspect a seekable descriptor without relying on a host path."""
         ...
 
 

@@ -6,9 +6,8 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from pathlib import Path
-from typing import cast
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
+from typing import BinaryIO, cast
 
 from voz.application.ports.media_probe import (
     MediaProbeError,
@@ -19,8 +18,10 @@ from voz.application.ports.media_probe import (
 )
 
 _DECODER_LINE = re.compile(r"^\s*[AV][A-Z.]{5}\s+([a-zA-Z0-9_.-]+)(?:\s|$)")
+_DECODER_CODEC_ALIAS = re.compile(r"(?:^|\s)\(codec\s+([a-zA-Z0-9_.-]+)\)(?:\s|$)")
 _SAFE_TOKEN = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}", re.ASCII)
 _UNUSABLE_CODEC_NAMES = frozenset({"none", "null", "unknown"})
+_MAX_DURATION_MILLISECONDS = 2**63 - 1
 _PROBE_ENTRIES = (
     "format=format_name,duration:"
     "stream=index,codec_name,codec_type,sample_rate,channels"
@@ -45,8 +46,10 @@ class FfprobeMediaProbe:
         if isinstance(self.timeout_seconds, bool) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
 
-    def probe(self, source: Path) -> MediaProbeResult:
-        """Return whitelisted metadata or a stable typed failure."""
+    def probe(self, source: BinaryIO) -> MediaProbeResult:
+        """Return metadata from an inherited seekable descriptor."""
+
+        source_fd = _prepare_source_descriptor(source)
 
         completed = self._run(
             [
@@ -57,8 +60,11 @@ class FfprobeMediaProbe:
                 _PROBE_ENTRIES,
                 "-of",
                 "json",
-                str(source.absolute()),
-            ]
+                "-fd",
+                str(source_fd),
+                "fd:",
+            ],
+            pass_fds=(source_fd,),
         )
         if completed.returncode != 0:
             raise MediaProbeError(
@@ -99,11 +105,7 @@ class FfprobeMediaProbe:
                 "The media inspection tool returned an invalid response.",
             )
 
-        decoder_names = frozenset(
-            match.group(1).lower()
-            for line in completed.stdout.splitlines()
-            if (match := _DECODER_LINE.match(line)) is not None
-        )
+        decoder_names = _parse_decoder_names(completed.stdout)
         if not decoder_names:
             raise MediaProbeError(
                 MediaProbeFailureCode.INVALID_RESPONSE,
@@ -112,7 +114,12 @@ class FfprobeMediaProbe:
         self._decoder_names = decoder_names
         return decoder_names
 
-    def _run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self,
+        command: list[str],
+        *,
+        pass_fds: tuple[int, ...] = (),
+    ) -> subprocess.CompletedProcess[str]:
         try:
             return subprocess.run(
                 command,
@@ -121,6 +128,7 @@ class FfprobeMediaProbe:
                 encoding="utf-8",
                 errors="replace",
                 timeout=self.timeout_seconds,
+                pass_fds=pass_fds,
             )
         except FileNotFoundError as error:
             raise MediaProbeError(
@@ -139,6 +147,25 @@ class FfprobeMediaProbe:
             ) from error
 
 
+def _prepare_source_descriptor(source: BinaryIO) -> int:
+    try:
+        if not source.seekable():
+            raise OSError("source is not seekable")
+        source.seek(0)
+        source_fd = source.fileno()
+    except (AttributeError, OSError, ValueError) as error:
+        raise MediaProbeError(
+            MediaProbeFailureCode.INVALID_MEDIA,
+            "The selected file is not readable media.",
+        ) from error
+    if isinstance(source_fd, bool) or source_fd < 0:
+        raise MediaProbeError(
+            MediaProbeFailureCode.INVALID_MEDIA,
+            "The selected file is not readable media.",
+        )
+    return source_fd
+
+
 def _load_payload(stdout: str) -> dict[str, object]:
     try:
         payload: object = json.loads(stdout)
@@ -153,6 +180,23 @@ def _load_payload(stdout: str) -> dict[str, object]:
             "The media inspection tool returned an invalid response.",
         )
     return cast(dict[str, object], payload)
+
+
+def _parse_decoder_names(stdout: str) -> frozenset[str]:
+    decoder_names: set[str] = set()
+    for line in stdout.splitlines():
+        decoder_match = _DECODER_LINE.match(line)
+        if decoder_match is None:
+            continue
+        decoder_names.add(decoder_match.group(1).lower())
+        if (alias_match := _DECODER_CODEC_ALIAS.search(line)) is not None:
+            alias = alias_match.group(1).lower()
+            if (
+                alias not in _UNUSABLE_CODEC_NAMES
+                and _SAFE_TOKEN.fullmatch(alias) is not None
+            ):
+                decoder_names.add(alias)
+    return frozenset(decoder_names)
 
 
 def _parse_streams(
@@ -235,12 +279,14 @@ def _parse_duration_ms(value: object) -> int | None:
         return None
     try:
         seconds = Decimal(str(value))
-    except InvalidOperation:
+        if not seconds.is_finite() or seconds <= 0:
+            return None
+        milliseconds = (seconds * 1000).to_integral_value(rounding=ROUND_HALF_UP)
+    except DecimalException:
         return None
-    if not seconds.is_finite() or seconds <= 0:
+    if milliseconds <= 0 or milliseconds > _MAX_DURATION_MILLISECONDS:
         return None
-    milliseconds = int((seconds * 1000).to_integral_value(rounding=ROUND_HALF_UP))
-    return milliseconds if milliseconds > 0 else None
+    return int(milliseconds)
 
 
 def _parse_format_names(value: object) -> tuple[str, ...]:

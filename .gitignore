@@ -29,7 +29,22 @@ test-results/
 # Local configuration and secrets
 .env
 .env.*
+*.env
 !.env.example
+credentials.json
+credentials.*.json
+credentials-*.json
+service-account.json
+service-account.*.json
+service-account-*.json
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.key
+*.pem
+*.p12
+*.pfx
 
 # Generated media, models, and databases
 *.db
@@ -46,6 +61,13 @@ chunks/
 normalized/
 originals/
 temp/
+transcripts/
+transcript.*
+transcript-*
+transcript_*
+cache/
+.cache/
+*.cache
 *.wav
 *.mp3
 *.m4a
