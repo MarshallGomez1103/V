@@ -5,13 +5,14 @@ largas de clases, entrevistas y reuniones. La meta es ofrecer un workspace web
 local con waveform, timeline, segmentos editables y hablantes, sin convertir un
 proveedor cloud en requisito.
 
-> **Estado actual: ingestión backend verificable.** La CLI, la API health y la
+> **Estado actual: primer ASR local implementado.** La CLI, la API health y la
 > Home local funcionan como una sola aplicación instalable. El backend ya puede
-> inspeccionar, conservar y normalizar medios localmente, aunque la selección de
-> archivos todavía no está conectada a la UI y aún no existe un motor ASR
-> integrado. Este repositorio todavía no transcribe audio con Faster Whisper,
-> whisper.cpp, OpenAI o ElevenLabs. Consulta el [roadmap](ROADMAP.md) para ver
-> qué fue realmente verificado.
+> inspeccionar y normalizar medios, componer Faster Whisper, procesar clips con
+> offsets globales y reanudar desde checkpoints SQLite. La selección de archivos
+> y ejecución desde la UI pertenecen a la Sección 5. No se incluye ni descarga
+> ningún modelo: el runtime real permanece experimental hasta instalar un modelo
+> elegido explícitamente y ejecutar el smoke opt-in. Consulta el
+> [roadmap](ROADMAP.md) para ver qué fue verificado.
 
 ## Visión
 
@@ -92,7 +93,9 @@ El dominio no depende de FastAPI, SQLAlchemy, FFmpeg, torch ni SDKs externos.
 Los detalles y consecuencias están documentados en
 [ADR-0001](docs/adr/0001-modular-monolith.md). La frontera multimedia y sus
 garantías de integridad están en
-[ADR-0003](docs/adr/0003-ffmpeg-ingestion.md).
+[ADR-0003](docs/adr/0003-ffmpeg-ingestion.md). La instalación local explícita,
+selección de hardware y recuperación ASR están en
+[ADR-0004](docs/adr/0004-local-asr-and-recoverable-chunks.md).
 
 ## Desarrollo local
 
@@ -103,6 +106,26 @@ local integrada:
 uv sync --all-groups
 uv run voz --no-browser
 ```
+
+El runtime Faster Whisper es opcional y no altera el bootstrap ordinario:
+
+```bash
+uv sync --all-groups --extra asr-local
+```
+
+Ese comando instala la dependencia, no los pesos. La instalación de un modelo
+requiere un descriptor con repositorio y SHA de commit de 40 caracteres, además
+de confirmación explícita. Para probar un directorio de modelo ya instalado sin
+red, se ofrece un smoke CPU opt-in:
+
+```bash
+VOZ_FASTER_WHISPER_MODEL_DIR=/ruta/al/model \
+VOZ_FASTER_WHISPER_MODEL_SOURCE=organizacion/repositorio \
+VOZ_FASTER_WHISPER_MODEL_REVISION=sha_git_de_40_caracteres \
+  uv run pytest tests/integration/application/test_faster_whisper_real_opt_in.py
+```
+
+CUDA continúa rotulado como experimental hasta ejercitarlo en hardware real.
 
 La aplicación queda disponible en `http://127.0.0.1:8765` y expone
 `GET /api/health`. Para modificar y reconstruir el frontend:
@@ -166,4 +189,5 @@ corresponda.
 - [ADR-0001: monolito modular](docs/adr/0001-modular-monolith.md)
 - [ADR-0002: persistencia SQLite](docs/adr/0002-sqlite-persistence.md)
 - [ADR-0003: ingestión FFmpeg](docs/adr/0003-ffmpeg-ingestion.md)
+- [ADR-0004: ASR local recuperable](docs/adr/0004-local-asr-and-recoverable-chunks.md)
 - [Setup de desarrollo en Bazzite](docs/development/setup-bazzite.md)

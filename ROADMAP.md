@@ -78,6 +78,19 @@ alterar los IDs.
 | INGEST-PROBE-FIX-001 | S3.03 | `ingest_audit2` | verificado | Regresiones cubren alias dca/dts y duraciones extremas sin excepción cruda. |
 | INGEST-STORE-FIX-001 | S3.08, S3.16 | `s3_storage_reaudit` | verificado | 49 pruebas cubren reapertura, jerarquía durable, UUID, symlinks, nombres inseguros y cierre de descriptores. |
 
+## Trabajo activo — Sección 4
+
+| Paquete | IDs | Agente | Estado | Último logro verificable |
+| --- | --- | --- | --- | --- |
+| ASR-CONTRACT-001 | S4.01, S4.02 | `root` | verificado | Contrato path-free con cancelación y errores tipados; descriptor inmutable; suite completa de 349 pruebas pasa. |
+| ASR-REGISTRY-001 | S4.03 | `root` | verificado | Registry determinista rechaza duplicados, contratos incompletos y entrypoints no invocables; checks estrictos pasan. |
+| ASR-ADAPTER-001 | S4.04-S4.06 | `root` | verificado | Adapter local-only, instalación XDG confirmada y manifest de procedencia; 358 pruebas y checks estrictos pasan. |
+| ASR-PROFILE-001 | S4.07-S4.09 | `root` | verificado | Descriptores fast/quality y fallback GPU/CPU con causa observable; 366 pruebas y checks estrictos pasan. |
+| ASR-CHUNK-001 | S4.10, S4.11 | `root` | verificado | Planner con overlap/ownership y progreso por unidad; 373 pruebas y checks estrictos pasan. |
+| ASR-RECOVERY-001 | S4.12-S4.14 | `root` | verificado | Checkpoints fijan plan/modelo/source/revisión/idioma; cancelación y reapertura no repiten chunks; rollback atómico probado. |
+| ASR-CONTRACT-002 | S4.15-S4.17 | `root` | verificado | Suite común sobre provider estructural y Faster Whisper: WAV válido, timeline, cancelación y errores; integración física por clips. |
+| ASR-LANGUAGE-001 | S4.18 | `root` | verificado | Idioma solicitado y detectado sobreviven checkpoints SQLite y reanudación; 400 pruebas pasan, 1 smoke real queda opt-in. |
+
 ---
 
 ## Sección 1 — Bootstrap del repositorio
@@ -155,27 +168,32 @@ y genera audio normalizado reproducible sin modificar el original.
 
 ## Sección 4 — Primer ASR local
 
-- [ ] **S4.01** Definir el port `TranscriptionProvider`.
-- [ ] **S4.02** Definir `ModelDescriptor` y sus capacidades.
-- [ ] **S4.03** Crear el provider registry sin imports en dominio.
-- [ ] **S4.04** Implementar el adapter Faster Whisper.
-- [ ] **S4.05** Implementar descarga explícita de un modelo local.
-- [ ] **S4.06** Registrar revisión y procedencia del modelo.
-- [ ] **S4.07** Implementar perfil `fast` por descriptor.
-- [ ] **S4.08** Implementar perfil `quality` por descriptor.
-- [ ] **S4.09** Detectar GPU y elegir fallback CPU explícito.
-- [ ] **S4.10** Planificar chunks con offsets globales.
-- [ ] **S4.11** Reportar progreso por chunk.
-- [ ] **S4.12** Persistir un resultado parcial verificado.
-- [ ] **S4.13** Cancelar ASR entre unidades recuperables.
-- [ ] **S4.14** Reanudar desde checkpoints sin repetir chunks completos.
-- [ ] **S4.15** Añadir contract test de audio válido.
-- [ ] **S4.16** Añadir contract test de timestamps monótonos y no negativos.
-- [ ] **S4.17** Añadir contract test de cancelación y errores mapeados.
-- [ ] **S4.18** Preservar metadata de idioma en el resultado canónico.
+- [x] **S4.01** Definir el port `TranscriptionProvider`.
+- [x] **S4.02** Definir `ModelDescriptor` y sus capacidades.
+- [x] **S4.03** Crear el provider registry sin imports en dominio.
+- [x] **S4.04** Implementar el adapter Faster Whisper.
+- [x] **S4.05** Implementar descarga explícita de un modelo local.
+- [x] **S4.06** Registrar revisión y procedencia del modelo.
+- [x] **S4.07** Implementar perfil `fast` por descriptor.
+- [x] **S4.08** Implementar perfil `quality` por descriptor.
+- [x] **S4.09** Detectar GPU y elegir fallback CPU explícito.
+- [x] **S4.10** Planificar chunks con offsets globales.
+- [x] **S4.11** Reportar progreso por chunk.
+- [x] **S4.12** Persistir un resultado parcial verificado.
+- [x] **S4.13** Cancelar ASR entre unidades recuperables.
+- [x] **S4.14** Reanudar desde checkpoints sin repetir chunks completos.
+- [x] **S4.15** Añadir contract test de audio válido.
+- [x] **S4.16** Añadir contract test de timestamps monótonos y no negativos.
+- [x] **S4.17** Añadir contract test de cancelación y errores mapeados.
+- [x] **S4.18** Preservar metadata de idioma en el resultado canónico.
 
 **Criterio de salida:** un archivo largo puede transcribirse localmente y
 reanudarse bajo el contrato común.
+
+El flujo local, el recorte físico por chunks y la recuperación están verificados
+con el adapter real y un engine determinista. El runtime/modelo Faster Whisper
+real permanece experimental hasta ejecutar el smoke opt-in con un modelo que el
+usuario haya elegido e instalado explícitamente; no se descargan pesos en tests.
 
 ## Sección 5 — Workspace UI
 
