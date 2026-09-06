@@ -1,0 +1,177 @@
+"""Provider-neutral application contract for speech transcription."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import BinaryIO, Protocol, cast, runtime_checkable
+
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+
+_SAFE_LANGUAGE_TAG = re.compile(
+    r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*",
+    re.ASCII,
+)
+
+
+class TranscriptionFailureCode(StrEnum):
+    """Stable provider failures suitable for job and API translation."""
+
+    MODEL_NOT_INSTALLED = "transcription_model_not_installed"
+    GPU_UNAVAILABLE = "transcription_gpu_unavailable"
+    INVALID_AUDIO = "transcription_invalid_audio"
+    PROVIDER_FAILED = "transcription_provider_failed"
+    CANCELLED = "transcription_cancelled"
+
+
+class TranscriptionError(RuntimeError):
+    """Typed transcription failure with a path-safe user message."""
+
+    def __init__(
+        self,
+        code: TranscriptionFailureCode,
+        user_message: str,
+        *,
+        retryable: bool = False,
+    ) -> None:
+        self.code = code
+        self.user_message = user_message
+        self.retryable = retryable
+        super().__init__(user_message)
+
+
+@runtime_checkable
+class TranscriptionCancellationToken(Protocol):
+    """Minimal cooperative cancellation contract shared by all providers."""
+
+    def is_cancelled(self) -> bool:
+        """Return whether cancellation has been requested."""
+        ...
+
+
+def _validate_language(language: object) -> None:
+    if language is None:
+        return
+    if not isinstance(language, str):
+        raise TypeError("language must be a string or None")
+    if _SAFE_LANGUAGE_TAG.fullmatch(language) is None:
+        raise ValueError("language must be a trimmed language tag")
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptionSegment:
+    """Provider output span before domain identities are assigned."""
+
+    start_ms: int
+    end_ms: int
+    text: str
+
+    def __post_init__(self) -> None:
+        if type(self.start_ms) is not int or type(self.end_ms) is not int:
+            raise TypeError("transcription offsets must be integer milliseconds")
+        if self.start_ms < 0 or self.end_ms < 0:
+            raise ValueError("transcription offsets must be non-negative")
+        if self.end_ms <= self.start_ms:
+            raise ValueError("end_ms must be greater than start_ms")
+        raw_text = cast(object, self.text)
+        if not isinstance(raw_text, str):
+            raise TypeError("transcription text must be a string")
+        if raw_text == "":
+            raise ValueError("transcription text cannot be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptionResult:
+    """Canonical path-free output returned by every transcription provider."""
+
+    segments: tuple[TranscriptionSegment, ...]
+    language: str | None = None
+
+    def __post_init__(self) -> None:
+        raw_segments = cast(object, self.segments)
+        if not isinstance(raw_segments, tuple):
+            raise TypeError("segments must be a tuple")
+        segments = cast(tuple[object, ...], raw_segments)
+        previous_end_ms = 0
+        for segment in segments:
+            if not isinstance(segment, TranscriptionSegment):
+                raise TypeError(
+                    "segments must contain only TranscriptionSegment instances"
+                )
+            if segment.start_ms < previous_end_ms:
+                raise ValueError("segments must be ordered and non-overlapping")
+            previous_end_ms = segment.end_ms
+        _validate_language(self.language)
+
+    @property
+    def text(self) -> str:
+        """Join provider spans without altering their literal text."""
+
+        return "".join(segment.text for segment in self.segments)
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptionClip:
+    """Global timeline bounds for one recoverable provider invocation."""
+
+    start_ms: int
+    end_ms: int
+
+    def __post_init__(self) -> None:
+        if type(self.start_ms) is not int or type(self.end_ms) is not int:
+            raise TypeError("clip offsets must be integer milliseconds")
+        if self.start_ms < 0 or self.end_ms <= self.start_ms:
+            raise ValueError("clip offsets must be non-negative and increasing")
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptionOptions:
+    """Small canonical request independent of engine-specific tuning flags."""
+
+    model: ModelDescriptor
+    language: str | None = None
+    clip: TranscriptionClip | None = None
+
+    def __post_init__(self) -> None:
+        raw_model = cast(object, self.model)
+        if not isinstance(raw_model, ModelDescriptor):
+            raise TypeError("model must be a ModelDescriptor")
+        if not raw_model.supports(ModelCapability.TRANSCRIPTION):
+            raise ValueError("model must declare the transcription capability")
+        _validate_language(self.language)
+        raw_clip = cast(object, self.clip)
+        if raw_clip is not None and not isinstance(raw_clip, TranscriptionClip):
+            raise TypeError("clip must be a TranscriptionClip or None")
+
+
+@runtime_checkable
+class TranscriptionProvider(Protocol):
+    """Transcribe opened inference audio under a canonical model contract."""
+
+    @property
+    def provider_id(self) -> str:
+        """Return the stable identifier used by this provider's descriptors."""
+        ...
+
+    def transcribe(
+        self,
+        *,
+        audio: BinaryIO,
+        options: TranscriptionOptions,
+        cancellation: TranscriptionCancellationToken | None = None,
+    ) -> TranscriptionResult:
+        """Transcribe an opened audio descriptor without exposing host paths."""
+        ...
+
+
+__all__ = [
+    "TranscriptionCancellationToken",
+    "TranscriptionClip",
+    "TranscriptionError",
+    "TranscriptionFailureCode",
+    "TranscriptionOptions",
+    "TranscriptionProvider",
+    "TranscriptionResult",
+    "TranscriptionSegment",
+]

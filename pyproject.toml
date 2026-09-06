@@ -18,6 +18,11 @@ dependencies = [
   "uvicorn>=0.30,<1",
 ]
 
+[project.optional-dependencies]
+asr-local = [
+  "faster-whisper>=1.2.1,<2",
+]
+
 [project.scripts]
 voz = "voz.interfaces.cli.main:main"
 
