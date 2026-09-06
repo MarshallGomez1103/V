@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
 )
 
 NAMING_CONVENTION = {
@@ -183,6 +184,51 @@ transcription_jobs = Table(
     ),
 )
 
+transcription_checkpoints = Table(
+    "transcription_checkpoints",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "job_id",
+        String(36),
+        ForeignKey("transcription_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
+    Column("chunk_index", BigInteger, nullable=False),
+    Column("process_start_ms", BigInteger, nullable=False),
+    Column("process_end_ms", BigInteger, nullable=False),
+    Column("owned_start_ms", BigInteger, nullable=False),
+    Column("owned_end_ms", BigInteger, nullable=False),
+    Column("provider_id", Text, nullable=False),
+    Column("model_id", Text, nullable=False),
+    Column("model_source", Text, nullable=True),
+    Column("model_revision", Text, nullable=True),
+    Column("requested_language", Text, nullable=True),
+    Column("segments_json", Text, nullable=False),
+    Column("language", Text, nullable=True),
+    Column("progress", Float(), nullable=False),
+    Column("job_progress", Float(), nullable=False),
+    Column("completed_at", String(40), nullable=False),
+    CheckConstraint("chunk_index >= 0", name="chunk_index_non_negative"),
+    CheckConstraint("process_start_ms >= 0", name="process_start_non_negative"),
+    CheckConstraint(
+        "process_start_ms <= owned_start_ms",
+        name="process_contains_owned_start",
+    ),
+    CheckConstraint("owned_start_ms < owned_end_ms", name="owned_offsets_increasing"),
+    CheckConstraint(
+        "owned_end_ms <= process_end_ms",
+        name="process_contains_owned_end",
+    ),
+    CheckConstraint("progress > 0.0 AND progress <= 1.0", name="progress_bounded"),
+    CheckConstraint(
+        "job_progress > 0.0 AND job_progress <= 1.0",
+        name="job_progress_bounded",
+    ),
+    UniqueConstraint("job_id", "chunk_index", name="uq_checkpoint_job_chunk"),
+)
+
 __all__ = [
     "media_assets",
     "metadata",
@@ -190,6 +236,7 @@ __all__ = [
     "segments",
     "speaker_turns",
     "speakers",
+    "transcription_checkpoints",
     "transcription_jobs",
     "transcripts",
     "words",

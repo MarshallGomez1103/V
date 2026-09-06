@@ -1,5 +1,10 @@
 """Application ports exposed without infrastructure dependencies."""
 
+from voz.application.ports.inference_audio import (
+    InferenceAudioError,
+    InferenceAudioFailureCode,
+    InferenceAudioSource,
+)
 from voz.application.ports.media_normalization import (
     MediaNormalizationCancellationToken,
     MediaNormalizationError,
@@ -23,6 +28,12 @@ from voz.application.ports.media_storage import (
     MediaStorageErrorCode,
     MediaStoragePort,
 )
+from voz.application.ports.model_installation import (
+    ModelInstallation,
+    ModelInstallationError,
+    ModelInstallationFailureCode,
+    ModelInstallationPort,
+)
 from voz.application.ports.repositories import (
     MediaAssetRepository,
     ProjectRepository,
@@ -33,9 +44,26 @@ from voz.application.ports.repositories import (
     TranscriptRepository,
     WordRepository,
 )
+from voz.application.ports.transcription import (
+    TranscriptionCancellationToken,
+    TranscriptionClip,
+    TranscriptionError,
+    TranscriptionFailureCode,
+    TranscriptionOptions,
+    TranscriptionProvider,
+    TranscriptionResult,
+    TranscriptionSegment,
+)
+from voz.application.ports.transcription_checkpoint import (
+    TranscriptionCheckpoint,
+    TranscriptionCheckpointStore,
+)
 
 __all__ = [
     "ImportedOriginal",
+    "InferenceAudioError",
+    "InferenceAudioFailureCode",
+    "InferenceAudioSource",
     "MediaAssetRepository",
     "MediaNormalizationCancellationToken",
     "MediaNormalizationError",
@@ -51,6 +79,10 @@ __all__ = [
     "MediaStorageErrorCode",
     "MediaStoragePort",
     "MediaStreamKind",
+    "ModelInstallation",
+    "ModelInstallationError",
+    "ModelInstallationFailureCode",
+    "ModelInstallationPort",
     "NormalizedAudio",
     "ProbedMediaStream",
     "ProjectRepository",
@@ -58,6 +90,16 @@ __all__ = [
     "SpeakerRepository",
     "SpeakerTurnRepository",
     "TranscriptRepository",
+    "TranscriptionCancellationToken",
+    "TranscriptionCheckpoint",
+    "TranscriptionCheckpointStore",
+    "TranscriptionClip",
+    "TranscriptionError",
+    "TranscriptionFailureCode",
     "TranscriptionJobRepository",
+    "TranscriptionOptions",
+    "TranscriptionProvider",
+    "TranscriptionResult",
+    "TranscriptionSegment",
     "WordRepository",
 ]
