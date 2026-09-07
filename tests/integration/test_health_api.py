@@ -44,6 +44,8 @@ def test_health_endpoint_reports_readiness_without_sensitive_paths(
     port = _available_loopback_port()
     environment = os.environ.copy()
     environment["PYTHONPYCACHEPREFIX"] = str(tmp_path / "pycache")
+    environment["XDG_DATA_HOME"] = str(tmp_path / "data")
+    environment["XDG_CACHE_HOME"] = str(tmp_path / "cache")
     process = subprocess.Popen(
         [
             sys.executable,
@@ -64,6 +66,7 @@ def test_health_endpoint_reports_readiness_without_sensitive_paths(
     try:
         payload = _fetch_health(f"http://127.0.0.1:{port}/api/health")
         home = _fetch_home(f"http://127.0.0.1:{port}/")
+        options = _fetch_health(f"http://127.0.0.1:{port}/api/transcription-options")
     finally:
         process.terminate()
         try:
@@ -76,3 +79,7 @@ def test_health_endpoint_reports_readiness_without_sensitive_paths(
     assert not any("path" in key.lower() for key in payload)
     assert '<div id="root"></div>' in home
     assert "VOZ" in home
+    choices = cast(list[dict[str, object]], options["options"])
+    assert {item["model_id"] for item in choices} == {"turbo", "large-v3"}
+    assert all(item["can_start"] is False for item in choices)
+    assert str(tmp_path) not in json.dumps(options)

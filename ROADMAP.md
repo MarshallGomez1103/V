@@ -94,6 +94,23 @@ alterar los IDs.
 
 ---
 
+## Trabajo activo — Sección 5
+
+| Paquete | IDs | Agente | Estado | Último logro verificable |
+| --- | --- | --- | --- | --- |
+| OPTIONS-B1-001 | S5.18 | `root` | verificado | Consulta y GET /api/transcription-options sin cargas/descargas: registro, runtime, ejecución, IDs y recomendación separados; 452 pruebas backend, 1 smoke omitido y checks/backend/frontend verdes. |
+| OPTIONS-UI-001 | S5.19 | — | pendiente | Próximo corte propuesto: selector básico frontend sobre el contrato B1; no iniciado. Persistencia de selección S5.20 y demás UI quedan fuera. |
+
+### Retomar en una sesión nueva
+
+Leer `AGENTS.md`, este tablero, `.ai/HANDOFF.md` si existe y
+`docs/api/transcription-options.md`; comprobar Git y las validaciones antes de
+editar. Corte A y B1 están terminados. El próximo objetivo acotado es S5.19,
+sujeto a la instrucción del usuario de continuar ese corte. No interpretar un
+cold start como autorización para completar toda S5, S5.20, jobs HTTP o S6.
+El handoff es local/ignorado; este tablero y el contrato API conservan el
+contexto durable también en otro checkout.
+
 ## Sección 1 — Bootstrap del repositorio
 
 - [x] **S1.01** Inicializar el repositorio con la estructura base acordada.
@@ -221,6 +238,12 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [ ] **S5.15** Virtualizar transcripts largos.
 - [ ] **S5.16** Añadir autosave con estado visible.
 - [ ] **S5.17** Probar importación, reproducción y edición E2E.
+- [x] **S5.18** Exponer opciones canónicas de transcripción mediante consulta backend.
+- [ ] **S5.19** Implementar selector básico frontend, sin Model Manager.
+- [ ] **S5.20** Persistir selección reproducible para creación de job.
+
+S5.18–S5.20 consultan y seleccionan opciones conocidas; descargas, reparación,
+checksums exhaustivos y administración avanzada permanecen en Sección 8.
 
 **Criterio de salida:** el flujo básico de upload, progreso, reproducción y
 edición es usable con una grabación larga.

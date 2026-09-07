@@ -23,7 +23,7 @@ from voz.application.ports.transcription import (
     TranscriptionError,
     TranscriptionFailureCode,
 )
-from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 
 _MANIFEST_NAME = ".voz-model.json"
 
@@ -163,6 +163,65 @@ class FileSystemModelStore:
     def is_installed(self, descriptor: ModelDescriptor) -> bool:
         """Return whether the exact pinned model has a valid local manifest."""
         return self._matches_manifest(self._directory_for(descriptor), descriptor)
+
+    def registered_descriptors(self) -> tuple[ModelDescriptor, ...]:
+        """Read only VOZ manifests, not remote catalogs or external caches.
+
+        Registration verifies identity/location/timestamp, not model integrity.
+        Capabilities and profiles must come from the trusted catalog, not disk.
+        """
+        descriptors: list[ModelDescriptor] = []
+        if self._models_root.is_symlink():
+            raise OSError("Model registration directory is unavailable.")
+        if not self._models_root.exists():
+            return ()
+        for provider in sorted(self._models_root.iterdir()):
+            if provider.is_symlink() or not provider.is_dir():
+                continue
+            for directory in sorted(provider.iterdir()):
+                manifest = directory / _MANIFEST_NAME
+                if (
+                    directory.is_symlink()
+                    or not directory.is_dir()
+                    or manifest.is_symlink()
+                    or not manifest.is_file()
+                ):
+                    continue
+                try:
+                    if manifest.stat().st_size > 65_536:
+                        continue
+                    payload: object = json.loads(manifest.read_text(encoding="utf-8"))
+                    if not isinstance(payload, dict):
+                        continue
+                    fields = cast(dict[str, object], payload)
+                    values = [
+                        fields.get(key)
+                        for key in (
+                            "provider_id",
+                            "model_id",
+                            "display_name",
+                            "source",
+                            "revision",
+                        )
+                    ]
+                    if not all(isinstance(value, str) for value in values):
+                        continue
+                    strings = cast(list[str], values)
+                    descriptor = ModelDescriptor(
+                        provider_id=strings[0],
+                        model_id=strings[1],
+                        display_name=strings[2],
+                        source=strings[3],
+                        revision=strings[4],
+                        capabilities=frozenset({ModelCapability.TRANSCRIPTION}),
+                    )
+                    if directory == self._directory_for(
+                        descriptor
+                    ) and self.is_installed(descriptor):
+                        descriptors.append(descriptor)
+                except (FileNotFoundError, ValueError, UnicodeError):
+                    continue
+        return tuple(descriptors)
 
     def resolve_path(self, descriptor: ModelDescriptor) -> Path:
         """Resolve a local path for infrastructure use without network access."""

@@ -99,6 +99,16 @@ selección de hardware y recuperación ASR están en
 
 ## Desarrollo local
 
+La consulta `GET /api/transcription-options` expone opciones conocidas,
+registro local, disponibilidad del runtime, ejecución y bloqueos sin cargar
+modelos. Su [contrato y límites](docs/api/transcription-options.md) distinguen
+registro de integridad y recomendación de benchmark. El selector frontend y la
+creación HTTP de jobs todavía no están implementados.
+
+Para retomar el desarrollo en otra sesión, lee `AGENTS.md`, el apartado
+“Retomar en una sesión nueva” de [ROADMAP.md](ROADMAP.md) y `.ai/HANDOFF.md`
+cuando exista. El próximo corte pendiente es S5.19, no la Sección 5 completa.
+
 No hay release pública todavía. Para instalar el checkout y ejecutar la Home
 local integrada:
 

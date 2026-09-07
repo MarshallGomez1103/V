@@ -19,14 +19,14 @@ _CAPABILITIES = frozenset(
 )
 
 
-def faster_whisper_fast_descriptor(*, revision: str) -> ModelDescriptor:
+def faster_whisper_fast_descriptor(*, revision: str | None = None) -> ModelDescriptor:
     """Build the initial turbo profile without inventing an upstream revision."""
     return ModelDescriptor(
         provider_id="faster-whisper",
         model_id="turbo",
         display_name="Faster Whisper Turbo (fast)",
         capabilities=_CAPABILITIES,
-        source="mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        source="mobiuslabsgmbh/faster-whisper-large-v3-turbo" if revision else None,
         revision=revision,
         profile=ProcessingProfile(
             name=ProcessingProfileName.FAST,
@@ -40,14 +40,16 @@ def faster_whisper_fast_descriptor(*, revision: str) -> ModelDescriptor:
     )
 
 
-def faster_whisper_quality_descriptor(*, revision: str) -> ModelDescriptor:
+def faster_whisper_quality_descriptor(
+    *, revision: str | None = None
+) -> ModelDescriptor:
     """Build the initial large-v3 quality profile with pinned provenance."""
     return ModelDescriptor(
         provider_id="faster-whisper",
         model_id="large-v3",
         display_name="Faster Whisper Large v3 (quality)",
         capabilities=_CAPABILITIES,
-        source="Systran/faster-whisper-large-v3",
+        source="Systran/faster-whisper-large-v3" if revision else None,
         revision=revision,
         profile=ProcessingProfile(
             name=ProcessingProfileName.QUALITY,

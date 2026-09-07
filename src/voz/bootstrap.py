@@ -18,6 +18,7 @@ from voz.application.asr_device_selection import (
     HardwareCapabilities,
     select_execution,
 )
+from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
@@ -25,6 +26,10 @@ from voz.application.transcription_provider_registry import (
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
 from voz.infrastructure.asr.hardware import CTranslate2HardwareProbe
+from voz.infrastructure.asr.options import (
+    FasterWhisperRuntimeProbe,
+    LocalTranscriptionModelCatalog,
+)
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
@@ -35,6 +40,7 @@ from voz.infrastructure.persistence.transcription_checkpoints import (
     SqliteTranscriptionCheckpointStore,
 )
 from voz.interfaces.api.health import router as health_router
+from voz.interfaces.api.transcription_options import create_transcription_options_router
 
 STATIC_DIRECTORY = Path(__file__).with_name("static")
 
@@ -107,7 +113,9 @@ def create_local_asr_runtime(
     )
 
 
-def create_app() -> FastAPI:
+def create_app(
+    *, transcription_options: GetTranscriptionOptions | None = None
+) -> FastAPI:
     """Build the local VOZ HTTP application."""
     application = FastAPI(
         title="VOZ",
@@ -115,6 +123,17 @@ def create_app() -> FastAPI:
         version=__version__,
     )
     application.include_router(health_router)
+    if transcription_options is None:
+        paths = resolve_voz_paths()
+        transcription_options = GetTranscriptionOptions(
+            LocalTranscriptionModelCatalog(
+                FileSystemModelStore(data_root=paths.data, cache_root=paths.cache)
+            ),
+            FasterWhisperRuntimeProbe(),
+        )
+    application.include_router(
+        create_transcription_options_router(transcription_options)
+    )
     if STATIC_DIRECTORY.is_dir():
         application.mount(
             "/",
