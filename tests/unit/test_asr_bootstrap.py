@@ -53,6 +53,34 @@ def test_local_asr_composition_is_explicit_and_does_not_download(
     assert not paths.cache.exists()
 
 
+def test_local_asr_runtime_shutdown_closes_registered_provider(tmp_path: Path) -> None:
+    descriptor = faster_whisper_fast_descriptor(revision="a" * 40)
+    runtime = create_local_asr_runtime(
+        descriptor,
+        paths=VozPaths(
+            config=tmp_path / "config",
+            data=tmp_path / "data",
+            cache=tmp_path / "cache",
+            state=tmp_path / "state",
+        ),
+        hardware=HardwareCapabilities(
+            cuda_compute_types=frozenset(),
+            cpu_compute_types=frozenset({ComputePrecision.INT8}),
+        ),
+    )
+
+    runtime.close()
+    runtime.close()
+
+    with pytest.raises(TranscriptionError) as raised:
+        runtime.providers.get(descriptor.provider_id).transcribe(
+            audio=BytesIO(), options=TranscriptionOptions(model=descriptor)
+        )
+    assert raised.value.code is TranscriptionFailureCode.PROVIDER_FAILED
+    assert not raised.value.retryable
+    assert not runtime.paths.data.exists()
+
+
 def test_local_asr_composition_wires_recoverable_sqlite_job(tmp_path: Path) -> None:
     paths = VozPaths(
         config=tmp_path / "config",

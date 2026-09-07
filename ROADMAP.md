@@ -90,6 +90,7 @@ alterar los IDs.
 | ASR-RECOVERY-001 | S4.12-S4.14 | `root` | verificado | Checkpoints fijan plan/modelo/source/revisión/idioma; cancelación y reapertura no repiten chunks; rollback atómico probado. |
 | ASR-CONTRACT-002 | S4.15-S4.17 | `root` | verificado | Suite común sobre provider estructural y Faster Whisper: WAV válido, timeline, cancelación y errores; integración física por clips. |
 | ASR-LANGUAGE-001 | S4.18 | `root` | verificado | Idioma solicitado y detectado sobreviven checkpoints SQLite y reanudación; 400 pruebas pasan, 1 smoke real queda opt-in. |
+| ASR-SANITIZE-001 | S4.04, S4.13 | `root` | verificado | Corte A: sustitución sin engines retenidos, cierre explícito y cancelación incluso con iterable vacío; 424 pruebas backend pasan, 1 smoke opt-in omitido, checks estrictos y frontend verde. |
 
 ---
 
@@ -194,6 +195,12 @@ El flujo local, el recorte físico por chunks y la recuperación están verifica
 con el adapter real y un engine determinista. El runtime/modelo Faster Whisper
 real permanece experimental hasta ejecutar el smoke opt-in con un modelo que el
 usuario haya elegido e instalado explícitamente; no se descargan pesos en tests.
+
+Corrección S4.04/S4.13 (Corte A, 2026-09-07): regresiones con weakrefs y events
+verifican liberación antes de cargar otro engine, fallo de carga coherente,
+cierre idempotente/serializado, limpieza de tracebacks SDK y cancelación del
+provider aislado. ADR-0004 documenta el lifecycle y sus límites. No se abren IDs
+nuevos ni se modifica la calificación experimental del runtime/CUDA.
 
 ## Sección 5 — Workspace UI
 

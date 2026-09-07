@@ -60,6 +60,53 @@ El checkpoint conserva por separado la fracción completada de ASR y el progreso
 global monotónico del job. Así, una etapa ASR que comienza con progreso previo
 puede reanudarse sin confundir ambos espacios de progreso.
 
+## Corrección de lifecycle y cancelación — 2026-09-07 (Corte A)
+
+La auditoría S4 → S5 reprodujo dos defectos: la asignación del nuevo engine
+evaluaba su carga mientras todavía retenía el anterior, y un iterable vacío
+podía devolver éxito pese a una cancelación. Esta corrección corresponde a
+S4.04/S4.13; no inicia la Sección 5 ni un Model Manager.
+
+- Una sustitución resuelve primero la instalación y comprueba cancelación.
+  Después vacía la clave y la referencia al engine anterior **antes** de llamar
+  a la nueva factory. Si esa carga falla, la caché queda vacía y se puede
+  reintentar tanto el modelo nuevo como el anterior. Si falla la resolución,
+  la caché anterior permanece válida; no se ha iniciado otra carga.
+- `FasterWhisperProvider.close()` es explícito, idempotente y definitivo.
+  Usa el mismo lock que protege carga e inferencia, incluida la iteración lazy:
+  espera a la llamada activa, vacía la caché y rechaza futuras transcripciones
+  con `PROVIDER_FAILED` no reintentable. Un nuevo ciclo requiere otro adapter.
+- El dueño del runtime debe llamar a `LocalAsrRuntime.close()` en su `finally`
+  de shutdown (también permite `contextlib.closing(runtime)`). Este método
+  delega al adapter concreto. No se añade `close()` a `TranscriptionProvider`:
+  adquirir/liberar el engine pertenece a infraestructura/composition root, no
+  al contrato de transcripción que consume application. La aplicación HTTP
+  actual no crea un runtime ASR; no se añade un lifespan ni un ejecutor ficticio.
+- El adapter comprueba cancelación antes de cargar, tras resolver/cargar, tras
+  `engine.transcribe()`, durante la iteración y antes de devolver éxito. También
+  cubre iterables vacíos y cancelación al agotarlos, sin depender del chequeo
+  adicional de `RecoverableTranscription`. Se conserva el código `CANCELLED`.
+- Los generadores de segmentos se cierran en `finally`; las referencias locales
+  a engine/iterable se limpian para que los tracebacks de cancelación no las
+  retengan. Los fallos del SDK también limpian los locales de frames terminados
+  en sus cadenas cause/context, incluidos engines parcialmente construidos.
+  Se conservan tipo, mensaje y stack, pero no los locales para depuración
+  post-mortem. La propiedad liberada es la del adapter: no se fuerza un GC global,
+  no se manipula el allocator CUDA ni se implementa un framework de recursos.
+
+La cancelación es cooperativa: no interrumpe una llamada nativa bloqueada y el
+cierre espera su retorno. La liberación de referencias está probada con engines
+deterministas y weakrefs, sin `gc.collect()` ni GPU; no acredita liberación de
+VRAM ni transcripción real CUDA. Se mantiene la calificación experimental de S4.
+
+Evidencia de regresión: `test_faster_whisper_lifecycle.py` cubre reemplazo sin
+solapamiento, carga fallida/reintento, cierre antes/después de cargar o fallar,
+cierre concurrente mediante events y un lock observable, cancelación por fase,
+cleanup con excepción retenida (incluidos fallos SDK encadenados y construcción
+parcial) y éxito vacío. La suite existente conserva
+reutilización del engine, serialización y resultados canónicos; el test de
+bootstrap verifica que el cierre del runtime alcanza al provider registrado.
+
 ## Consecuencias positivas
 
 - El modo offline no depende de resolución remota durante la transcripción.

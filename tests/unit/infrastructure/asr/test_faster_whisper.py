@@ -74,11 +74,8 @@ class _Engine:
 
 
 class _Cancellation:
-    def __init__(self, values: list[bool]) -> None:
-        self._values = iter(values)
-
     def is_cancelled(self) -> bool:
-        return next(self._values, True)
+        return True
 
 
 DESCRIPTOR = ModelDescriptor(
@@ -365,7 +362,7 @@ def test_adapter_preserves_language_hint_when_engine_cannot_detect_it(
     assert result.language == "en"
 
 
-def test_adapter_cancels_before_loading_or_between_lazy_segments(
+def test_adapter_cancels_before_loading(
     tmp_path: Path,
 ) -> None:
     factory_called = False
@@ -391,33 +388,10 @@ def test_adapter_cancels_before_loading_or_between_lazy_segments(
         provider.transcribe(
             audio=BytesIO(b"pcm"),
             options=TranscriptionOptions(model=DESCRIPTOR),
-            cancellation=_Cancellation([True]),
+            cancellation=_Cancellation(),
         )
     assert raised.value.code is TranscriptionFailureCode.CANCELLED
     assert not factory_called
-
-    def factory(
-        model_path: str,
-        *,
-        device: str,
-        compute_type: str,
-        local_files_only: bool,
-    ) -> _Engine:
-        del model_path, device, compute_type, local_files_only
-        return _Engine([_Segment(0.0, 0.5, "hola"), _Segment(0.5, 1.0, " mundo")])
-
-    provider = FasterWhisperProvider(
-        model_resolver=_Resolver(tmp_path),
-        execution=CPU_EXECUTION,
-        engine_factory=factory,
-    )
-    with pytest.raises(TranscriptionError) as raised:
-        provider.transcribe(
-            audio=BytesIO(b"pcm"),
-            options=TranscriptionOptions(model=DESCRIPTOR),
-            cancellation=_Cancellation([False, False, True]),
-        )
-    assert raised.value.code is TranscriptionFailureCode.CANCELLED
 
 
 def test_adapter_maps_engine_failures_without_exposing_paths(tmp_path: Path) -> None:

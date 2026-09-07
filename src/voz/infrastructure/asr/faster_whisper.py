@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import importlib
 import math
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from pathlib import Path
 from threading import RLock
+from traceback import clear_frames
 from typing import BinaryIO, Protocol, cast
 
 from voz.application.asr_device_selection import ExecutionDecision
@@ -126,6 +127,22 @@ class FasterWhisperProvider:
         self._engine_key: tuple[str, str, str | None, str | None] | None = None
         self._engine: _Engine | None = None
         self._engine_lock = RLock()
+        self._closed = False
+
+    def close(self) -> None:
+        """Wait for active inference, release the cache, and permanently close.
+
+        The infrastructure owner must call this during shutdown. Repeated calls
+        are safe; closing does not interrupt an in-flight native engine call.
+        """
+        with self._engine_lock:
+            self._closed = True
+            self._release_engine()
+
+    def _release_engine(self) -> None:
+        """Drop owned references under the engine lock, before another load."""
+        self._engine_key = None
+        self._engine = None
 
     def transcribe(
         self,
@@ -150,6 +167,11 @@ class FasterWhisperProvider:
             )
         self._raise_if_cancelled(cancellation)
         with self._engine_lock:
+            if self._closed:
+                raise TranscriptionError(
+                    TranscriptionFailureCode.PROVIDER_FAILED,
+                    "The Faster Whisper provider is closed.",
+                )
             self._raise_if_cancelled(cancellation)
             return self._transcribe_locked(
                 audio=audio,
@@ -164,8 +186,11 @@ class FasterWhisperProvider:
         options: TranscriptionOptions,
         cancellation: TranscriptionCancellationToken | None,
     ) -> TranscriptionResult:
+        engine: _Engine | None = None
+        raw_segments: Iterable[_EngineSegment] | None = None
         try:
-            engine = self._engine_for(options.model)
+            engine = self._engine_for(options.model, cancellation)
+            self._raise_if_cancelled(cancellation)
             raw_segments, info = engine.transcribe(
                 audio,
                 language=options.language,
@@ -179,15 +204,25 @@ class FasterWhisperProvider:
                     ]
                 ),
             )
-            segments: list[TranscriptionSegment] = []
-            for raw_segment in raw_segments:
+            try:
                 self._raise_if_cancelled(cancellation)
-                segments.append(self._canonical_segment(raw_segment))
+                segments: list[TranscriptionSegment] = []
+                for raw_segment in raw_segments:
+                    self._raise_if_cancelled(cancellation)
+                    segments.append(self._canonical_segment(raw_segment))
+            finally:
+                # Faster Whisper yields lazily; a retained cancellation traceback
+                # must not keep its suspended generator and resources alive.
+                if isinstance(raw_segments, Generator):
+                    raw_segments.close()
             language = info.language if info.language is not None else options.language
+            self._raise_if_cancelled(cancellation)
             return TranscriptionResult(segments=tuple(segments), language=language)
-        except TranscriptionError:
+        except TranscriptionError as error:
+            self._clear_failure_frames(error)
             raise
         except Exception as error:
+            self._clear_failure_frames(error)
             if isinstance(error, self._invalid_audio_errors):
                 raise TranscriptionError(
                     TranscriptionFailureCode.INVALID_AUDIO,
@@ -203,8 +238,17 @@ class FasterWhisperProvider:
                 "Faster Whisper failed while processing the audio.",
                 retryable=True,
             ) from error
+        finally:
+            # Exceptions can outlive this call. Do not retain our local engine
+            # or iterable references in their traceback frames.
+            engine = None
+            raw_segments = None
 
-    def _engine_for(self, descriptor: ModelDescriptor) -> _Engine:
+    def _engine_for(
+        self,
+        descriptor: ModelDescriptor,
+        cancellation: TranscriptionCancellationToken | None,
+    ) -> _Engine:
         key = (
             descriptor.provider_id,
             descriptor.model_id,
@@ -214,6 +258,8 @@ class FasterWhisperProvider:
         with self._engine_lock:
             if self._engine is None or self._engine_key != key:
                 model_path = self._model_resolver.resolve_path(descriptor)
+                self._raise_if_cancelled(cancellation)
+                self._release_engine()
                 self._engine = self._engine_factory(
                     str(model_path),
                     device=self._execution.device.value,
@@ -222,6 +268,23 @@ class FasterWhisperProvider:
                 )
                 self._engine_key = key
             return self._engine
+
+    @staticmethod
+    def _clear_failure_frames(error: BaseException) -> None:
+        """Keep diagnostic stacks, not engine references in completed SDK frames."""
+        pending = [error]
+        seen: set[int] = set()
+        while pending:
+            current = pending.pop()
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            clear_frames(current.__traceback__)
+            pending.extend(
+                linked
+                for linked in (current.__cause__, current.__context__)
+                if linked is not None
+            )
 
     @staticmethod
     def _canonical_segment(raw_segment: _EngineSegment) -> TranscriptionSegment:

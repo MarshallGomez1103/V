@@ -4,7 +4,7 @@ Framework and infrastructure wiring belongs here so that the domain remains
 independent of transport concerns.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import UUID
 
@@ -48,6 +48,11 @@ class LocalAsrRuntime:
     model_store: FileSystemModelStore
     execution: ExecutionDecision
     providers: TranscriptionProviderRegistry
+    _provider: FasterWhisperProvider = field(repr=False)
+
+    def close(self) -> None:
+        """Release the concrete ASR adapter when its infrastructure owner exits."""
+        self._provider.close()
 
     def recoverable_transcription(
         self,
@@ -98,6 +103,7 @@ def create_local_asr_runtime(
         model_store=model_store,
         execution=execution,
         providers=TranscriptionProviderRegistry((provider,)),
+        _provider=provider,
     )
 
 
