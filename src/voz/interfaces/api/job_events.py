@@ -9,7 +9,7 @@ once the job reaches a terminal state.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 from uuid import UUID
 
@@ -45,8 +45,13 @@ def create_job_events_router(
     *,
     poll_interval_s: float = 0.5,
     keepalive_s: float = 15.0,
+    view: Callable[[TranscriptionJob], dict[str, object]] = job_view,
 ) -> APIRouter:
-    """Expose ``GET /api/jobs/{job_id}/events`` as a ``text/event-stream``."""
+    """Expose ``GET /api/jobs/{job_id}/events`` as a ``text/event-stream``.
+
+    ``view`` projects a job for the browser; the composition root passes the
+    same projection used by ``GET /api/jobs/{job_id}`` so both agree.
+    """
     if poll_interval_s <= 0 or keepalive_s <= 0:
         raise ValueError("poll_interval_s and keepalive_s must be positive")
     keepalive_polls = max(1, round(keepalive_s / poll_interval_s))
@@ -54,7 +59,7 @@ def create_job_events_router(
 
     async def stream(request: Request, first: TranscriptionJob) -> AsyncIterator[bytes]:
         job = first
-        yield _event("job", job_view(job))
+        yield _event("job", view(job))
         idle_polls = 0
         while not job.state.is_terminal:
             if await request.is_disconnected():
@@ -66,7 +71,7 @@ def create_job_events_router(
             if _fingerprint(current) != _fingerprint(job):
                 job = current
                 idle_polls = 0
-                yield _event("job", job_view(job))
+                yield _event("job", view(job))
                 continue
             idle_polls += 1
             if idle_polls >= keepalive_polls:

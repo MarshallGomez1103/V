@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react'
 
 import { cancelJob, createJob, JobApiError } from './api/jobs'
+import { AudioPlayer } from './components/AudioPlayer'
 import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
 import { SegmentList } from './components/SegmentList'
 import { TranscriptionOptionsSelector } from './components/TranscriptionOptionsSelector'
 import { useJobEvents } from './hooks/useJobEvents'
+import { useSeek } from './hooks/useSeek'
 
 function BrandMark() {
   return (
@@ -52,6 +54,7 @@ export function App() {
   const [creating, setCreating] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
   const events = useJobEvents(jobId)
+  const { seekToMs, seekNonce, seek } = useSeek()
 
   const startJob = useCallback(async () => {
     if (!imported || !optionId) {
@@ -143,6 +146,22 @@ export function App() {
               </article>
             ) : null}
 
+            {imported ? (
+              <article className="import-card audio-card" aria-label="Original">
+                <div className="card-heading">
+                  <div>
+                    <p className="section-kicker">ORIGINAL</p>
+                    <h2>{imported.media.filename}</h2>
+                  </div>
+                </div>
+                <AudioPlayer
+                  mediaAssetId={imported.media.media_asset_id}
+                  seekToMs={seekToMs}
+                  seekNonce={seekNonce}
+                />
+              </article>
+            ) : null}
+
             {jobId ? (
               <>
                 <JobScreen
@@ -153,7 +172,7 @@ export function App() {
                     void cancelJob(jobId).catch(() => undefined)
                   }}
                 />
-                <SegmentList transcriptId={transcriptId} />
+                <SegmentList transcriptId={transcriptId} onSeek={seek} />
               </>
             ) : null}
           </div>

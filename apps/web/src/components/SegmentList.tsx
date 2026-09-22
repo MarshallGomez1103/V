@@ -4,6 +4,9 @@ import { getSegments, type TranscriptSegment } from '../api/jobs'
 
 interface SegmentListProps {
   transcriptId: string | null
+  // S5.10: si existe, cada marca de tiempo se vuelve un botón que busca el
+  // instante en el reproductor del original.
+  onSeek?: (startMs: number) => void
 }
 
 type Outcome =
@@ -33,7 +36,7 @@ function durationAttribute(ms: number): string {
   return 'PT' + (Math.max(0, ms) / 1000).toFixed(1) + 'S'
 }
 
-export function SegmentList({ transcriptId }: SegmentListProps) {
+export function SegmentList({ transcriptId, onSeek }: SegmentListProps) {
   // El estado se asocia al id cargado; si no coincide con la prop, seguimos
   // cargando. Así el efecto nunca llama a setState de forma sincrónica.
   const [loaded, setLoaded] = useState<Loaded | null>(null)
@@ -101,16 +104,36 @@ export function SegmentList({ transcriptId }: SegmentListProps) {
       ) : (
         // ponytail: sin virtualizar, S5.15
         <ol className="segments">
-          {state.segments.map((segment) => (
-            <li key={segment.id}>
+          {state.segments.map((segment) => {
+            const timestamp = (
               <time dateTime={durationAttribute(segment.start_ms)}>
                 {formatTimestamp(segment.start_ms) +
                   ' → ' +
                   formatTimestamp(segment.end_ms)}
               </time>
-              <p className="segment-text">{segment.text}</p>
-            </li>
-          ))}
+            )
+            return (
+              <li key={segment.id}>
+                {onSeek ? (
+                  <button
+                    type="button"
+                    className="segment-seek"
+                    onClick={() => {
+                      onSeek(segment.start_ms)
+                    }}
+                    aria-label={
+                      'Reproducir desde ' + formatTimestamp(segment.start_ms)
+                    }
+                  >
+                    {timestamp}
+                  </button>
+                ) : (
+                  timestamp
+                )}
+                <p className="segment-text">{segment.text}</p>
+              </li>
+            )
+          })}
         </ol>
       )}
     </section>

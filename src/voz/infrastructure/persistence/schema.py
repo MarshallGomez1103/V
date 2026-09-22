@@ -229,6 +229,26 @@ transcription_checkpoints = Table(
     UniqueConstraint("job_id", "chunk_index", name="uq_checkpoint_job_chunk"),
 )
 
+transcription_job_selections = Table(
+    "transcription_job_selections",
+    metadata,
+    Column(
+        "job_id",
+        String(36),
+        ForeignKey("transcription_jobs.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("option_id", Text, nullable=False),
+    Column("provider_id", Text, nullable=False),
+    Column("model_id", Text, nullable=False),
+    Column("source", Text, nullable=True),
+    Column("revision", Text, nullable=True),
+    Column("language", Text, nullable=True),
+    Column("model_json", Text, nullable=False),
+    Column("execution_json", Text, nullable=True),
+    Column("created_at", String(40), nullable=False),
+)
+
 __all__ = [
     "media_assets",
     "metadata",
@@ -237,6 +257,7 @@ __all__ = [
     "speaker_turns",
     "speakers",
     "transcription_checkpoints",
+    "transcription_job_selections",
     "transcription_jobs",
     "transcripts",
     "words",

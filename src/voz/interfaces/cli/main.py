@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
@@ -15,6 +16,7 @@ import typer
 import uvicorn
 
 from voz.bootstrap import create_app
+from voz.interfaces.cli.doctor import exit_code, render, run_doctor
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -131,30 +133,67 @@ def run_server(*, host: str, port: int, open_browser: bool) -> None:
     uvicorn.Server(config).run()
 
 
+HOST_OPTION = typer.Option(
+    DEFAULT_HOST,
+    "--host",
+    help="Bind address. Use a LAN address only when exposure is intentional.",
+    show_default=True,
+)
+PORT_OPTION = typer.Option(
+    DEFAULT_PORT,
+    "--port",
+    min=1,
+    max=65535,
+    help="TCP port for the local server.",
+    show_default=True,
+)
+NO_BROWSER_OPTION = typer.Option(
+    False,
+    "--no-browser",
+    help="Do not open the web interface automatically.",
+)
+
+
+@app.callback(invoke_without_command=True)
+def root(
+    ctx: typer.Context,
+    host: str = HOST_OPTION,
+    port: int = PORT_OPTION,
+    no_browser: bool = NO_BROWSER_OPTION,
+) -> None:
+    """Start VOZ locally; ``voz`` without a subcommand behaves like ``voz serve``."""
+    if ctx.invoked_subcommand is None:
+        run_server(host=host, port=port, open_browser=not no_browser)
+
+
 @app.command()
 def serve(
-    host: str = typer.Option(
-        DEFAULT_HOST,
-        "--host",
-        help="Bind address. Use a LAN address only when exposure is intentional.",
-        show_default=True,
-    ),
-    port: int = typer.Option(
-        DEFAULT_PORT,
-        "--port",
-        min=1,
-        max=65535,
-        help="TCP port for the local server.",
-        show_default=True,
-    ),
-    no_browser: bool = typer.Option(
-        False,
-        "--no-browser",
-        help="Do not open the web interface automatically.",
-    ),
+    host: str = HOST_OPTION,
+    port: int = PORT_OPTION,
+    no_browser: bool = NO_BROWSER_OPTION,
 ) -> None:
     """Start VOZ locally."""
     run_server(host=host, port=port, open_browser=not no_browser)
+
+
+@app.command()
+def doctor(
+    host: str = HOST_OPTION,
+    port: int = PORT_OPTION,
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the report as JSON instead of a table."
+    ),
+    redact: bool = typer.Option(
+        False, "--redact", help="Hide absolute local paths from the report."
+    ),
+) -> None:
+    """Check FFmpeg, port, XDG paths, disk, ASR runtime and GPU; no model loads."""
+    report = run_doctor(host=host, port=port, redact=redact)
+    if json_output:
+        typer.echo(json.dumps(dataclasses.asdict(report), ensure_ascii=False, indent=2))
+    else:
+        typer.echo(render(report))
+    raise typer.Exit(code=exit_code(report))
 
 
 def main() -> None:

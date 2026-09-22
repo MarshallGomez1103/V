@@ -78,9 +78,11 @@ class FakeJobs:
         return ()
 
 
-def build_app(jobs: FakeJobs, **options: float) -> FastAPI:
+def build_app(jobs: FakeJobs, *, keepalive_s: float = 15.0) -> FastAPI:
     app = FastAPI()
-    app.include_router(create_job_events_router(jobs, poll_interval_s=0.01, **options))
+    app.include_router(
+        create_job_events_router(jobs, poll_interval_s=0.01, keepalive_s=keepalive_s)
+    )
     return app
 
 

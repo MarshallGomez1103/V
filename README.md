@@ -9,10 +9,14 @@ proveedor cloud en requisito.
 > API y la Home local funcionan como una sola aplicación instalable. Desde el
 > navegador ya se crea un proyecto, se sube un archivo (copia inmutable con
 > SHA-256 y ffprobe) y se elige el motor entre las opciones que expone el
-> backend. El backend puede normalizar medios, componer Faster Whisper, procesar
-> clips con offsets globales, reanudar desde checkpoints SQLite y exportar TXT,
-> Markdown, SRT, VTT y JSON canónico (sin endpoint HTTP todavía). La creación y
-> ejecución de jobs desde la UI está en curso. No se incluye ni descarga ningún
+> backend, y se crea un job que un ejecutor en segundo plano normaliza,
+> transcribe por chunks con checkpoints SQLite y publica por SSE hasta la lista
+> de segmentos. Los jobs interrumpidos se reanudan al arrancar. Existen
+> exportadores TXT, Markdown, SRT, VTT y JSON canónico (sin endpoint HTTP
+> todavía) y `voz doctor` diagnostica FFmpeg, puerto, rutas, runtime y GPU.
+> El flujo completo solo se ha ejercitado con un motor determinista de
+> pruebas: con Faster Whisper real sigue siendo experimental. No se incluye
+> ni descarga ningún
 > modelo: el runtime real permanece experimental hasta instalar un modelo
 > elegido explícitamente y ejecutar el smoke opt-in. Consulta el
 > [roadmap](ROADMAP.md) para ver qué fue verificado.
@@ -113,8 +117,8 @@ esquema se migra automáticamente al arrancar.
 
 Para retomar el desarrollo en otra sesión, lee `AGENTS.md`, el apartado
 “Retomar en una sesión nueva” de [ROADMAP.md](ROADMAP.md) y `.ai/HANDOFF.md`
-cuando exista. El próximo corte pendiente es JOBS-CORE-001 (S5.20, S14.01,
-S14.08): crear y ejecutar jobs desde la UI.
+cuando exista. Los próximos cortes propuestos están al final del tablero de
+Sección 5 en el roadmap.
 
 No hay release pública todavía. Para instalar el checkout y ejecutar la Home
 local integrada:
@@ -145,7 +149,11 @@ VOZ_FASTER_WHISPER_MODEL_REVISION=sha_git_de_40_caracteres \
 CUDA continúa rotulado como experimental hasta ejercitarlo en hardware real.
 
 La aplicación queda disponible en `http://127.0.0.1:8765` y expone
-`GET /api/health`. Para modificar y reconstruir el frontend:
+`GET /api/health`. Para revisar prerrequisitos sin arrancar el servidor:
+
+```bash
+uv run voz doctor          # añade --json o --redact si lo necesitas
+``` Para modificar y reconstruir el frontend:
 
 ```bash
 cd apps/web

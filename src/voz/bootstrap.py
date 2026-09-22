@@ -20,20 +20,28 @@ from voz.application.asr_device_selection import (
     HardwareCapabilities,
     select_execution,
 )
+from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.import_media import ImportMedia
+from voz.application.job_runner import JobRunner
+from voz.application.normalize_media import NormalizeImportedMedia
+from voz.application.ports.transcription import TranscriptionProvider
+from voz.application.ports.transcription_job_selection import JobSelection
+from voz.application.prepare_inference_audio import PrepareInferenceAudio
 from voz.application.projects import CreateProject, ListProjects
 from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
 )
 from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.transcription_job import TranscriptionJob
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
 from voz.infrastructure.asr.hardware import CTranslate2HardwareProbe
 from voz.infrastructure.asr.options import (
     FasterWhisperRuntimeProbe,
     LocalTranscriptionModelCatalog,
 )
+from voz.infrastructure.audio.ffmpeg import FfmpegMediaNormalizer
 from voz.infrastructure.audio.ffprobe import FfprobeMediaProbe
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
@@ -44,14 +52,22 @@ from voz.infrastructure.persistence.migrate import upgrade_to_head
 from voz.infrastructure.persistence.repositories import (
     SqliteMediaAssetRepository,
     SqliteProjectRepository,
+    SqliteSegmentRepository,
     SqliteTranscriptionJobRepository,
+    SqliteTranscriptRepository,
 )
 from voz.infrastructure.persistence.transcription_checkpoints import (
     SqliteTranscriptionCheckpointStore,
 )
+from voz.infrastructure.persistence.transcription_job_selections import (
+    SqliteTranscriptionJobSelectionRepository,
+)
 from voz.interfaces.api.health import router as health_router
 from voz.interfaces.api.job_events import create_job_events_router
+from voz.interfaces.api.job_views import job_view as job_view_without_selection
+from voz.interfaces.api.jobs import create_jobs_router, job_view
 from voz.interfaces.api.media import create_media_router
+from voz.interfaces.api.media_stream import create_media_stream_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
 
@@ -147,6 +163,68 @@ def create_app(
         else engine
     )
 
+    projects = SqliteProjectRepository(resolved_engine)
+    media_assets = SqliteMediaAssetRepository(resolved_engine)
+    jobs = SqliteTranscriptionJobRepository(resolved_engine)
+    selections = SqliteTranscriptionJobSelectionRepository(resolved_engine)
+    transcripts = SqliteTranscriptRepository(resolved_engine)
+    segments = SqliteSegmentRepository(resolved_engine)
+    media_storage = FileSystemMediaStorage(resolved_paths.data)
+    media_probe = FfprobeMediaProbe()
+    if transcription_options is None:
+        transcription_options = GetTranscriptionOptions(
+            LocalTranscriptionModelCatalog(
+                FileSystemModelStore(
+                    data_root=resolved_paths.data, cache_root=resolved_paths.cache
+                )
+            ),
+            FasterWhisperRuntimeProbe(),
+        )
+
+    # ponytail: one runtime per descriptor, closed on shutdown; the snapshot's
+    # execution decision is informative, hardware is re-probed at load time.
+    runtimes: dict[ModelDescriptor, LocalAsrRuntime] = {}
+
+    def provider_for(selection: JobSelection) -> TranscriptionProvider:
+        runtime = runtimes.get(selection.model)
+        if runtime is None:
+            runtime = create_local_asr_runtime(selection.model, paths=resolved_paths)
+            runtimes[selection.model] = runtime
+        return runtime.providers.get(selection.model.provider_id)
+
+    def audio_source_for(
+        project_id: UUID, media_asset_id: UUID
+    ) -> FileSystemInferenceAudioSource:
+        return FileSystemInferenceAudioSource(
+            resolved_paths.data, project_id, media_asset_id
+        )
+
+    runner = JobRunner(
+        jobs=jobs,
+        selections=selections,
+        media_assets=media_assets,
+        transcripts=transcripts,
+        segments=segments,
+        checkpoints=SqliteTranscriptionCheckpointStore(resolved_engine),
+        provider_for=provider_for,
+        audio_source_for=audio_source_for,
+        audio_preparer=PrepareInferenceAudio(
+            media_storage=media_storage,
+            media_probe=media_probe,
+            media_assets=media_assets,
+            normalize=NormalizeImportedMedia(
+                media_storage=media_storage,
+                media_normalization=FfmpegMediaNormalizer(resolved_paths.data),
+            ),
+        ),
+    )
+
+    def view(job: TranscriptionJob) -> dict[str, object]:
+        selection = selections.get(job.id)
+        if selection is None:
+            return job_view_without_selection(job)
+        return job_view(job, selection)
+
     class Lifespan:
         """Migrate on startup and dispose an owned engine on shutdown."""
 
@@ -155,6 +233,8 @@ def create_app(
 
         async def __aenter__(self) -> None:
             upgrade_to_head(resolved_engine)
+            runner.recover()
+            runner.start()
 
         async def __aexit__(
             self,
@@ -162,6 +242,10 @@ def create_app(
             exc: BaseException | None,
             tb: TracebackType | None,
         ) -> None:
+            runner.stop()
+            for runtime in runtimes.values():
+                runtime.close()
+            runtimes.clear()
             if owns_engine:
                 resolved_engine.dispose()
 
@@ -174,37 +258,37 @@ def create_app(
         lifespan=lifespan,
     )
     application.include_router(health_router)
-    if transcription_options is None:
-        transcription_options = GetTranscriptionOptions(
-            LocalTranscriptionModelCatalog(
-                FileSystemModelStore(
-                    data_root=resolved_paths.data, cache_root=resolved_paths.cache
-                )
-            ),
-            FasterWhisperRuntimeProbe(),
-        )
     application.include_router(
         create_transcription_options_router(transcription_options)
     )
-
-    projects = SqliteProjectRepository(resolved_engine)
     application.include_router(
         create_projects_router(CreateProject(projects), ListProjects(projects))
     )
     application.include_router(
         create_media_router(
             ImportMedia(
-                media_probe=FfprobeMediaProbe(),
-                media_storage=FileSystemMediaStorage(resolved_paths.data),
-                media_assets=SqliteMediaAssetRepository(resolved_engine),
+                media_probe=media_probe,
+                media_storage=media_storage,
+                media_assets=media_assets,
             ),
             projects,
             resolved_paths.cache / "uploads",
         )
     )
     application.include_router(
-        create_job_events_router(SqliteTranscriptionJobRepository(resolved_engine))
+        create_jobs_router(
+            CreateTranscriptionJob(
+                transcription_options, projects, media_assets, jobs, selections
+            ),
+            jobs,
+            selections,
+            transcripts,
+            segments,
+            runner,
+        )
     )
+    application.include_router(create_job_events_router(jobs, view=view))
+    application.include_router(create_media_stream_router(media_assets, media_storage))
     if STATIC_DIRECTORY.is_dir():
         application.mount(
             "/",

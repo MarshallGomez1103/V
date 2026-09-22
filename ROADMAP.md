@@ -102,13 +102,15 @@ alterar los IDs.
 | OPTIONS-UI-001 | S5.19 | `frontend_selector` | verificado | Selector radio accesible sobre B1 con razones de bloqueo traducidas y recomendación; 7 tests Vitest, montado en App; lint/typecheck/build verdes. |
 | PROJECTS-API-001 | S5.01 (backend) | `projects_api` | verificado | CreateProject/ListProjects y POST/GET /api/projects cableados en create_app con migración Alembic al arrancar; 24 tests + smoke HTTP real. |
 | MEDIA-UPLOAD-001 | S5.02, S5.03 (backend) | `media_upload_api` | verificado | POST /api/projects/{id}/media por body crudo → ImportMedia real (SHA-256, ffprobe), 400/404/413/415/422/503 tipados, temporal limpiado; 18 tests + smoke HTTP con fixture WAV. |
-| JOBS-CORE-001 | S5.20, S14.01, S14.08 | `jobs` | en curso | Paso 1 en marcha: migración 0003_job_selections, port/adapter de selección y CreateTranscriptionJob; falta JobRunner, recuperación, cancelación y router. |
+| JOBS-CORE-001 | S5.20, S14.01, S14.08 | `jobs` | verificado | CreateTranscriptionJob revalida option_id y guarda snapshot (migración 0003); JobRunner en hilo con recover() al arrancar, cancel entre chunks y PERSISTING idempotente; POST/GET/cancel jobs y GET segmentos cableados; 18 tests + smoke HTTP (409 option_not_startable sin modelo). Flujo con modelo real sigue experimental. |
 | JOBS-SSE-001 | S5.06 | `sse_events` | verificado | GET /api/jobs/{id}/events por StreamingResponse con sondeo en thread, keep-alive y `end` terminal; hook useJobEvents; 6+6 tests, montado en create_app y App. |
 | UI-IMPORT-001 | S5.01, S5.02, S5.03 (UI) | `frontend_import` | verificado | NewProjectCard: nombre, drop nativo, XHR con progreso y errores por código; 6 tests; montada en App y verificada contra backend real por smoke. |
-| UI-JOB-001 | S5.04, S5.05, S5.07 | `frontend_job` | en curso | UI lista y montada (JobScreen por etapa, cancelar, SegmentList; 18 tests, lint/typecheck verdes); pendiente E2E contra POST /api/jobs de JOBS-CORE-001. |
+| UI-JOB-001 | S5.04, S5.05, S5.07 | `frontend_job` | verificado | JobScreen por etapa, cancelar y SegmentList montados en App sobre POST /api/jobs + SSE; 18 tests Vitest; camino 409 verificado en vivo; ejecución con modelo real pendiente del smoke opt-in. |
 | EXPORT-TEXT-001 | S10.01, S10.02, S10.03, S10.09, S10.10 | `export_text` | verificado | Protocol TranscriptExporter estructural, TXT literal, Markdown y safe_export_filename anti-traversal; 51 golden tests inline. |
 | EXPORT-SUBS-001 | S10.04, S10.05, S10.06, S10.11, S10.12, S10.13 | `export_subs_json` | verificado | SRT, VTT, timestamps con límites, JSON canónico voz.transcript v1 y round-trip parse(render(x)); 34 tests. |
 | OSS-DOCS-001 | S16.03-S16.08, S16.17, S16.18 | `docs_oss` | verificado | CONTRIBUTING, CODE_OF_CONDUCT (Covenant 2.1), SECURITY, plantillas issue/PR, licencias de fixtures y NOTICE con licencias verificadas; enlaces comprobados. |
+| DOCTOR-CLI-001 | S8.12, S8.13 | `doctor_cli` | verificado | `voz doctor` (texto/--json/--redact): ffmpeg/ffprobe, puerto, rutas XDG, disco, runtime ASR y GPU sin cargar modelos; 12 tests + ejecución real; `voz` sin subcomando sigue sirviendo. |
+| UI-PLAYER-001 | S5.08, S5.10 | `media_player` | verificado | GET /api/media/{id}/original con FileResponse (Range 206/416, sin paths) y AudioPlayer nativo con seek desde SegmentList; 5 tests backend + 8 frontend; smoke HTTP 200/206 en vivo. |
 
 ### Retomar en una sesión nueva
 
@@ -119,9 +121,11 @@ sujeto a la instrucción del usuario de continuar ese corte. No interpretar un
 cold start como autorización para completar toda S5, S5.20, jobs HTTP o S6.
 El handoff es local/ignorado; este tablero y los contratos API
 (`docs/api/transcription-options.md`, `docs/api/jobs.md`) conservan el contexto
-durable también en otro checkout. Oleada 2026-09-21: proyectos, subida, SSE,
-selector y exportación verificados; JOBS-CORE-001 (S5.20, S14.01, S14.08) y
-UI-JOB-001 quedan en curso hasta integrar POST /api/jobs.
+durable también en otro checkout. Oleada 2026-09-21: proyectos, subida, jobs
+con runner recuperable, SSE, selector, pantalla de job, exportación pura,
+`voz doctor` y docs OSS verificados. Próximos cortes propuestos: S5.12 edición
+de segmentos, endpoint HTTP de exportación (S10 no tiene ID propio; proponer
+S10.14) y S5.09 waveform.
 
 ## Sección 1 — Bootstrap del repositorio
 
@@ -236,13 +240,13 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [x] **S5.01** Crear Home con acción “Nuevo proyecto”.
 - [x] **S5.02** Implementar selección y drag-and-drop de archivo.
 - [x] **S5.03** Mostrar validación de upload y errores seguros.
-- [ ] **S5.04** Crear pantalla de job.
-- [ ] **S5.05** Mostrar estado explícito por etapa.
+- [x] **S5.04** Crear pantalla de job.
+- [x] **S5.05** Mostrar estado explícito por etapa.
 - [x] **S5.06** Consumir progreso mediante SSE.
-- [ ] **S5.07** Renderizar lista de segmentos.
-- [ ] **S5.08** Añadir reproductor del original.
+- [x] **S5.07** Renderizar lista de segmentos.
+- [x] **S5.08** Añadir reproductor del original.
 - [ ] **S5.09** Renderizar waveform.
-- [ ] **S5.10** Hacer seek al seleccionar un timestamp.
+- [x] **S5.10** Hacer seek al seleccionar un timestamp.
 - [ ] **S5.11** Sincronizar selección/autoscroll con playback.
 - [ ] **S5.12** Editar y guardar texto de un segmento.
 - [ ] **S5.13** Buscar texto en el transcript.
@@ -252,7 +256,7 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [ ] **S5.17** Probar importación, reproducción y edición E2E.
 - [x] **S5.18** Exponer opciones canónicas de transcripción mediante consulta backend.
 - [x] **S5.19** Implementar selector básico frontend, sin Model Manager.
-- [ ] **S5.20** Persistir selección reproducible para creación de job.
+- [x] **S5.20** Persistir selección reproducible para creación de job.
 
 S5.18–S5.20 consultan y seleccionan opciones conocidas; descargas, reparación,
 checksums exhaustivos y administración avanzada permanecen en Sección 8.
@@ -309,8 +313,8 @@ soporte, con degradación explícita donde no lo haya.
 - [ ] **S8.09** Detectar cache de Buzz sin modificarlo.
 - [ ] **S8.10** Reutilizar/importar un modelo compatible sin mover el original.
 - [ ] **S8.11** Recomendar perfiles según hardware detectado.
-- [ ] **S8.12** Implementar `voz doctor` para FFmpeg y puertos.
-- [ ] **S8.13** Extender `voz doctor` para GPU/CUDA y runtime ASR.
+- [x] **S8.12** Implementar `voz doctor` para FFmpeg y puertos.
+- [x] **S8.13** Extender `voz doctor` para GPU/CUDA y runtime ASR.
 - [ ] **S8.14** Extender `voz doctor` para disco, modelos y API keys opcionales.
 - [ ] **S8.15** Probar descarga incompleta y recuperación.
 
@@ -408,14 +412,14 @@ con sus grabaciones sin presentar intuiciones como resultados.
 
 ## Sección 14 — Robustez
 
-- [ ] **S14.01** Recuperar jobs interrumpidos al iniciar.
+- [x] **S14.01** Recuperar jobs interrumpidos al iniciar.
 - [ ] **S14.02** Escribir checkpoints y metadatos críticos atómicamente.
 - [ ] **S14.03** Comprobar espacio antes de import/normalización.
 - [ ] **S14.04** Comprobar espacio antes de descargar modelos.
 - [ ] **S14.05** Añadir guard de RAM.
 - [ ] **S14.06** Añadir guard de VRAM.
 - [ ] **S14.07** Liberar modelos entre ASR y diarización por defecto.
-- [ ] **S14.08** Implementar cancelación real por cada etapa procesable.
+- [x] **S14.08** Implementar cancelación real por cada etapa procesable.
 - [ ] **S14.09** Recuperar descargas corruptas/incompletas.
 - [ ] **S14.10** Crear backup antes de una migración destructiva.
 - [ ] **S14.11** Generar bundle diagnóstico redactado.

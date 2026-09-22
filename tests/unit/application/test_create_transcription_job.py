@@ -1,0 +1,277 @@
+"""CreateTranscriptionJob revalidates the option and snapshots the selection."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+import pytest
+
+from voz.application.asr_device_selection import (
+    ComputeDevice,
+    HardwareCapabilities,
+)
+from voz.application.create_transcription_job import (
+    CreateJobError,
+    CreateJobFailureCode,
+    CreateTranscriptionJob,
+)
+from voz.application.get_transcription_options import (
+    BlockingReason,
+    GetTranscriptionOptions,
+    option_identity,
+)
+from voz.application.ports.transcription_job_selection import JobSelection
+from voz.application.ports.transcription_options import (
+    InstallationStatus,
+    ModelRegistration,
+    RuntimeAvailability,
+)
+from voz.domain.entities.media_asset import MediaAsset
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+from voz.domain.entities.processing_profile import (
+    ComputePrecision,
+    DevicePreference,
+    ProcessingProfile,
+    ProcessingProfileName,
+)
+from voz.domain.entities.project import Project
+from voz.domain.entities.transcription_job import (
+    TranscriptionJob,
+    TranscriptionJobState,
+)
+
+NOW = datetime(2026, 9, 21, 10, tzinfo=UTC)
+MODEL = ModelDescriptor(
+    provider_id="local-asr",
+    model_id="model",
+    display_name="Known model",
+    source="publisher/model",
+    revision="a" * 40,
+    profile=ProcessingProfile(
+        ProcessingProfileName.FAST,
+        DevicePreference.GPU_PREFERRED,
+        (ComputePrecision.FLOAT16,),
+        ComputePrecision.INT8,
+    ),
+    capabilities=frozenset(
+        {ModelCapability.TRANSCRIPTION, ModelCapability.TRANSLATION}
+    ),
+)
+
+
+class Catalog:
+    def __init__(self, registered: bool = True) -> None:
+        self.registered = registered
+
+    def list_models(self) -> tuple[ModelRegistration, ...]:
+        status = (
+            InstallationStatus.REGISTERED
+            if self.registered
+            else InstallationStatus.NOT_REGISTERED
+        )
+        return (ModelRegistration(MODEL, status, self.registered),)
+
+
+class Runtime:
+    def probe(self, provider_id: str) -> RuntimeAvailability:
+        return RuntimeAvailability(
+            True,
+            HardwareCapabilities(frozenset(), frozenset({ComputePrecision.INT8})),
+            frozenset({ModelCapability.TRANSCRIPTION}),
+        )
+
+
+class Projects:
+    def __init__(self, *items: Project) -> None:
+        self.items = {item.id: item for item in items}
+
+    def add(self, project: Project) -> None:
+        self.items[project.id] = project
+
+    def save(self, project: Project) -> None:
+        self.items[project.id] = project
+
+    def get(self, project_id: UUID) -> Project | None:
+        return self.items.get(project_id)
+
+    def list_all(self) -> Sequence[Project]:
+        return tuple(self.items.values())
+
+
+class MediaAssets:
+    def __init__(self, *items: MediaAsset) -> None:
+        self.items = {item.id: item for item in items}
+
+    def add(self, media_asset: MediaAsset) -> None:
+        self.items[media_asset.id] = media_asset
+
+    def save(self, media_asset: MediaAsset) -> None:
+        self.items[media_asset.id] = media_asset
+
+    def get(self, media_asset_id: UUID) -> MediaAsset | None:
+        return self.items.get(media_asset_id)
+
+    def list_by_project(self, project_id: UUID) -> Sequence[MediaAsset]:
+        return tuple(i for i in self.items.values() if i.project_id == project_id)
+
+
+class Jobs:
+    def __init__(self) -> None:
+        self.items: dict[UUID, TranscriptionJob] = {}
+
+    def add(self, job: TranscriptionJob) -> None:
+        self.items[job.id] = job
+
+    def save(self, job: TranscriptionJob) -> None:
+        self.items[job.id] = job
+
+    def get(self, job_id: UUID) -> TranscriptionJob | None:
+        return self.items.get(job_id)
+
+    def list_by_project(self, project_id: UUID) -> Sequence[TranscriptionJob]:
+        return tuple(i for i in self.items.values() if i.project_id == project_id)
+
+    def list_by_media_asset(self, media_asset_id: UUID) -> Sequence[TranscriptionJob]:
+        return tuple(
+            i for i in self.items.values() if i.media_asset_id == media_asset_id
+        )
+
+    def list_recoverable(self) -> Sequence[TranscriptionJob]:
+        return tuple(i for i in self.items.values() if not i.state.is_terminal)
+
+
+class Selections:
+    def __init__(self) -> None:
+        self.items: dict[UUID, JobSelection] = {}
+
+    def add(self, selection: JobSelection) -> None:
+        self.items[selection.job_id] = selection
+
+    def get(self, job_id: UUID) -> JobSelection | None:
+        return self.items.get(job_id)
+
+
+PROJECT = Project("Demo", id=uuid4(), created_at=NOW)
+ASSET = MediaAsset(PROJECT.id, "b" * 64, "tone.wav", 8_044, duration_ms=250)
+
+
+def use_case(
+    *,
+    registered: bool = True,
+    jobs: Jobs | None = None,
+) -> tuple[CreateTranscriptionJob, Jobs, Selections]:
+    jobs = jobs or Jobs()
+    selections = Selections()
+    create = CreateTranscriptionJob(
+        GetTranscriptionOptions(Catalog(registered), Runtime()),
+        Projects(PROJECT),
+        MediaAssets(ASSET),
+        jobs,
+        selections,
+        clock=lambda: NOW,
+    )
+    return create, jobs, selections
+
+
+def test_creates_queued_job_with_full_reproducible_snapshot() -> None:
+    create, jobs, selections = use_case()
+
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+        language="es",
+    )
+
+    assert created.job.state is TranscriptionJobState.QUEUED
+    assert created.job.progress == 0.0
+    assert jobs.get(created.job.id) == created.job
+    snapshot = selections.get(created.job.id)
+    assert snapshot == created.selection
+    assert snapshot is not None
+    assert snapshot.model == MODEL
+    assert snapshot.option_id == option_identity(MODEL)
+    assert snapshot.language == "es"
+    assert snapshot.execution is not None
+    assert snapshot.execution.device is ComputeDevice.CPU
+    assert snapshot.created_at == NOW
+
+
+def test_unknown_option_is_rejected_before_persisting() -> None:
+    create, jobs, selections = use_case()
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id="option-v1-missing",
+        )
+
+    assert error.value.code is CreateJobFailureCode.OPTION_UNKNOWN
+    assert not jobs.items
+    assert not selections.items
+
+
+def test_non_startable_option_reports_current_blocking_reasons() -> None:
+    create, jobs, _ = use_case(registered=False)
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+        )
+
+    assert error.value.code is CreateJobFailureCode.OPTION_NOT_STARTABLE
+    assert BlockingReason.MODEL_NOT_REGISTERED in error.value.blocking_reasons
+    assert not jobs.items
+
+
+def test_missing_project_and_foreign_media_asset_are_typed() -> None:
+    create, _, _ = use_case()
+
+    with pytest.raises(CreateJobError) as missing_project:
+        create.execute(
+            project_id=uuid4(),
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+        )
+    assert missing_project.value.code is CreateJobFailureCode.PROJECT_NOT_FOUND
+
+    other = Project("Other", id=uuid4(), created_at=NOW)
+    create.projects.add(other)
+    with pytest.raises(CreateJobError) as foreign_asset:
+        create.execute(
+            project_id=other.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+        )
+    assert foreign_asset.value.code is CreateJobFailureCode.MEDIA_ASSET_NOT_FOUND
+
+
+def test_second_job_for_active_media_asset_is_rejected() -> None:
+    create, jobs, _ = use_case()
+    create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+    )
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+        )
+    assert error.value.code is CreateJobFailureCode.JOB_ALREADY_ACTIVE
+
+    (active,) = jobs.items.values()
+    jobs.save(active.transition_to(TranscriptionJobState.FAILED, error_code="x"))
+    second = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+    )
+    assert second.job.id != active.id

@@ -785,3 +785,25 @@ progress::-moz-progress-bar {
   white-space: pre-wrap;
   line-height: 1.6;
 }
+
+.audio-card {
+  padding: 24px 30px;
+}
+
+.audio-player audio {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.segment-seek {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.segment-seek:hover time {
+  color: var(--lime);
+}

@@ -1,0 +1,54 @@
+"""Durable, reproducible snapshot of the option selected for one job."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Protocol, cast, runtime_checkable
+from uuid import UUID
+
+from voz.application.asr_device_selection import ExecutionDecision
+from voz.domain.entities.model_descriptor import ModelDescriptor
+
+
+@dataclass(frozen=True, slots=True)
+class JobSelection:
+    """Everything needed to rebuild the exact provider request later.
+
+    The full ``ModelDescriptor`` is kept (not only its identity) so that a
+    provider configured for one descriptor accepts the request unchanged after
+    a restart, and so the job stays reproducible when the catalog moves on.
+    """
+
+    job_id: UUID
+    option_id: str
+    model: ModelDescriptor
+    execution: ExecutionDecision | None
+    language: str | None
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(cast(object, self.job_id), UUID):
+            raise TypeError("job_id must be a UUID")
+        if not isinstance(cast(object, self.model), ModelDescriptor):
+            raise TypeError("model must be a ModelDescriptor")
+        if not self.option_id or self.option_id != self.option_id.strip():
+            raise ValueError("option_id must be a non-empty trimmed string")
+        if self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
+            raise ValueError("created_at must be timezone-aware")
+
+
+@runtime_checkable
+class TranscriptionJobSelectionRepository(Protocol):
+    """Persist exactly one selection snapshot per transcription job."""
+
+    def add(self, selection: JobSelection) -> None:
+        """Persist the snapshot for a job that has none yet."""
+        ...
+
+    def get(self, job_id: UUID) -> JobSelection | None:
+        """Return the snapshot for a job, or ``None`` when absent."""
+        ...
+
+
+__all__ = ["JobSelection", "TranscriptionJobSelectionRepository"]
