@@ -1,0 +1,73 @@
+VOZ
+Copyright (c) 2026 VOZ contributors
+
+Este proyecto se distribuye bajo la licencia MIT. El texto completo de la
+licencia está en el archivo LICENSE en la raíz de este repositorio.
+
+=======================================================================
+Código de terceros adaptado
+=======================================================================
+
+Ninguno registrado hasta la fecha. Si en el futuro se adapta código con
+licencia MIT (u otra licencia compatible) dentro de este repositorio, su
+atribución obligatoria se registrará aquí en el mismo cambio que lo
+introduce, según la regla 10 de "Scope and implementation rules" en
+AGENTS.md.
+
+=======================================================================
+Dependencias principales y sus licencias
+=======================================================================
+
+La siguiente tabla lista las dependencias directas de ejecución declaradas
+en pyproject.toml y apps/web/package.json, junto con la licencia que reporta
+la metadata propia de cada paquete (Python: METADATA/LICENSE de dist-info en
+un entorno virtual local; Node: campo "license" de package.json más el
+archivo LICENSE incluido). Las versiones mostradas son las observadas al
+momento de esta verificación; los rangos exactos fijados están en
+pyproject.toml y package.json.
+
+Backend (Python):
+
+| Dependencia | Versión verificada | Licencia | Verificación |
+| --- | --- | --- | --- |
+| FastAPI | 0.141.1 | MIT | verificada (dist-info) |
+| SQLAlchemy | 2.0.52 | MIT | verificada (dist-info) |
+| Alembic | 1.19.1 | MIT | verificada (dist-info) |
+| Typer | 0.27.2 | MIT | verificada (dist-info) |
+| Uvicorn | 0.52.4 | BSD-3-Clause | verificada (dist-info) |
+| faster-whisper (opcional) [1] | 1.2.1 | MIT | verificada (archivo LICENSE) |
+
+[1] Extra opcional "asr-local". No está instalada en el `.venv` propio de
+este proyecto por ser opcional; se verificó su archivo LICENSE en la misma
+versión exacta fijada en pyproject.toml (`>=1.2.1,<2`), instalada en un
+entorno local separado.
+
+Frontend (Node, apps/web):
+
+| Dependencia | Versión verificada | Licencia | Verificación |
+| --- | --- | --- | --- |
+| React | 19.2.7 | MIT | verificada (node_modules) |
+| React DOM | 19.2.7 | MIT | verificada (node_modules) |
+| Vite | 8.2.0 | MIT | verificada (node_modules) |
+
+Ninguna de las dependencias anteriores exige, hasta la fecha de esta edición,
+más que conservar su propio aviso de licencia y copyright, ya incluido en la
+distribución de cada paquete. VOZ no vendoriza ni redistribuye su código
+fuente: depende de ellas como paquetes publicados.
+
+Este archivo lista únicamente las dependencias señaladas explícitamente para
+este aviso. No es un inventario exhaustivo (SBOM) de todo el árbol de
+dependencias directas y transitivas. Un SBOM completo, si se necesita, debe
+generarse con herramientas (por ejemplo `uv export` / `pip-licenses` para
+Python, `npm ls` / `license-checker` para Node) en vez de mantenerse a mano
+en este archivo.
+
+=======================================================================
+Fixtures de prueba
+=======================================================================
+
+Los fixtures sintéticos de medios en tests/fixtures/media/ son datos de
+prueba originales del proyecto, generados localmente con FFmpeg y
+distribuidos bajo la misma licencia MIT del proyecto. Consulta
+docs/fixtures-licenses.md para el inventario completo y la procedencia de
+cada fixture del repositorio.

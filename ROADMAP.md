@@ -99,7 +99,16 @@ alterar los IDs.
 | Paquete | IDs | Agente | Estado | Último logro verificable |
 | --- | --- | --- | --- | --- |
 | OPTIONS-B1-001 | S5.18 | `root` | verificado | Consulta y GET /api/transcription-options sin cargas/descargas: registro, runtime, ejecución, IDs y recomendación separados; 452 pruebas backend, 1 smoke omitido y checks/backend/frontend verdes. |
-| OPTIONS-UI-001 | S5.19 | — | pendiente | Próximo corte propuesto: selector básico frontend sobre el contrato B1; no iniciado. Persistencia de selección S5.20 y demás UI quedan fuera. |
+| OPTIONS-UI-001 | S5.19 | `frontend_selector` | verificado | Selector radio accesible sobre B1 con razones de bloqueo traducidas y recomendación; 7 tests Vitest, montado en App; lint/typecheck/build verdes. |
+| PROJECTS-API-001 | S5.01 (backend) | `projects_api` | verificado | CreateProject/ListProjects y POST/GET /api/projects cableados en create_app con migración Alembic al arrancar; 24 tests + smoke HTTP real. |
+| MEDIA-UPLOAD-001 | S5.02, S5.03 (backend) | `media_upload_api` | verificado | POST /api/projects/{id}/media por body crudo → ImportMedia real (SHA-256, ffprobe), 400/404/413/415/422/503 tipados, temporal limpiado; 18 tests + smoke HTTP con fixture WAV. |
+| JOBS-CORE-001 | S5.20, S14.01, S14.08 | `jobs` | en curso | Paso 1 en marcha: migración 0003_job_selections, port/adapter de selección y CreateTranscriptionJob; falta JobRunner, recuperación, cancelación y router. |
+| JOBS-SSE-001 | S5.06 | `sse_events` | verificado | GET /api/jobs/{id}/events por StreamingResponse con sondeo en thread, keep-alive y `end` terminal; hook useJobEvents; 6+6 tests, montado en create_app y App. |
+| UI-IMPORT-001 | S5.01, S5.02, S5.03 (UI) | `frontend_import` | verificado | NewProjectCard: nombre, drop nativo, XHR con progreso y errores por código; 6 tests; montada en App y verificada contra backend real por smoke. |
+| UI-JOB-001 | S5.04, S5.05, S5.07 | `frontend_job` | en curso | UI lista y montada (JobScreen por etapa, cancelar, SegmentList; 18 tests, lint/typecheck verdes); pendiente E2E contra POST /api/jobs de JOBS-CORE-001. |
+| EXPORT-TEXT-001 | S10.01, S10.02, S10.03, S10.09, S10.10 | `export_text` | verificado | Protocol TranscriptExporter estructural, TXT literal, Markdown y safe_export_filename anti-traversal; 51 golden tests inline. |
+| EXPORT-SUBS-001 | S10.04, S10.05, S10.06, S10.11, S10.12, S10.13 | `export_subs_json` | verificado | SRT, VTT, timestamps con límites, JSON canónico voz.transcript v1 y round-trip parse(render(x)); 34 tests. |
+| OSS-DOCS-001 | S16.03-S16.08, S16.17, S16.18 | `docs_oss` | verificado | CONTRIBUTING, CODE_OF_CONDUCT (Covenant 2.1), SECURITY, plantillas issue/PR, licencias de fixtures y NOTICE con licencias verificadas; enlaces comprobados. |
 
 ### Retomar en una sesión nueva
 
@@ -108,8 +117,11 @@ Leer `AGENTS.md`, este tablero, `.ai/HANDOFF.md` si existe y
 editar. Corte A y B1 están terminados. El próximo objetivo acotado es S5.19,
 sujeto a la instrucción del usuario de continuar ese corte. No interpretar un
 cold start como autorización para completar toda S5, S5.20, jobs HTTP o S6.
-El handoff es local/ignorado; este tablero y el contrato API conservan el
-contexto durable también en otro checkout.
+El handoff es local/ignorado; este tablero y los contratos API
+(`docs/api/transcription-options.md`, `docs/api/jobs.md`) conservan el contexto
+durable también en otro checkout. Oleada 2026-09-21: proyectos, subida, SSE,
+selector y exportación verificados; JOBS-CORE-001 (S5.20, S14.01, S14.08) y
+UI-JOB-001 quedan en curso hasta integrar POST /api/jobs.
 
 ## Sección 1 — Bootstrap del repositorio
 
@@ -221,12 +233,12 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 
 ## Sección 5 — Workspace UI
 
-- [ ] **S5.01** Crear Home con acción “Nuevo proyecto”.
-- [ ] **S5.02** Implementar selección y drag-and-drop de archivo.
-- [ ] **S5.03** Mostrar validación de upload y errores seguros.
+- [x] **S5.01** Crear Home con acción “Nuevo proyecto”.
+- [x] **S5.02** Implementar selección y drag-and-drop de archivo.
+- [x] **S5.03** Mostrar validación de upload y errores seguros.
 - [ ] **S5.04** Crear pantalla de job.
 - [ ] **S5.05** Mostrar estado explícito por etapa.
-- [ ] **S5.06** Consumir progreso mediante SSE.
+- [x] **S5.06** Consumir progreso mediante SSE.
 - [ ] **S5.07** Renderizar lista de segmentos.
 - [ ] **S5.08** Añadir reproductor del original.
 - [ ] **S5.09** Renderizar waveform.
@@ -239,7 +251,7 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [ ] **S5.16** Añadir autosave con estado visible.
 - [ ] **S5.17** Probar importación, reproducción y edición E2E.
 - [x] **S5.18** Exponer opciones canónicas de transcripción mediante consulta backend.
-- [ ] **S5.19** Implementar selector básico frontend, sin Model Manager.
+- [x] **S5.19** Implementar selector básico frontend, sin Model Manager.
 - [ ] **S5.20** Persistir selección reproducible para creación de job.
 
 S5.18–S5.20 consultan y seleccionan opciones conocidas; descargas, reparación,
@@ -323,19 +335,19 @@ mismo contrato.
 
 ## Sección 10 — Exportación
 
-- [ ] **S10.01** Definir el port/servicio de exportación.
-- [ ] **S10.02** Exportar TXT literal.
-- [ ] **S10.03** Exportar Markdown.
-- [ ] **S10.04** Exportar SRT con timestamps válidos.
-- [ ] **S10.05** Exportar VTT con timestamps válidos.
-- [ ] **S10.06** Exportar JSON canónico versionado.
+- [x] **S10.01** Definir el port/servicio de exportación.
+- [x] **S10.02** Exportar TXT literal.
+- [x] **S10.03** Exportar Markdown.
+- [x] **S10.04** Exportar SRT con timestamps válidos.
+- [x] **S10.05** Exportar VTT con timestamps válidos.
+- [x] **S10.06** Exportar JSON canónico versionado.
 - [ ] **S10.07** Exportar agrupado por speaker.
 - [ ] **S10.08** Exportar texto con timestamps opcionales.
-- [ ] **S10.09** Sanitizar nombres y evitar path traversal.
-- [ ] **S10.10** Añadir golden tests TXT/Markdown.
-- [ ] **S10.11** Añadir golden tests SRT/VTT.
-- [ ] **S10.12** Añadir golden tests JSON.
-- [ ] **S10.13** Verificar round-trip del formato canónico cuando aplique.
+- [x] **S10.09** Sanitizar nombres y evitar path traversal.
+- [x] **S10.10** Añadir golden tests TXT/Markdown.
+- [x] **S10.11** Añadir golden tests SRT/VTT.
+- [x] **S10.12** Añadir golden tests JSON.
+- [x] **S10.13** Verificar round-trip del formato canónico cuando aplique.
 
 **Criterio de salida:** exportaciones estables, seguras y reproducibles completan
 el MVP junto con las Secciones 1–6.
@@ -438,12 +450,12 @@ README, sin depender del checkout.
 
 - [x] **S16.01** Crear README profesional y honesto sobre el estado actual.
 - [ ] **S16.02** Añadir demo y capturas correspondientes a funciones reales.
-- [ ] **S16.03** Crear `CONTRIBUTING.md`.
-- [ ] **S16.04** Crear `CODE_OF_CONDUCT.md`.
-- [ ] **S16.05** Crear `SECURITY.md` con canal de reporte.
-- [ ] **S16.06** Crear issue template de bug.
-- [ ] **S16.07** Crear issue template de feature.
-- [ ] **S16.08** Crear PR template con checks relevantes.
+- [x] **S16.03** Crear `CONTRIBUTING.md`.
+- [x] **S16.04** Crear `CODE_OF_CONDUCT.md`.
+- [x] **S16.05** Crear `SECURITY.md` con canal de reporte.
+- [x] **S16.06** Crear issue template de bug.
+- [x] **S16.07** Crear issue template de feature.
+- [x] **S16.08** Crear PR template con checks relevantes.
 - [ ] **S16.09** Documentar diagrama C4 de contexto.
 - [ ] **S16.10** Documentar diagrama C4 de contenedores.
 - [ ] **S16.11** Documentar diagrama C4 de componentes.
@@ -452,8 +464,8 @@ README, sin depender del checkout.
 - [ ] **S16.14** Completar ADR de ingestión FFmpeg.
 - [ ] **S16.15** Completar ADR de providers.
 - [ ] **S16.16** Completar ADR local-first.
-- [ ] **S16.17** Documentar licencias de todos los fixtures.
-- [ ] **S16.18** Crear `NOTICE` para código/dependencias reutilizadas.
+- [x] **S16.17** Documentar licencias de todos los fixtures.
+- [x] **S16.18** Crear `NOTICE` para código/dependencias reutilizadas.
 - [ ] **S16.19** Auditar secretos y archivos ignorados antes de abrir el repo.
 - [ ] **S16.20** Hacer público el repositorio solo con autorización explícita.
 

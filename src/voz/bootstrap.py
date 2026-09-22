@@ -6,6 +6,8 @@ independent of transport concerns.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
+from typing import Self
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -19,6 +21,8 @@ from voz.application.asr_device_selection import (
     select_execution,
 )
 from voz.application.get_transcription_options import GetTranscriptionOptions
+from voz.application.import_media import ImportMedia
+from voz.application.projects import CreateProject, ListProjects
 from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
@@ -30,19 +34,29 @@ from voz.infrastructure.asr.options import (
     FasterWhisperRuntimeProbe,
     LocalTranscriptionModelCatalog,
 )
+from voz.infrastructure.audio.ffprobe import FfprobeMediaProbe
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
+from voz.infrastructure.media_storage import FileSystemMediaStorage
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
+from voz.infrastructure.persistence.database import create_sqlite_engine
+from voz.infrastructure.persistence.migrate import upgrade_to_head
 from voz.infrastructure.persistence.repositories import (
+    SqliteMediaAssetRepository,
+    SqliteProjectRepository,
     SqliteTranscriptionJobRepository,
 )
 from voz.infrastructure.persistence.transcription_checkpoints import (
     SqliteTranscriptionCheckpointStore,
 )
 from voz.interfaces.api.health import router as health_router
+from voz.interfaces.api.job_events import create_job_events_router
+from voz.interfaces.api.media import create_media_router
+from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
 
 STATIC_DIRECTORY = Path(__file__).with_name("static")
+DATABASE_FILENAME = "voz.sqlite3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,25 +128,82 @@ def create_local_asr_runtime(
 
 
 def create_app(
-    *, transcription_options: GetTranscriptionOptions | None = None
+    *,
+    transcription_options: GetTranscriptionOptions | None = None,
+    paths: VozPaths | None = None,
+    engine: Engine | None = None,
 ) -> FastAPI:
-    """Build the local VOZ HTTP application."""
+    """Build the local VOZ HTTP application.
+
+    Runtime data lives under XDG directories resolved from ``paths``; the
+    SQLite schema is migrated to head on the first request lifecycle, never at
+    import time. An injected ``engine`` is owned by the caller.
+    """
+    resolved_paths = resolve_voz_paths() if paths is None else paths
+    owns_engine = engine is None
+    resolved_engine = (
+        create_sqlite_engine(resolved_paths.data / DATABASE_FILENAME)
+        if engine is None
+        else engine
+    )
+
+    class Lifespan:
+        """Migrate on startup and dispose an owned engine on shutdown."""
+
+        def __call__(self, _: FastAPI) -> Self:
+            return self
+
+        async def __aenter__(self) -> None:
+            upgrade_to_head(resolved_engine)
+
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: TracebackType | None,
+        ) -> None:
+            if owns_engine:
+                resolved_engine.dispose()
+
+    lifespan = Lifespan()
+
     application = FastAPI(
         title="VOZ",
         description="Local-first transcription workspace API.",
         version=__version__,
+        lifespan=lifespan,
     )
     application.include_router(health_router)
     if transcription_options is None:
-        paths = resolve_voz_paths()
         transcription_options = GetTranscriptionOptions(
             LocalTranscriptionModelCatalog(
-                FileSystemModelStore(data_root=paths.data, cache_root=paths.cache)
+                FileSystemModelStore(
+                    data_root=resolved_paths.data, cache_root=resolved_paths.cache
+                )
             ),
             FasterWhisperRuntimeProbe(),
         )
     application.include_router(
         create_transcription_options_router(transcription_options)
+    )
+
+    projects = SqliteProjectRepository(resolved_engine)
+    application.include_router(
+        create_projects_router(CreateProject(projects), ListProjects(projects))
+    )
+    application.include_router(
+        create_media_router(
+            ImportMedia(
+                media_probe=FfprobeMediaProbe(),
+                media_storage=FileSystemMediaStorage(resolved_paths.data),
+                media_assets=SqliteMediaAssetRepository(resolved_engine),
+            ),
+            projects,
+            resolved_paths.cache / "uploads",
+        )
+    )
+    application.include_router(
+        create_job_events_router(SqliteTranscriptionJobRepository(resolved_engine))
     )
     if STATIC_DIRECTORY.is_dir():
         application.mount(
@@ -143,4 +214,9 @@ def create_app(
     return application
 
 
-app = create_app()
+def __getattr__(name: str) -> object:
+    # ponytail: keep ``uvicorn voz.bootstrap:app`` working without opening the
+    # database at import time.
+    if name == "app":
+        return create_app()
+    raise AttributeError(name)

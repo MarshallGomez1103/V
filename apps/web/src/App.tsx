@@ -1,6 +1,12 @@
-import { HealthStatus } from './components/HealthStatus'
+import { useCallback, useState } from 'react'
 
-const waveformHeights = [28, 52, 36, 68, 42, 78, 54, 32, 64, 86, 48, 70, 38, 58, 30]
+import { cancelJob, createJob, JobApiError } from './api/jobs'
+import { HealthStatus } from './components/HealthStatus'
+import { JobScreen } from './components/JobScreen'
+import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
+import { SegmentList } from './components/SegmentList'
+import { TranscriptionOptionsSelector } from './components/TranscriptionOptionsSelector'
+import { useJobEvents } from './hooks/useJobEvents'
 
 function BrandMark() {
   return (
@@ -29,7 +35,48 @@ function LockIcon() {
   )
 }
 
+function describeJobError(error: unknown): string {
+  if (error instanceof JobApiError) {
+    const reasons = error.blockingReasons?.length
+      ? ' (' + error.blockingReasons.join(', ') + ')'
+      : ''
+    return error.message + reasons
+  }
+  return 'No se pudo crear la transcripción.'
+}
+
 export function App() {
+  const [imported, setImported] = useState<ImportResult | null>(null)
+  const [optionId, setOptionId] = useState<string | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [jobError, setJobError] = useState<string | null>(null)
+  const events = useJobEvents(jobId)
+
+  const startJob = useCallback(async () => {
+    if (!imported || !optionId) {
+      return
+    }
+    setCreating(true)
+    setJobError(null)
+    try {
+      const job = await createJob({
+        project_id: imported.project.id,
+        media_asset_id: imported.media.media_asset_id,
+        option_id: optionId,
+        language: null, // ponytail: idioma autodetectado; selector de idioma en un corte posterior
+      })
+      setJobId(job.id)
+    } catch (error: unknown) {
+      setJobError(describeJobError(error))
+    } finally {
+      setCreating(false)
+    }
+  }, [imported, optionId])
+
+  const job = events.job
+  const transcriptId = job?.state === 'COMPLETED' ? job.transcript_id : null
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -55,46 +102,61 @@ export function App() {
             <span>Encuentra más.</span>
           </h1>
           <p className="hero-copy">
-            VOZ será tu espacio local para convertir clases, entrevistas y
+            VOZ es tu espacio local para convertir clases, entrevistas y
             grabaciones largas en texto editable, sin entregar tus archivos a
             terceros.
           </p>
         </section>
 
         <section className="workspace-grid" aria-label="Inicio de VOZ">
-          <article className="import-card" aria-labelledby="import-title">
-            <div className="card-heading">
-              <div>
-                <p className="section-kicker">NUEVO PROYECTO</p>
-                <h2 id="import-title">Trae una grabación</h2>
-              </div>
-              <span className="coming-soon">Próximamente</span>
-            </div>
+          <div className="workflow">
+            <NewProjectCard onImported={setImported} />
 
-            <div
-              className="drop-zone"
-              aria-disabled="true"
-              aria-describedby="import-description"
-            >
-              <div className="wave-preview" aria-hidden="true">
-                {waveformHeights.map((height, index) => (
-                  <span
-                    key={height + '-' + index}
-                    style={{ height: height + '%' }}
-                  />
-                ))}
-              </div>
-              <h3>La importación está en construcción</h3>
-              <p id="import-description">
-                Aquí podrás soltar audio o video compatible con FFmpeg. Todavía
-                no se cargará ni procesará ningún archivo.
-              </p>
-              <button type="button" disabled>
-                Importar archivo
-              </button>
-              <small>El archivo original siempre se conservará intacto.</small>
-            </div>
-          </article>
+            {imported ? (
+              <article className="import-card options-card" aria-label="Transcribir">
+                <div className="card-heading">
+                  <div>
+                    <p className="section-kicker">TRANSCRIBIR</p>
+                    <h2>Elige el motor</h2>
+                  </div>
+                </div>
+                <TranscriptionOptionsSelector
+                  value={optionId}
+                  onChange={setOptionId}
+                  disabled={creating || jobId !== null}
+                />
+                {jobError ? (
+                  <p className="options-error" role="alert">
+                    {jobError}
+                  </p>
+                ) : null}
+                <div className="import-actions">
+                  <button
+                    type="button"
+                    className="import-submit"
+                    disabled={!optionId || creating || jobId !== null}
+                    onClick={() => void startJob()}
+                  >
+                    {creating ? 'Creando…' : 'Transcribir'}
+                  </button>
+                </div>
+              </article>
+            ) : null}
+
+            {jobId ? (
+              <>
+                <JobScreen
+                  job={job}
+                  loading={creating}
+                  error={events.error}
+                  onCancel={() => {
+                    void cancelJob(jobId).catch(() => undefined)
+                  }}
+                />
+                <SegmentList transcriptId={transcriptId} />
+              </>
+            ) : null}
+          </div>
 
           <aside className="status-column" aria-label="Estado de la aplicación">
             <HealthStatus />
@@ -103,8 +165,8 @@ export function App() {
               <p className="section-kicker">PRIVACIDAD POR DISEÑO</p>
               <h2>Lo tuyo se queda contigo.</h2>
               <p>
-                VOZ priorizará motores locales y funcionará sin Internet una
-                vez estén instalados los modelos elegidos.
+                VOZ prioriza motores locales y funciona sin Internet una vez
+                estén instalados los modelos elegidos.
               </p>
               <ul>
                 <li>
@@ -122,16 +184,6 @@ export function App() {
               </ul>
             </article>
           </aside>
-        </section>
-
-        <section className="recent" aria-labelledby="recent-title">
-          <div>
-            <p className="section-kicker">BIBLIOTECA</p>
-            <h2 id="recent-title">Proyectos recientes</h2>
-          </div>
-          <p className="empty-state">
-            Aún no hay proyectos. Tu biblioteca local aparecerá aquí.
-          </p>
         </section>
       </main>
 

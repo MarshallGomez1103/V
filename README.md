@@ -5,12 +5,15 @@ largas de clases, entrevistas y reuniones. La meta es ofrecer un workspace web
 local con waveform, timeline, segmentos editables y hablantes, sin convertir un
 proveedor cloud en requisito.
 
-> **Estado actual: primer ASR local implementado.** La CLI, la API health y la
-> Home local funcionan como una sola aplicación instalable. El backend ya puede
-> inspeccionar y normalizar medios, componer Faster Whisper, procesar clips con
-> offsets globales y reanudar desde checkpoints SQLite. La selección de archivos
-> y ejecución desde la UI pertenecen a la Sección 5. No se incluye ni descarga
-> ningún modelo: el runtime real permanece experimental hasta instalar un modelo
+> **Estado actual: importación desde la UI y selector de motor.** La CLI, la
+> API y la Home local funcionan como una sola aplicación instalable. Desde el
+> navegador ya se crea un proyecto, se sube un archivo (copia inmutable con
+> SHA-256 y ffprobe) y se elige el motor entre las opciones que expone el
+> backend. El backend puede normalizar medios, componer Faster Whisper, procesar
+> clips con offsets globales, reanudar desde checkpoints SQLite y exportar TXT,
+> Markdown, SRT, VTT y JSON canónico (sin endpoint HTTP todavía). La creación y
+> ejecución de jobs desde la UI está en curso. No se incluye ni descarga ningún
+> modelo: el runtime real permanece experimental hasta instalar un modelo
 > elegido explícitamente y ejecutar el smoke opt-in. Consulta el
 > [roadmap](ROADMAP.md) para ver qué fue verificado.
 
@@ -102,12 +105,16 @@ selección de hardware y recuperación ASR están en
 La consulta `GET /api/transcription-options` expone opciones conocidas,
 registro local, disponibilidad del runtime, ejecución y bloqueos sin cargar
 modelos. Su [contrato y límites](docs/api/transcription-options.md) distinguen
-registro de integridad y recomendación de benchmark. El selector frontend y la
-creación HTTP de jobs todavía no están implementados.
+registro de integridad y recomendación de benchmark. Los endpoints de
+proyectos, subida, jobs y eventos SSE están descritos en
+[docs/api/jobs.md](docs/api/jobs.md). Los datos viven bajo XDG
+(`$XDG_DATA_HOME/voz/voz.sqlite3`, originales y derivados por proyecto) y el
+esquema se migra automáticamente al arrancar.
 
 Para retomar el desarrollo en otra sesión, lee `AGENTS.md`, el apartado
 “Retomar en una sesión nueva” de [ROADMAP.md](ROADMAP.md) y `.ai/HANDOFF.md`
-cuando exista. El próximo corte pendiente es S5.19, no la Sección 5 completa.
+cuando exista. El próximo corte pendiente es JOBS-CORE-001 (S5.20, S14.01,
+S14.08): crear y ejecutar jobs desde la UI.
 
 No hay release pública todavía. Para instalar el checkout y ejecutar la Home
 local integrada:
