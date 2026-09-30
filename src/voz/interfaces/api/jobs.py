@@ -39,6 +39,8 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.OPTION_UNKNOWN: 404,
     CreateJobFailureCode.OPTION_NOT_STARTABLE: 409,
     CreateJobFailureCode.JOB_ALREADY_ACTIVE: 409,
+    CreateJobFailureCode.INSUFFICIENT_VRAM: 409,
+    CreateJobFailureCode.INSUFFICIENT_RAM: 409,
 }
 
 
@@ -146,6 +148,9 @@ def create_jobs_router(
                 extra["blocking_reasons"] = [
                     reason.value for reason in error.blocking_reasons
                 ]
+            if error.required_mib is not None:
+                extra["required_mib"] = error.required_mib
+                extra["available_mib"] = error.available_mib
             raise _error(
                 _CREATE_STATUS[error.code],
                 error.code.value,

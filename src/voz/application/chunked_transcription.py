@@ -15,6 +15,7 @@ from voz.application.ports.transcription import (
     TranscriptionProvider,
     TranscriptionResult,
     TranscriptionSegment,
+    clamp_words,
 )
 
 
@@ -125,6 +126,7 @@ def owned_chunk_segments(
                     start_ms=start_ms,
                     end_ms=end_ms,
                     text=segment.text,
+                    words=clamp_words(segment.words, start_ms, end_ms),
                 )
             )
     return tuple(owned)
@@ -141,6 +143,14 @@ def globalize_chunk_result(
                 start_ms=segment.start_ms + chunk.process_start_ms,
                 end_ms=segment.end_ms + chunk.process_start_ms,
                 text=segment.text,
+                words=tuple(
+                    replace(
+                        word,
+                        start_ms=word.start_ms + chunk.process_start_ms,
+                        end_ms=word.end_ms + chunk.process_start_ms,
+                    )
+                    for word in segment.words
+                ),
             )
             for segment in result.segments
         ),

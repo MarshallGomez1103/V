@@ -8,11 +8,14 @@ import {
   type ProcessingProfile,
   type TranscriptionOption,
 } from '../api/transcriptionOptions'
+import { compareModelIds } from '../lib/modelOrder'
 
 export interface TranscriptionOptionsSelectorProps {
   value: string | null
   onChange: (optionId: string | null) => void
   disabled?: boolean
+  /** Al cambiar, vuelve a pedir las opciones (p. ej. tras instalar o borrar un modelo). */
+  refreshKey?: number
 }
 
 type LoadState =
@@ -55,6 +58,15 @@ function describeExecution(execution: ExecutionDecision): string {
   return execution.fallback_reason ? base + ' (respaldo)' : base
 }
 
+/** Iniciables primero y, dentro de cada grupo, orden fijo del catálogo. */
+function sortOptions(options: TranscriptionOption[]): TranscriptionOption[] {
+  return [...options].sort(
+    (a, b) =>
+      Number(b.can_start) - Number(a.can_start) ||
+      compareModelIds(a.model_id, b.model_id),
+  )
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
@@ -69,6 +81,7 @@ export function TranscriptionOptionsSelector({
   value,
   onChange,
   disabled = false,
+  refreshKey = 0,
 }: TranscriptionOptionsSelectorProps) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -88,7 +101,7 @@ export function TranscriptionOptionsSelector({
     const controller = new AbortController()
     void getTranscriptionOptions(controller.signal)
       .then((payload) => {
-        setState({ phase: 'ready', options: payload.options })
+        setState({ phase: 'ready', options: sortOptions(payload.options) })
       })
       .catch((error: unknown) => {
         if (!isAbortError(error)) {
@@ -98,7 +111,7 @@ export function TranscriptionOptionsSelector({
     return () => {
       controller.abort()
     }
-  }, [attempt])
+  }, [attempt, refreshKey])
 
   // Mantiene coherente la selección del padre con el catálogo observado:
   // descarta valores inexistentes o no iniciables y preselecciona la única viable.
@@ -201,8 +214,7 @@ export function TranscriptionOptionsSelector({
           </ul>
           {state.options.every((option) => !option.can_start) ? (
             <p className="options-notice">
-              Instala un modelo para transcribir (Model Manager llegará en una
-              sección posterior).
+              Instala un modelo para transcribir desde la sección «Modelos».
             </p>
           ) : null}
         </>

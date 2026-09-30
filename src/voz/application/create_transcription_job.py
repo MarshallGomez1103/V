@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from voz.application.asr_device_selection import ComputeDevice
 from voz.application.get_transcription_options import (
     BlockingReason,
     GetTranscriptionOptions,
@@ -23,6 +24,7 @@ from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
 )
+from voz.application.resource_requirements import find_shortfall
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
 
@@ -35,6 +37,8 @@ class CreateJobFailureCode(StrEnum):
     OPTION_UNKNOWN = "option_unknown"
     OPTION_NOT_STARTABLE = "option_not_startable"
     JOB_ALREADY_ACTIVE = "job_already_active"
+    INSUFFICIENT_VRAM = "insufficient_vram"
+    INSUFFICIENT_RAM = "insufficient_ram"
 
 
 class CreateJobError(RuntimeError):
@@ -46,10 +50,14 @@ class CreateJobError(RuntimeError):
         user_message: str,
         *,
         blocking_reasons: tuple[BlockingReason, ...] = (),
+        required_mib: int | None = None,
+        available_mib: int | None = None,
     ) -> None:
         self.code = code
         self.user_message = user_message
         self.blocking_reasons = blocking_reasons
+        self.required_mib = required_mib
+        self.available_mib = available_mib
         super().__init__(user_message)
 
 
@@ -100,6 +108,7 @@ class CreateTranscriptionJob:
                 CreateJobFailureCode.JOB_ALREADY_ACTIVE,
                 "A transcription job is already active for this media asset.",
             )
+        self._check_memory(option, model)
 
         now = self.clock()
         job = TranscriptionJob.create(
@@ -119,6 +128,40 @@ class CreateTranscriptionJob:
         self.jobs.add(job)
         self.selections.add(selection)
         return CreatedJob(job, selection)
+
+    def _check_memory(
+        self, option: TranscriptionOption, model: ModelDescriptor
+    ) -> None:
+        """S14.05/S14.06: refuse a load that measured free memory cannot hold.
+
+        Unmeasured memory never blocks: the estimate is advisory, not a proof.
+        """
+        if option.execution is None:
+            return
+        hardware = self.options.runtime.probe(model.provider_id).hardware
+        if hardware is None:
+            return
+        shortfall = find_shortfall(model.model_id, option.execution, hardware)
+        if shortfall is None:
+            return
+        if shortfall.device is ComputeDevice.CUDA:
+            code = CreateJobFailureCode.INSUFFICIENT_VRAM
+            message = (
+                "Not enough free GPU memory to load this model. "
+                "Choose a smaller model or use the CPU."
+            )
+        else:
+            code = CreateJobFailureCode.INSUFFICIENT_RAM
+            message = (
+                "Not enough free RAM to load this model. "
+                "Choose a smaller model or free some memory."
+            )
+        raise CreateJobError(
+            code,
+            message,
+            required_mib=shortfall.required_mib,
+            available_mib=shortfall.available_mib,
+        )
 
     def _current_option(self, option_id: str) -> TranscriptionOption:
         option = next(

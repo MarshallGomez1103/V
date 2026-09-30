@@ -13,6 +13,8 @@ que las ilustran están en [docs/architecture](../architecture/README.md).
 | [0004](0004-local-asr-and-recoverable-chunks.md) | ASR local con modelos explícitos y chunks recuperables | Aceptada | S4 |
 | [0005](0005-transcription-providers.md) | Port de providers de transcripción sin framework de plugins | Aceptada | S16.15 |
 | [0006](0006-local-first-privacy.md) | Local-first, loopback por defecto y sin cloud implícito | Aceptada | S16.16 |
+| [0007](0007-local-diarization-sherpa-onnx.md) | Diarización local con sherpa-onnx (sin torch ni token) | Aceptada | S6.04, S6.16 |
+| [0008](0008-word-timestamps.md) | Timestamps de palabra nativos de Faster Whisper, sin WhisperX | Aceptada | S7.01, S7.03, S7.04, S7.08 |
 
 ## Formato
 

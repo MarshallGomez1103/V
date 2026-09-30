@@ -6,10 +6,20 @@ from contextlib import suppress
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
-from voz.application.asr_device_selection import ExecutionDecision, select_execution
+from voz.application.asr_device_selection import (
+    ComputeDevice,
+    ExecutionDecision,
+    select_execution,
+)
+from voz.application.hardware_recommendation import (
+    Recommendation,
+    is_measured,
+    recommend,
+)
 from voz.application.ports.transcription import TranscriptionError
 from voz.application.ports.transcription_options import (
     InstallationStatus,
+    RuntimeAvailability,
     TranscriptionModelCatalog,
     TranscriptionRuntimeProbe,
 )
@@ -27,12 +37,6 @@ class BlockingReason(StrEnum):
     RUNTIME_UNAVAILABLE = "runtime_unavailable"
     EXECUTION_UNAVAILABLE = "execution_unavailable"
     TRANSCRIPTION_UNAVAILABLE = "transcription_unavailable"
-
-
-@dataclass(frozen=True, slots=True)
-class Recommendation:
-    recommended: bool
-    reason: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +62,24 @@ class TranscriptionOption:
 @dataclass(frozen=True, slots=True)
 class TranscriptionOptions:
     options: tuple[TranscriptionOption, ...]
+
+
+_INSTALL_REASONS = {
+    BlockingReason.MODEL_NOT_REGISTERED,
+    BlockingReason.MODEL_FILES_MISSING,
+}
+
+
+def _device_name(
+    runtime: RuntimeAvailability, execution: ExecutionDecision | None
+) -> str | None:
+    if execution is None:
+        return None
+    if runtime.device_name is not None:
+        return runtime.device_name
+    if execution.device is ComputeDevice.CUDA and runtime.hardware is not None:
+        return runtime.hardware.gpu_name
+    return None
 
 
 def option_identity(descriptor: ModelDescriptor) -> str:
@@ -109,7 +131,16 @@ class GetTranscriptionOptions:
             if ModelCapability.TRANSCRIPTION not in capabilities:
                 reasons.append(BlockingReason.TRANSCRIPTION_UNAVAILABLE)
             recommendation = None
+            hardware = runtime.hardware
             if (
+                hardware is not None
+                and execution is not None
+                and is_measured(hardware)
+                and set(reasons) <= _INSTALL_REASONS
+            ):
+                # Measured hardware: fit recommendation, independent of installation.
+                recommendation = recommend(model.model_id, hardware)
+            elif (
                 not reasons
                 and model.profile
                 and model.profile.name is ProcessingProfileName.FAST
@@ -130,7 +161,7 @@ class GetTranscriptionOptions:
                     can_start=not reasons,
                     capabilities=capabilities,
                     execution=execution,
-                    device_name=runtime.device_name if execution is not None else None,
+                    device_name=_device_name(runtime, execution),
                     recommendation=recommendation,
                     blocking_reasons=tuple(reasons),
                 )
@@ -138,3 +169,13 @@ class GetTranscriptionOptions:
         return TranscriptionOptions(
             tuple(sorted(options, key=lambda item: item.option_id))
         )
+
+
+__all__ = [
+    "BlockingReason",
+    "GetTranscriptionOptions",
+    "Recommendation",
+    "TranscriptionOption",
+    "TranscriptionOptions",
+    "option_identity",
+]

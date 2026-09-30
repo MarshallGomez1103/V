@@ -15,6 +15,27 @@ from voz.domain.entities._validation import (
 
 _HEX_COLOR_PATTERN = re.compile(r"#[0-9a-f]{6}", re.ASCII)
 
+# Fixed palette: the Nth speaker of a transcript always gets the same color,
+# and the color is stored on the speaker so it survives renames and merges.
+SPEAKER_PALETTE: tuple[str, ...] = (
+    "#4e79a7",
+    "#f28e2b",
+    "#59a14f",
+    "#e15759",
+    "#b07aa1",
+    "#76b7b2",
+    "#edc948",
+    "#9c755f",
+)
+
+
+def speaker_palette_color(index: int) -> str:
+    """Return the palette color for a zero-based speaker ordinal (cycling)."""
+
+    if type(index) is not int or index < 0:
+        raise ValueError("speaker ordinal must be a non-negative integer")
+    return SPEAKER_PALETTE[index % len(SPEAKER_PALETTE)]
+
 
 def _require_hex_color(value: object) -> str:
     if not isinstance(value, str):

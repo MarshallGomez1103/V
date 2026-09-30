@@ -1,0 +1,150 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import {
+  cancelModelTask,
+  deleteModel,
+  getModels,
+  installModel,
+  listModelTasks,
+  messageForModelError,
+  ModelApiError,
+} from './models'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response
+}
+
+function stubFetch(response: Response) {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response)
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+const MODEL = {
+  model_id: 'tiny',
+  display_name: 'Faster Whisper Tiny (fast)',
+  source: 'Systran/faster-whisper-tiny',
+  revision: 'd90ca5fe260221311c53c58e660288d3deb8d356',
+  license: 'MIT',
+  multilingual: true,
+  profile: 'fast',
+  size_bytes: 77003619,
+  installed: false,
+  disk_bytes: null,
+  external: [{ origin: 'buzz' }],
+}
+
+const TASK = {
+  id: 't1',
+  model_id: 'tiny',
+  method: 'download',
+  origin: null,
+  state: 'running',
+  done_bytes: 10,
+  total_bytes: 100,
+  error_code: null,
+  created_at: '2026-09-30T10:00:00Z',
+  updated_at: '2026-09-30T10:00:01Z',
+}
+
+describe('api/models', () => {
+  it('getModels devuelve el payload validado', async () => {
+    const payload = { models: [MODEL], disk: { models_bytes: 0, free_bytes: null } }
+    const fetchMock = stubFetch(jsonResponse(200, payload))
+
+    await expect(getModels()).resolves.toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/models',
+      expect.objectContaining({ headers: { Accept: 'application/json' } }),
+    )
+  })
+
+  it('getModels rechaza un formato inesperado', async () => {
+    stubFetch(jsonResponse(200, { models: [{ model_id: 1 }], disk: {} }))
+
+    await expect(getModels()).rejects.toMatchObject({ code: 'invalid_response' })
+  })
+
+  it('traduce el código de error del backend a un mensaje en español', async () => {
+    stubFetch(
+      jsonResponse(409, { detail: { code: 'model_in_use', message: 'in use' } }),
+    )
+
+    const error = await deleteModel('tiny').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ModelApiError)
+    expect(error).toMatchObject({ code: 'model_in_use', status: 409 })
+    expect((error as Error).message).toMatch(/en uso/i)
+  })
+
+  it('deleteModel repite el id en confirm', async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(200, { model_id: 'large-v3', freed_bytes: 5 }),
+    )
+
+    await expect(deleteModel('large-v3')).resolves.toMatchObject({ freed_bytes: 5 })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/models/large-v3?confirm=large-v3',
+    )
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('DELETE')
+  })
+
+  it('installModel envía confirm y origin solo al importar', async () => {
+    const fetchMock = stubFetch(jsonResponse(202, TASK))
+
+    await installModel('tiny', 'download')
+    await installModel('tiny', 'import')
+
+    const bodies = fetchMock.mock.calls.map((call) =>
+      JSON.parse(call[1]?.body as string) as unknown,
+    )
+    expect(bodies).toEqual([
+      { method: 'download', confirm: true },
+      { method: 'import', origin: 'buzz', confirm: true },
+    ])
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/models/tiny/install')
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
+  })
+
+  it('listModelTasks y cancelModelTask usan los endpoints de tareas', async () => {
+    const fetchMock = stubFetch(jsonResponse(200, { tasks: [TASK] }))
+    await expect(listModelTasks()).resolves.toEqual([TASK])
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/model-tasks')
+
+    const cancelMock = stubFetch(jsonResponse(202, { ...TASK, state: 'cancelled' }))
+    await expect(cancelModelTask('t1')).resolves.toMatchObject({
+      state: 'cancelled',
+    })
+    expect(cancelMock.mock.calls[0]?.[0]).toBe('/api/model-tasks/t1/cancel')
+  })
+
+  it('cancelar una tarea terminada informa model_task_terminal', async () => {
+    stubFetch(
+      jsonResponse(409, { detail: { code: 'model_task_terminal', message: 'x' } }),
+    )
+
+    await expect(cancelModelTask('t1')).rejects.toMatchObject({
+      code: 'model_task_terminal',
+    })
+  })
+
+  it('messageForModelError cubre checksum y deja visible un código desconocido', () => {
+    expect(messageForModelError('disk_space_insufficient')).toMatch(/espacio/i)
+    expect(messageForModelError('model_installation_network_error')).toMatch(
+      /conexión/i,
+    )
+    expect(messageForModelError('model_installation_checksum_mismatch')).toMatch(
+      /checksum/i,
+    )
+    expect(messageForModelError('algo_raro')).toMatch(/algo_raro/)
+    expect(messageForModelError('constructor')).toMatch(/constructor/)
+  })
+})

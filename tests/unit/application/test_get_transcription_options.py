@@ -62,15 +62,22 @@ class Catalog:
 
 
 class Runtime:
-    def __init__(self, available: bool = True, cuda: bool = False) -> None:
+    def __init__(
+        self,
+        available: bool = True,
+        cuda: bool = False,
+        measured: HardwareCapabilities | None = None,
+    ) -> None:
         self.available = available
         self.cuda = cuda
+        self.measured = measured
 
     def probe(self, provider_id: str) -> RuntimeAvailability:
         assert provider_id == MODEL.provider_id
         return RuntimeAvailability(
             self.available,
-            HardwareCapabilities(
+            self.measured
+            or HardwareCapabilities(
                 frozenset({ComputePrecision.FLOAT16}) if self.cuda else frozenset(),
                 frozenset({ComputePrecision.INT8}),
             ),
@@ -212,3 +219,52 @@ def test_option_identity_includes_provider_model_source_and_profile() -> None:
         ),
     )
     assert len({option_identity(item) for item in variants}) == len(variants)
+
+
+def _measured_option(model_id: str, registered: bool = True, **memory: int | None):
+    hardware = HardwareCapabilities(
+        frozenset({ComputePrecision.FLOAT16}),
+        frozenset({ComputePrecision.INT8}),
+        gpu_name="RTX 4060 Laptop GPU",
+        **memory,
+    )
+    catalog = Catalog(registered, replace(MODEL, model_id=model_id))
+    return (
+        GetTranscriptionOptions(catalog, Runtime(measured=hardware))
+        .execute()
+        .options[0]
+    )
+
+
+def test_measured_vram_drives_recommendation_and_device_name() -> None:
+    turbo = _measured_option("turbo", vram_total_mib=8188, vram_free_mib=7000)
+    large = _measured_option("large-v3", vram_total_mib=8188, vram_free_mib=7000)
+
+    assert turbo.recommendation is not None
+    assert (turbo.recommendation.recommended, turbo.recommendation.reason) == (
+        True,
+        "gpu_fast_default",
+    )
+    assert large.recommendation is not None
+    assert (large.recommendation.recommended, large.recommendation.reason) == (
+        False,
+        "gpu_quality_fits",
+    )
+    assert turbo.device_name == "RTX 4060 Laptop GPU"
+
+
+def test_measured_recommendation_does_not_depend_on_installation() -> None:
+    option = _measured_option(
+        "turbo", registered=False, vram_total_mib=8188, vram_free_mib=7000
+    )
+
+    assert option.can_start is False
+    assert option.recommendation is not None
+    assert option.recommendation.reason == "gpu_fast_default"
+
+
+def test_unmeasured_hardware_keeps_legacy_recommendation() -> None:
+    option = _measured_option("turbo")
+
+    assert option.recommendation is not None
+    assert option.recommendation.reason == "default_compatible_profile"

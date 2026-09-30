@@ -61,7 +61,7 @@ def test_available_runtime_is_probed_without_constructing_engine(
     assert result.hardware is not None
     assert result.hardware.cuda_compute_types == {"float16"}
     assert "translation" not in result.capabilities
-    assert "word_timestamps" not in result.capabilities
+    assert "word_timestamps" in result.capabilities
     assert "diarization" not in result.capabilities
 
 

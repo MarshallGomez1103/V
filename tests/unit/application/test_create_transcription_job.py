@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -62,8 +63,9 @@ MODEL = ModelDescriptor(
 
 
 class Catalog:
-    def __init__(self, registered: bool = True) -> None:
+    def __init__(self, registered: bool = True, model: ModelDescriptor = MODEL) -> None:
         self.registered = registered
+        self.model = model
 
     def list_models(self) -> tuple[ModelRegistration, ...]:
         status = (
@@ -71,14 +73,19 @@ class Catalog:
             if self.registered
             else InstallationStatus.NOT_REGISTERED
         )
-        return (ModelRegistration(MODEL, status, self.registered),)
+        return (ModelRegistration(self.model, status, self.registered),)
 
 
 class Runtime:
+    def __init__(self, hardware: HardwareCapabilities | None = None) -> None:
+        self.hardware = hardware or HardwareCapabilities(
+            frozenset(), frozenset({ComputePrecision.INT8})
+        )
+
     def probe(self, provider_id: str) -> RuntimeAvailability:
         return RuntimeAvailability(
             True,
-            HardwareCapabilities(frozenset(), frozenset({ComputePrecision.INT8})),
+            self.hardware,
             frozenset({ModelCapability.TRANSCRIPTION}),
         )
 
@@ -161,11 +168,13 @@ def use_case(
     *,
     registered: bool = True,
     jobs: Jobs | None = None,
+    model: ModelDescriptor = MODEL,
+    hardware: HardwareCapabilities | None = None,
 ) -> tuple[CreateTranscriptionJob, Jobs, Selections]:
     jobs = jobs or Jobs()
     selections = Selections()
     create = CreateTranscriptionJob(
-        GetTranscriptionOptions(Catalog(registered), Runtime()),
+        GetTranscriptionOptions(Catalog(registered, model), Runtime(hardware)),
         Projects(PROJECT),
         MediaAssets(ASSET),
         jobs,
@@ -275,3 +284,66 @@ def test_second_job_for_active_media_asset_is_rejected() -> None:
         option_id=option_identity(MODEL),
     )
     assert second.job.id != active.id
+
+
+LARGE = replace(MODEL, model_id="large-v3")
+CUDA = frozenset({ComputePrecision.FLOAT16})
+CPU = frozenset({ComputePrecision.INT8})
+
+
+def _start(create: CreateTranscriptionJob, model: ModelDescriptor) -> None:
+    create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(model),
+    )
+
+
+def test_insufficient_free_vram_is_refused_before_persisting() -> None:
+    hardware = HardwareCapabilities(
+        CUDA, CPU, "GPU", vram_total_mib=8188, vram_free_mib=1200
+    )
+    create, jobs, selections = use_case(model=LARGE, hardware=hardware)
+
+    with pytest.raises(CreateJobError) as error:
+        _start(create, LARGE)
+
+    assert error.value.code is CreateJobFailureCode.INSUFFICIENT_VRAM
+    assert error.value.available_mib == 1200
+    assert error.value.required_mib == 5000
+    assert "RTX" not in error.value.user_message
+    assert not jobs.items
+    assert not selections.items
+
+
+def test_insufficient_free_ram_is_refused_on_cpu() -> None:
+    hardware = HardwareCapabilities(
+        frozenset(), CPU, ram_total_mib=8000, ram_available_mib=900
+    )
+    create, jobs, _ = use_case(model=LARGE, hardware=hardware)
+
+    with pytest.raises(CreateJobError) as error:
+        _start(create, LARGE)
+
+    assert error.value.code is CreateJobFailureCode.INSUFFICIENT_RAM
+    assert error.value.available_mib == 900
+    assert not jobs.items
+
+
+def test_enough_free_memory_creates_the_job() -> None:
+    hardware = HardwareCapabilities(
+        CUDA, CPU, "GPU", vram_total_mib=8188, vram_free_mib=7000
+    )
+    create, jobs, _ = use_case(model=LARGE, hardware=hardware)
+
+    _start(create, LARGE)
+
+    assert len(jobs.items) == 1
+
+
+def test_unmeasured_memory_never_blocks() -> None:
+    create, jobs, _ = use_case(model=LARGE)
+
+    _start(create, LARGE)
+
+    assert len(jobs.items) == 1

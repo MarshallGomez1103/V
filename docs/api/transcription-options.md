@@ -15,10 +15,10 @@ proyecciones de application. No requiere parámetros ni cambia estado.
 | `files_available` | Comprobación superficial de `model.bin`, `config.json`, `tokenizer.json` y el vocabulario que corresponde al modelo (`vocabulary.txt` en tiny/base/small/medium, `vocabulary.json` en large-v3/turbo): archivos regulares no vacíos y sin symlinks. No valida contenido, checksums ni integridad. |
 | `runtime_available` | La clase de engine se puede importar y el probe del runtime responde. No se construye un engine ni se ejecuta inferencia. |
 | `execution` | `ExecutionDecision`: device, precision y fallback_reason, conservando la política existente. Null si no se puede seleccionar. |
-| `device_name` | Null actualmente: el probe no ofrece un nombre fiable. No se infiere VRAM por nombre comercial. |
+| `device_name` | Nombre de la GPU medido con `nvidia-smi` (truncado, solo caracteres imprimibles) cuando la ejecución elegida es `cuda`; null en CPU o si no hay medición. Nunca se infiere VRAM por el nombre comercial. |
 | `capabilities` | Intersección del descriptor y lo expuesto por el adapter VOZ. CPU/GPU son backends que soporta el adapter; la disponibilidad concreta se consulta en execution, no se deduce de esta lista. |
 | `can_start` | Todos los prerrequisitos observables pasan: registro, revisión fijada, archivos mínimos, runtime, ejecución compatible y transcripción. Permite intentar cargar; **no garantiza** integridad, RAM/VRAM suficiente, éxito de inferencia ni validación real CUDA. No significa que exista ya un endpoint para iniciar jobs. |
-| `recommendation` | `{ "recommended": true, "reason": "default_compatible_profile" }` para opciones `fast` que pueden iniciarse; null en los demás casos. Política declarativa, no benchmark. Puede haber varias revisiones locales elegibles: no se inventa cuál es más reciente/mejor. |
+| `recommendation` | `{ "recommended": bool, "reason": str }` o null. **Con hardware medido** se calcula por ajuste a VRAM/RAM (sección siguiente), sea cual sea el estado de instalación (solo si los únicos bloqueos son de instalación). **Sin medición**: `{ "recommended": true, "reason": "default_compatible_profile" }` para opciones `fast` que pueden iniciarse; null en los demás casos. Política declarativa, no benchmark. Puede haber varias revisiones locales elegibles: no se inventa cuál es más reciente/mejor. |
 | `blocking_reasons` | Códigos estables; lista vacía si can_start es true. |
 
 Los códigos de bloqueo son `model_not_registered`, `model_files_missing`,
@@ -29,6 +29,28 @@ o imposibilidad de recomendar son respuestas válidas, no HTTP 500.
 Si no se puede inspeccionar el almacenamiento por un fallo de acceso, se devuelve
 HTTP 503 con `detail.code = transcription_options_unavailable` y un mensaje
 seguro. No se devuelven paths, contenido de manifests ni tracebacks.
+
+## Recomendación por hardware medido (S8.11)
+
+El probe mide, sin cargar ningún modelo: nombre y VRAM total/libre de la primera
+GPU (`nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits`,
+sin shell, timeout de 5 s; solo si CUDA es utilizable) y RAM total/disponible
+(`/proc/meminfo`, solo Linux). Cualquier fallo significa "no medido" (null), nunca
+cero. La función pura `application/hardware_recommendation.recommend` aplica:
+
+| Hardware medido | Opción recomendada (`reason`) |
+| --- | --- |
+| CUDA, VRAM >= 6 GiB | `turbo` recomendado (`gpu_fast_default`); `large-v3` con `recommended=false` (`gpu_quality_fits`) |
+| CUDA, 5 GiB <= VRAM < 6 GiB | `medium` (`gpu_limited_medium`) |
+| CUDA, VRAM < 5 GiB | `small` (`gpu_limited_small`) |
+| Solo CPU, RAM >= 8 GiB | `small` (`cpu_default`) |
+| Solo CPU, RAM < 8 GiB | `base` (`cpu_low_ram`) |
+
+Los demás modelos reciben `recommendation = null`. Origen de la política: las
+cifras de memoria publicadas de faster-whisper/CTranslate2 y los tiempos medidos
+en la máquina objetivo (RTX 4060 Laptop, 8188 MiB: turbo fp16 carga en 1,0 s y
+transcribe 25 s en 0,9 s; large-v3 en 2,1 s / 1,7 s). No es un benchmark
+exhaustivo de VOZ. Sin medición se conserva el comportamiento anterior.
 
 ## Catálogo actual
 

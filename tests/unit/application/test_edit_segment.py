@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -42,6 +43,13 @@ class MemorySegments:
             return False
         self.items[segment.id] = segment
         return True
+
+    def update_speakers(self, assignments: Mapping[UUID, UUID | None]) -> None:
+        for segment_id, speaker_id in assignments.items():
+            if segment_id in self.items:
+                self.items[segment_id] = replace(
+                    self.items[segment_id], speaker_id=speaker_id
+                )
 
 
 def _segment() -> Segment:

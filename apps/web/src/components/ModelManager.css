@@ -1,0 +1,197 @@
+.model-manager {
+  display: grid;
+  gap: 16px;
+}
+
+.model-manager h2,
+.model-manager h3 {
+  margin: 0;
+}
+
+.model-disk {
+  margin: 0;
+  color: var(--muted);
+}
+
+.model-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-row {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.model-row--installed {
+  border-color: var(--line-strong);
+}
+
+.model-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-badge {
+  padding: 2px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.model-badge--recommended,
+.model-badge--installed {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 0;
+}
+
+.model-meta dt {
+  color: var(--muted-dark);
+  font-size: 0.8rem;
+}
+
+.model-meta dd {
+  margin: 0;
+}
+
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.model-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.model-progress progress {
+  flex: 1 1 200px;
+  accent-color: var(--lime);
+}
+
+.model-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.model-error,
+.model-dialog-warning {
+  margin: 0;
+  color: var(--warning);
+}
+
+.model-manager button {
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.model-manager button:disabled {
+  color: var(--muted-dark);
+  cursor: not-allowed;
+}
+
+.model-manager button.model-primary {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.model-manager button.model-danger {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.model-manager button:focus-visible,
+.model-dialog input:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+.model-dialog {
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--paper);
+}
+
+.model-dialog::backdrop {
+  background: rgb(13 18 15 / 75%);
+}
+
+.model-dialog input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: inherit;
+  font: inherit;
+}
+
+.model-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.model-dialog button {
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.model-dialog button.model-primary {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.model-dialog button.model-danger {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.model-dialog button:disabled {
+  color: var(--muted-dark);
+  cursor: not-allowed;
+}
+
+.model-dialog button:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}

@@ -7,7 +7,7 @@ domain entities and UUID identities.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -108,6 +108,13 @@ class SegmentRepository(Protocol):
         """
         ...
 
+    def update_speakers(self, assignments: Mapping[UUID, UUID | None]) -> None:
+        """Set only ``speaker_id`` of the given segments in one transaction.
+
+        Text, words and revisions are untouched; unknown segment ids are ignored.
+        """
+        ...
+
     def get(self, segment_id: UUID) -> Segment | None:
         """Return a segment by identity, or ``None`` when absent."""
         ...
@@ -169,6 +176,14 @@ class SpeakerTurnRepository(Protocol):
 
     def save(self, speaker_turn: SpeakerTurn) -> None:
         """Persist the current snapshot of an existing speaker turn."""
+        ...
+
+    def replace_for_transcript(
+        self,
+        transcript_id: UUID,
+        turns: Sequence[SpeakerTurn],
+    ) -> None:
+        """Atomically swap every turn of a transcript for the given ones."""
         ...
 
     def get(self, speaker_turn_id: UUID) -> SpeakerTurn | None:

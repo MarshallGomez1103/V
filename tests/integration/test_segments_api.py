@@ -20,6 +20,7 @@ from voz.domain.entities.project import Project
 from voz.domain.entities.segment import Segment
 from voz.domain.entities.speaker import Speaker
 from voz.domain.entities.transcript import Transcript
+from voz.domain.entities.word import Word
 from voz.infrastructure.persistence.database import create_sqlite_engine
 from voz.infrastructure.persistence.repositories import (
     SqliteMediaAssetRepository,
@@ -29,7 +30,7 @@ from voz.infrastructure.persistence.repositories import (
     SqliteTranscriptRepository,
 )
 from voz.infrastructure.persistence.schema import metadata
-from voz.interfaces.api.segments import create_segments_router
+from voz.interfaces.api.segments import create_segments_router, segment_view
 
 NOW = datetime(2026, 9, 30, 9, tzinfo=UTC)
 
@@ -47,8 +48,18 @@ class Harness:
         self.speaker = Speaker(project.id, "Ana", "#112233")
         SqliteSpeakerRepository(self.engine).add(self.speaker)
         self.segments = SqliteSegmentRepository(self.engine)
+        segment_id = uuid4()
         self.segment = Segment(
-            transcript.id, 0, 250, "hola mundo", speaker_id=self.speaker.id
+            transcript.id,
+            0,
+            250,
+            "hola mundo",
+            id=segment_id,
+            words=(
+                Word(segment_id, 0, 100, "hola"),
+                Word(segment_id, 100, 250, "mundo"),
+            ),
+            speaker_id=self.speaker.id,
         )
         self.segments.add(self.segment)
         self.app = FastAPI()
@@ -122,9 +133,11 @@ def test_put_edits_text_and_preserves_literal_asr(harness: Harness) -> None:
         "edited": True,
         "revision": 1,
         "speaker_id": str(harness.speaker.id),
+        "words": [],  # timings describe the ASR text, not the edited one
     }
     stored = harness.segments.get(segment.id)
     assert stored is not None
+    assert len(stored.words) == 2  # kept in storage
     assert stored.text == "Hola, mundo."
     assert stored.original_text == "hola mundo"
 
@@ -161,3 +174,13 @@ def test_put_unknown_segment_and_invalid_text(harness: Harness) -> None:
 
     status, _ = harness.put(harness.segment.id, {"text": "x"})
     assert status == 422
+
+
+def test_segment_view_exposes_words_only_while_the_text_is_unedited(
+    harness: Harness,
+) -> None:
+    assert segment_view(harness.segment)["words"] == [
+        {"start_ms": 0, "end_ms": 100, "text": "hola"},
+        {"start_ms": 100, "end_ms": 250, "text": "mundo"},
+    ]
+    assert segment_view(harness.segment.edit_text("otro"))["words"] == []

@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 import importlib
 import math
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Sequence
 from pathlib import Path
 from threading import RLock
 from traceback import clear_frames
@@ -19,8 +19,17 @@ from voz.application.ports.transcription import (
     TranscriptionOptions,
     TranscriptionResult,
     TranscriptionSegment,
+    TranscriptionWord,
+    clamp_words,
 )
 from voz.domain.entities.model_descriptor import ModelDescriptor
+
+
+class _EngineWord(Protocol):
+    start: float
+    end: float
+    word: str
+    probability: float
 
 
 class _EngineSegment(Protocol):
@@ -224,35 +233,30 @@ class FasterWhisperProvider:
         cancellation: TranscriptionCancellationToken | None,
     ) -> TranscriptionResult:
         engine: _Engine | None = None
-        raw_segments: Iterable[_EngineSegment] | None = None
         try:
             engine = self._engine_for(options.model, cancellation)
             self._raise_if_cancelled(cancellation)
-            raw_segments, info = engine.transcribe(
-                audio,
-                language=options.language,
-                word_timestamps=False,
-                clip_timestamps=(
-                    "0"
-                    if options.clip is None
-                    else [
-                        options.clip.start_ms / 1_000,
-                        options.clip.end_ms / 1_000,
-                    ]
-                ),
-            )
             try:
-                self._raise_if_cancelled(cancellation)
-                segments: list[TranscriptionSegment] = []
-                for raw_segment in raw_segments:
-                    self._raise_if_cancelled(cancellation)
-                    segments.append(self._canonical_segment(raw_segment))
-            finally:
-                # Faster Whisper yields lazily; a retained cancellation traceback
-                # must not keep its suspended generator and resources alive.
-                if isinstance(raw_segments, Generator):
-                    raw_segments.close()
-            language = info.language if info.language is not None else options.language
+                segments, language = self._run_engine(
+                    engine, audio, options, options.word_timestamps, cancellation
+                )
+            except Exception as error:
+                # Word timing is best-effort: when the alignment step breaks, redo
+                # the chunk once without words so the job still completes.
+                # ponytail: retry only when the audio can be rewound; other
+                # failures (cancel, invalid audio, closed stream) keep their code.
+                if not (
+                    options.word_timestamps
+                    and not isinstance(error, TranscriptionError)
+                    and not isinstance(error, self._invalid_audio_errors)
+                    and audio.seekable()
+                ):
+                    raise
+                self._clear_failure_frames(error)
+                audio.seek(0)
+                segments, language = self._run_engine(
+                    engine, audio, options, False, cancellation
+                )
             self._raise_if_cancelled(cancellation)
             return TranscriptionResult(segments=tuple(segments), language=language)
         except TranscriptionError as error:
@@ -279,7 +283,43 @@ class FasterWhisperProvider:
             # Exceptions can outlive this call. Do not retain our local engine
             # or iterable references in their traceback frames.
             engine = None
-            raw_segments = None
+
+    def _run_engine(
+        self,
+        engine: _Engine,
+        audio: BinaryIO,
+        options: TranscriptionOptions,
+        word_timestamps: bool,
+        cancellation: TranscriptionCancellationToken | None,
+    ) -> tuple[list[TranscriptionSegment], str | None]:
+        raw_segments, info = engine.transcribe(
+            audio,
+            language=options.language,
+            word_timestamps=word_timestamps,
+            clip_timestamps=(
+                "0"
+                if options.clip is None
+                else [
+                    options.clip.start_ms / 1_000,
+                    options.clip.end_ms / 1_000,
+                ]
+            ),
+        )
+        try:
+            self._raise_if_cancelled(cancellation)
+            segments: list[TranscriptionSegment] = []
+            for raw_segment in raw_segments:
+                self._raise_if_cancelled(cancellation)
+                segments.append(self._canonical_segment(raw_segment, word_timestamps))
+        finally:
+            # Faster Whisper yields lazily; a retained cancellation traceback
+            # must not keep its suspended generator and resources alive.
+            if isinstance(raw_segments, Generator):
+                raw_segments.close()
+        return (
+            segments,
+            info.language if info.language is not None else options.language,
+        )
 
     def _engine_for(
         self,
@@ -324,15 +364,55 @@ class FasterWhisperProvider:
             )
 
     @staticmethod
-    def _canonical_segment(raw_segment: _EngineSegment) -> TranscriptionSegment:
+    def _canonical_segment(
+        raw_segment: _EngineSegment,
+        with_words: bool = False,
+    ) -> TranscriptionSegment:
         start = float(raw_segment.start)
         end = float(raw_segment.end)
         if not math.isfinite(start) or not math.isfinite(end):
             raise ValueError("provider returned non-finite offsets")
+        start_ms = round(start * 1_000)
+        end_ms = round(end * 1_000)
+        words = ()
+        if with_words:
+            # Optional on the protocol (so word-less engines still fit) and None
+            # when the engine could not align a span.
+            raw_words = cast(
+                "Sequence[_EngineWord]", getattr(raw_segment, "words", None) or ()
+            )
+            words = clamp_words(
+                tuple(
+                    word
+                    for word in map(FasterWhisperProvider._canonical_word, raw_words)
+                    if word is not None
+                ),
+                start_ms,
+                end_ms,
+            )
         return TranscriptionSegment(
-            start_ms=round(start * 1_000),
-            end_ms=round(end * 1_000),
+            start_ms=start_ms,
+            end_ms=end_ms,
             text=raw_segment.text,
+            words=words,
+        )
+
+    @staticmethod
+    def _canonical_word(raw_word: _EngineWord) -> TranscriptionWord | None:
+        """Map one engine word; an unusable word is skipped, never fatal."""
+        start = float(raw_word.start)
+        end = float(raw_word.end)
+        if not (math.isfinite(start) and math.isfinite(end)) or not raw_word.word:
+            return None
+        start_ms = max(0, round(start * 1_000))
+        probability = float(raw_word.probability)
+        return TranscriptionWord(
+            start_ms=start_ms,
+            end_ms=max(start_ms, round(end * 1_000)),
+            text=raw_word.word,
+            probability=(
+                min(1.0, max(0.0, probability)) if math.isfinite(probability) else None
+            ),
         )
 
     @staticmethod

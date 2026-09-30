@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import BinaryIO, Protocol, cast, runtime_checkable
 
@@ -60,12 +61,70 @@ def _validate_language(language: object) -> None:
 
 
 @dataclass(frozen=True, slots=True)
+class TranscriptionWord:
+    """One provider word inside a segment, before domain identities exist.
+
+    Text is literal (providers usually prefix a word-boundary space). Zero
+    duration is allowed here because engines emit it; ``clamp_words`` drops such
+    words before persistence since the domain requires ``start_ms < end_ms``.
+    """
+
+    start_ms: int
+    end_ms: int
+    text: str
+    probability: float | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.start_ms) is not int or type(self.end_ms) is not int:
+            raise TypeError("word offsets must be integer milliseconds")
+        if self.start_ms < 0 or self.end_ms < self.start_ms:
+            raise ValueError("word offsets must be non-negative and not reversed")
+        raw_text = cast(object, self.text)
+        if not isinstance(raw_text, str):
+            raise TypeError("word text must be a string")
+        if raw_text == "":
+            raise ValueError("word text cannot be empty")
+        raw_probability = cast(object, self.probability)
+        if raw_probability is not None and (
+            isinstance(raw_probability, bool)
+            or not isinstance(raw_probability, float)
+            or not math.isfinite(raw_probability)
+            or not 0.0 <= raw_probability <= 1.0
+        ):
+            raise ValueError("word probability must be a float in [0, 1] or None")
+
+
+def clamp_words(
+    words: tuple[TranscriptionWord, ...],
+    start_ms: int,
+    end_ms: int,
+) -> tuple[TranscriptionWord, ...]:
+    """Clip words to ``[start_ms, end_ms]`` keeping them ordered and disjoint.
+
+    Words that end up without duration (outside the bounds, fully overlapped by
+    the previous word, or zero-length) are dropped: the segment text stays whole,
+    only the timing hint is lost.
+    """
+    kept: list[TranscriptionWord] = []
+    cursor = start_ms
+    for word in words:
+        word_start = max(word.start_ms, cursor)
+        word_end = min(word.end_ms, end_ms)
+        if word_end <= word_start:
+            continue
+        kept.append(replace(word, start_ms=word_start, end_ms=word_end))
+        cursor = word_end
+    return tuple(kept)
+
+
+@dataclass(frozen=True, slots=True)
 class TranscriptionSegment:
     """Provider output span before domain identities are assigned."""
 
     start_ms: int
     end_ms: int
     text: str
+    words: tuple[TranscriptionWord, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.start_ms) is not int or type(self.end_ms) is not int:
@@ -79,6 +138,18 @@ class TranscriptionSegment:
             raise TypeError("transcription text must be a string")
         if raw_text == "":
             raise ValueError("transcription text cannot be empty")
+        raw_words = cast(object, self.words)
+        if not isinstance(raw_words, tuple):
+            raise TypeError("segment words must be a tuple")
+        previous_end_ms = self.start_ms
+        for word in cast(tuple[object, ...], raw_words):
+            if not isinstance(word, TranscriptionWord):
+                raise TypeError("words must contain only TranscriptionWord instances")
+            if word.start_ms < previous_end_ms or word.end_ms > self.end_ms:
+                raise ValueError(
+                    "words must be ordered, non-overlapping and inside the segment"
+                )
+            previous_end_ms = word.end_ms
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +203,7 @@ class TranscriptionOptions:
     model: ModelDescriptor
     language: str | None = None
     clip: TranscriptionClip | None = None
+    word_timestamps: bool = True
 
     def __post_init__(self) -> None:
         raw_model = cast(object, self.model)
@@ -143,6 +215,8 @@ class TranscriptionOptions:
         raw_clip = cast(object, self.clip)
         if raw_clip is not None and not isinstance(raw_clip, TranscriptionClip):
             raise TypeError("clip must be a TranscriptionClip or None")
+        if type(self.word_timestamps) is not bool:
+            raise TypeError("word_timestamps must be a bool")
 
 
 @runtime_checkable
@@ -174,4 +248,6 @@ __all__ = [
     "TranscriptionProvider",
     "TranscriptionResult",
     "TranscriptionSegment",
+    "TranscriptionWord",
+    "clamp_words",
 ]

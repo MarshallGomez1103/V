@@ -28,6 +28,7 @@ from voz.application.ports.transcription import (
     TranscriptionOptions,
     TranscriptionResult,
     TranscriptionSegment,
+    TranscriptionWord,
 )
 from voz.application.ports.transcription_options import (
     InstallationStatus,
@@ -113,7 +114,10 @@ class Provider:
         cancellation: TranscriptionCancellationToken | None = None,
     ) -> TranscriptionResult:
         del audio, options, cancellation
-        return TranscriptionResult((TranscriptionSegment(0, 250, "hola"),), "es")
+        words = (TranscriptionWord(0, 100, " ho"), TranscriptionWord(100, 250, "la"))
+        return TranscriptionResult(
+            (TranscriptionSegment(0, 250, "hola", words=words),), "es"
+        )
 
 
 class Preparer:
@@ -300,6 +304,10 @@ def test_create_then_complete_and_read_segments(tmp_path: Path) -> None:
         items = cast(list[dict[str, object]], segments["segments"])
         assert [(i["start_ms"], i["end_ms"], i["text"]) for i in items] == [
             (0, 250, "hola")
+        ]
+        assert items[0]["words"] == [
+            {"start_ms": 0, "end_ms": 100, "text": "ho"},
+            {"start_ms": 100, "end_ms": 250, "text": "la"},
         ]
 
         status, conflict = harness.request("POST", f"/api/jobs/{job_id}/cancel")

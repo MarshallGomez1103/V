@@ -10,7 +10,10 @@ from uuid import UUID, uuid5
 
 from sqlalchemy import Engine, RowMapping, insert, select, update
 
-from voz.application.ports.transcription import TranscriptionSegment
+from voz.application.ports.transcription import (
+    TranscriptionSegment,
+    TranscriptionWord,
+)
 from voz.application.ports.transcription_checkpoint import TranscriptionCheckpoint
 from voz.domain.entities.transcription_job import TranscriptionJob
 from voz.infrastructure.persistence.schema import (
@@ -19,16 +22,49 @@ from voz.infrastructure.persistence.schema import (
 )
 
 
+def _segment_json(segment: TranscriptionSegment) -> dict[str, object]:
+    item: dict[str, object] = {
+        "start_ms": segment.start_ms,
+        "end_ms": segment.end_ms,
+        "text": segment.text,
+    }
+    if segment.words:  # checkpoints without words keep their original shape
+        item["words"] = [
+            {
+                "start_ms": word.start_ms,
+                "end_ms": word.end_ms,
+                "text": word.text,
+                "probability": word.probability,
+            }
+            for word in segment.words
+        ]
+    return item
+
+
+def _words_from_json(value: object) -> tuple[TranscriptionWord, ...]:
+    if value is None:  # written before word timestamps existed
+        return ()
+    if not isinstance(value, list):
+        raise TypeError("persisted words must be a list")
+    words: list[TranscriptionWord] = []
+    for item in cast(list[object], value):
+        if not isinstance(item, dict):
+            raise TypeError("persisted word must be an object")
+        values = cast(dict[str, object], item)
+        words.append(
+            TranscriptionWord(
+                start_ms=cast(int, values.get("start_ms")),
+                end_ms=cast(int, values.get("end_ms")),
+                text=cast(str, values.get("text")),
+                probability=cast("float | None", values.get("probability")),
+            )
+        )
+    return tuple(words)
+
+
 def _segments_json(segments: tuple[TranscriptionSegment, ...]) -> str:
     return json.dumps(
-        [
-            {
-                "start_ms": segment.start_ms,
-                "end_ms": segment.end_ms,
-                "text": segment.text,
-            }
-            for segment in segments
-        ],
+        [_segment_json(segment) for segment in segments],
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -50,6 +86,7 @@ def _segments_from_json(value: object) -> tuple[TranscriptionSegment, ...]:
                 start_ms=cast(int, values.get("start_ms")),
                 end_ms=cast(int, values.get("end_ms")),
                 text=cast(str, values.get("text")),
+                words=_words_from_json(values.get("words")),
             )
         )
     return tuple(segments)

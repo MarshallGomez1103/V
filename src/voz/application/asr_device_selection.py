@@ -28,10 +28,19 @@ class FallbackReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class HardwareCapabilities:
-    """Compute types reported by the installed local runtime."""
+    """Compute types reported by the installed local runtime.
+
+    The memory fields are optional measurements (MiB); ``None`` means "not
+    measured", never "zero".
+    """
 
     cuda_compute_types: frozenset[ComputePrecision]
     cpu_compute_types: frozenset[ComputePrecision]
+    gpu_name: str | None = None
+    vram_total_mib: int | None = None
+    vram_free_mib: int | None = None
+    ram_total_mib: int | None = None
+    ram_available_mib: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

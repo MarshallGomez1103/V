@@ -11,13 +11,23 @@ Es el mismo shape en `GET /api/transcripts/{transcript_id}/segments`
 ```json
 {
   "id": "uuid", "start_ms": 0, "end_ms": 250, "text": "Hola, mundo.",
-  "edited": true, "revision": 1, "speaker_id": "uuid | null"
+  "edited": true, "revision": 1, "speaker_id": "uuid | null",
+  "words": [{"start_ms": 0, "end_ms": 120, "text": "Hola,"}]
 }
 ```
 
 `edited` es `false` y `revision` es `0` hasta la primera edición; cada edición
 correcta suma 1 a `revision`. `speaker_id` es `null` si el segmento no tiene
 hablante asignado.
+
+`words` (S7.04) son los timings de palabra del ASR dentro del segmento: ordenados,
+sin solapes, en milisegundos y con `start_ms < end_ms` dentro de
+`[start_ms, end_ms]` del segmento; `text` va sin espacios extremos. Es `[]` cuando
+el modelo no entregó palabras (fallback S7.08: el job completa igual, solo sin
+timing de palabra) y **siempre `[]` si el segmento está editado (`edited: true`)**:
+los timings describen el texto ASR original, no el corregido, así que no se
+exponen (siguen guardados). La probabilidad de cada palabra se conserva en los
+checkpoints pero no se expone.
 
 ## `PUT /api/segments/{segment_id}`
 
@@ -40,8 +50,9 @@ Body: `{"text": str, "revision": int}`. `revision` es la que el cliente cargó
 - **Atomicidad.** La escritura es `UPDATE segments SET … WHERE id = ? AND
   revision = ?`; si otra pestaña editó entre la lectura y la escritura, el
   resultado es 409 (con el estado actual), no una pérdida silenciosa.
-- Los timings de palabras (`words`) no se tocan al editar el texto del
-  segmento. Guardar un texto idéntico al actual también cuenta como edición.
+- Los timings de palabras (`words`) no se borran al editar el texto del
+  segmento, pero la respuesta los oculta (`words: []`) desde la primera edición.
+  Guardar un texto idéntico al actual también cuenta como edición.
 
 ## Persistencia
 

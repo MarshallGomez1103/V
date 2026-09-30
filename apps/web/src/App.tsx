@@ -7,6 +7,7 @@ import { AutosaveStatus } from './components/AutosaveStatus'
 import { ExportMenu } from './components/ExportMenu'
 import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
+import { ModelManager } from './components/ModelManager'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
 import { SegmentEditor } from './components/SegmentEditor'
 import { SegmentList } from './components/SegmentList'
@@ -63,6 +64,10 @@ export function App() {
   const { seekToMs, seekNonce, seek } = useSeek()
   const [currentMs, setCurrentMs] = useState<number | undefined>(undefined)
   const drafts = useSegmentDrafts()
+  const [modelsVersion, setModelsVersion] = useState(0)
+  const refreshModels = useCallback(() => {
+    setModelsVersion((version) => version + 1)
+  }, [])
   const renderSegmentText = useCallback(
     (segment: TranscriptSegment, query: string) => (
       <SegmentEditor segment={segment} drafts={drafts} query={query} />
@@ -101,6 +106,9 @@ export function App() {
           <BrandMark />
           <span>VOZ</span>
         </a>
+        <a className="topbar-link" href="#modelos">
+          Modelos
+        </a>
         <div className="privacy-badge">
           <LockIcon />
           <span>Local y privado</span>
@@ -138,6 +146,7 @@ export function App() {
                   </div>
                 </div>
                 <TranscriptionOptionsSelector
+                  refreshKey={modelsVersion}
                   value={optionId}
                   onChange={setOptionId}
                   disabled={creating || jobId !== null}
@@ -234,6 +243,10 @@ export function App() {
               </ul>
             </article>
           </aside>
+
+          <div id="modelos" className="models-slot">
+            <ModelManager onModelsChanged={refreshModels} />
+          </div>
         </section>
       </main>
 

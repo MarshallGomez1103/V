@@ -24,9 +24,11 @@ from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.edit_segment import EditSegmentText
 from voz.application.export.service import ExportTranscript
 from voz.application.get_transcription_options import GetTranscriptionOptions
+from voz.application.import_external_model import ImportExternalModel
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
 from voz.application.model_manager import ListModels, RemoveModel
+from voz.application.model_tasks import ModelTaskRunner
 from voz.application.normalize_media import NormalizeImportedMedia
 from voz.application.ports.transcription import TranscriptionProvider
 from voz.application.ports.transcription_job_selection import JobSelection
@@ -78,6 +80,7 @@ from voz.interfaces.api.job_views import job_view as job_view_without_selection
 from voz.interfaces.api.jobs import create_jobs_router, job_view
 from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
+from voz.interfaces.api.model_tasks import create_model_tasks_router
 from voz.interfaces.api.models import create_models_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.segments import create_segments_router
@@ -192,6 +195,12 @@ def create_app(
         disk_space=disk_space,
     )
     model_catalog = FasterWhisperModelCatalog()
+    buzz_cache = BuzzModelCache()
+    model_tasks = ModelTaskRunner(
+        model_catalog,
+        model_store,
+        ImportExternalModel(buzz_cache, model_store, model_catalog.entries()),
+    )
     if transcription_options is None:
         transcription_options = GetTranscriptionOptions(
             LocalTranscriptionModelCatalog(model_store),
@@ -253,6 +262,7 @@ def create_app(
             upgrade_to_head(resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY)
             runner.recover()
             runner.start()
+            model_tasks.start()
 
         async def __aexit__(
             self,
@@ -260,6 +270,7 @@ def create_app(
             exc: BaseException | None,
             tb: TracebackType | None,
         ) -> None:
+            model_tasks.stop()
             runner.stop()
             for runtime in runtimes.values():
                 runtime.close()
@@ -329,11 +340,12 @@ def create_app(
                 model_catalog,
                 model_store,
                 disk_space=disk_space,
-                external=BuzzModelCache(),
+                external=buzz_cache,
             ),
             RemoveModel(model_catalog, model_store, jobs, selections),
         )
     )
+    application.include_router(create_model_tasks_router(model_tasks))
     application.include_router(
         create_export_router(
             ExportTranscript(transcripts, segments, speakers, projects, media_assets)

@@ -11,7 +11,7 @@ from typing import BinaryIO
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
 from voz.application.ports.transcription import (
@@ -20,6 +20,7 @@ from voz.application.ports.transcription import (
     TranscriptionOptions,
     TranscriptionResult,
     TranscriptionSegment,
+    TranscriptionWord,
 )
 from voz.application.ports.transcription_checkpoint import TranscriptionCheckpoint
 from voz.application.recoverable_transcription import RecoverableTranscription
@@ -347,4 +348,74 @@ def test_failed_checkpoint_insert_cannot_advance_job_progress(tmp_path: Path) ->
     assert persisted is not None
     assert persisted.progress == 1 / 3
     assert checkpoints.list_for_job(job.id) == (first,)
+    engine.dispose()
+
+
+def _checkpoint_with(
+    job: TranscriptionJob, segments: tuple[TranscriptionSegment, ...]
+) -> tuple[TranscriptionCheckpoint, TranscriptionJob]:
+    advanced = job.with_progress(1 / 3, at=BASE_TIME + timedelta(seconds=1))
+    return (
+        TranscriptionCheckpoint(
+            job_id=job.id,
+            chunk_index=0,
+            process_start_ms=0,
+            process_end_ms=35_000,
+            owned_start_ms=0,
+            owned_end_ms=30_000,
+            provider_id=DESCRIPTOR.provider_id,
+            model_id=DESCRIPTOR.model_id,
+            model_source=DESCRIPTOR.source,
+            model_revision=DESCRIPTOR.revision,
+            requested_language=None,
+            segments=segments,
+            language="es",
+            progress=advanced.progress,
+            job_progress=advanced.progress,
+            completed_at=advanced.updated_at,
+        ),
+        advanced,
+    )
+
+
+def test_checkpoint_round_trips_word_timestamps(tmp_path: Path) -> None:
+    job, engine = _seed_job((tmp_path / "voz.db").absolute())
+    checkpoints = SqliteTranscriptionCheckpointStore(engine)
+    segments = (
+        TranscriptionSegment(
+            0,
+            1_000,
+            " hola mundo",
+            words=(
+                TranscriptionWord(0, 400, " hola", 0.75),
+                TranscriptionWord(400, 1_000, " mundo"),
+            ),
+        ),
+        TranscriptionSegment(1_000, 2_000, " sin palabras"),
+    )
+    checkpoint, advanced = _checkpoint_with(job, segments)
+
+    checkpoints.commit(checkpoint, advanced)
+
+    assert checkpoints.list_for_job(job.id) == (checkpoint,)
+    engine.dispose()
+
+
+def test_checkpoints_written_before_word_timestamps_still_load(tmp_path: Path) -> None:
+    job, engine = _seed_job((tmp_path / "voz.db").absolute())
+    checkpoints = SqliteTranscriptionCheckpointStore(engine)
+    checkpoint, advanced = _checkpoint_with(
+        job, (TranscriptionSegment(0, 1_000, " viejo"),)
+    )
+    checkpoints.commit(checkpoint, advanced)
+    with engine.begin() as connection:  # the pre-words payload shape, verbatim
+        connection.execute(
+            text("UPDATE transcription_checkpoints SET segments_json = :json"),
+            {"json": '[{"start_ms":0,"end_ms":1000,"text":" viejo"}]'},
+        )
+
+    (loaded,) = checkpoints.list_for_job(job.id)
+
+    assert loaded.segments == (TranscriptionSegment(0, 1_000, " viejo"),)
+    assert loaded.segments[0].words == ()
     engine.dispose()

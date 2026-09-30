@@ -815,3 +815,20 @@ progress::-moz-progress-bar {
   align-items: center;
   justify-content: space-between;
 }
+
+.topbar-link {
+  margin-left: auto;
+  margin-right: 16px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.topbar-link:hover,
+.topbar-link:focus-visible {
+  color: var(--paper);
+}
+
+.models-slot {
+  grid-column: 1 / -1;
+  scroll-margin-top: 24px;
+}

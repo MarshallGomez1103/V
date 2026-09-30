@@ -62,3 +62,78 @@ y su transcripción, pero no podrán reejecutarse con el modelo hasta reinstalar
 
 Límite conocido: un job creado entre la comprobación de uso y el borrado no queda
 protegido (ventana muy corta, app local monousuario).
+
+## Instalación en segundo plano (MODELS-TASKS-001)
+
+Descargar (1-3 GB desde Hugging Face) o importar (desde la caché de Buzz) no
+cabe en un request: el POST encola una tarea y el cliente consulta su estado.
+Las tareas viven **solo en memoria** (`ModelTaskRunner`, un hilo worker y cola
+FIFO: una tarea pesada a la vez). No son durables a propósito: si la app se
+cierra a mitad, la descarga se reanuda sola desde los `.part` cuando el usuario
+vuelve a pulsar instalar. Al apagar el servidor las tareas en cola o en curso se
+cancelan. Ninguna respuesta contiene rutas ni URLs.
+
+### `POST /api/models/{model_id}/install`
+
+```json
+{ "method": "download", "confirm": true }
+{ "method": "import", "origin": "buzz", "confirm": true }
+```
+
+`method` es `download` o `import` (otro valor: 422 de validación); `origin` solo
+aplica a `import` (por ahora `buzz`, valor por defecto). `confirm` debe ser
+`true`: la descarga es siempre explícita.
+
+| HTTP | `detail.code` | Cuándo |
+| --- | --- | --- |
+| 202 | (cuerpo `TaskView`) | Tarea encolada. Si ya hay una tarea activa (`queued`/`running`) para ese modelo, se devuelve esa misma sin crear otra. |
+| 400 | `model_install_unconfirmed` | `confirm` ausente o distinto de `true`. Se evalúa primero; no encola nada. |
+| 404 | `model_unknown` | El id no está en el catálogo. |
+| 409 | `model_already_installed` | Ya hay una instalación válida de esa fuente y revisión. |
+| 404 | `external_model_not_found` | `method=import` y no hay copia compatible en el origen. |
+
+### `GET /api/model-tasks`
+
+`{ "tasks": [TaskView, ...] }`: las activas y las últimas 20 terminadas, de más
+antigua a más reciente.
+
+### `GET /api/model-tasks/{task_id}`
+
+`TaskView`, o 404 `model_task_not_found` (id desconocido o ya descartado del
+historial).
+
+### `POST /api/model-tasks/{task_id}/cancel`
+
+202 con el `TaskView`. Una tarea en cola pasa a `cancelled` al instante; una en
+curso sigue `running` hasta que el store atiende la cancelación (entre bloques
+de 1 MiB) y entonces pasa a `cancelled`, conservando los `.part`. Repetir el
+cancel sobre una tarea en curso es idempotente. 409 `model_task_terminal` si ya
+terminó; 404 `model_task_not_found` si no existe.
+
+### `TaskView`
+
+```json
+{
+  "id": "5f0c...e1",
+  "model_id": "large-v3",
+  "method": "download",
+  "origin": null,
+  "state": "running",
+  "done_bytes": 1073741824,
+  "total_bytes": 3087284237,
+  "error_code": null,
+  "created_at": "2026-09-30T10:00:00Z",
+  "updated_at": "2026-09-30T10:00:12Z"
+}
+```
+
+| Campo | Significado |
+| --- | --- |
+| `state` | `queued`, `running`, `completed`, `failed` o `cancelled`. |
+| `done_bytes`, `total_bytes` | Progreso acumulado de todos los archivos. En cola valen 0 y la suma del catálogo; al completar, `done == total`. |
+| `origin` | `buzz` para `import`; `null` para `download`. |
+| `error_code` | Solo con `failed`; `null` en el resto. Códigos estables: los de `ModelInstallationFailureCode` (`model_installation_network_error`, `model_installation_http_error`, `model_installation_checksum_mismatch`, `disk_space_insufficient`, `model_installation_io_error`, `model_installation_invalid_snapshot`, ...), `external_model_not_found` si la copia desapareció antes de importar, y `model_task_failed` para cualquier error inesperado (el detalle va al log, nunca a la respuesta). |
+
+Flujo típico del cliente: `POST install` -> sondear `GET /api/model-tasks/{id}`
+mientras `state` sea `queued`/`running` -> al terminar refrescar `GET /api/models`
+(`installed: true`).

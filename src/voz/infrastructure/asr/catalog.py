@@ -18,6 +18,7 @@ _CAPABILITIES = frozenset(
         ModelCapability.LANGUAGE_DETECTION,
         ModelCapability.CPU,
         ModelCapability.GPU,
+        ModelCapability.WORD_TIMESTAMPS,
     }
 )
 

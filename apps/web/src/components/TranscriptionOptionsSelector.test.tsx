@@ -210,4 +210,54 @@ describe('TranscriptionOptionsSelector', () => {
 
     expect(signal?.aborted).toBe(true)
   })
+
+  it('ordena por catálogo con las opciones iniciables primero', async () => {
+    const tiny = option({
+      option_id: 'o-tiny',
+      model_id: 'tiny',
+      display_name: 'Faster Whisper tiny',
+      recommendation: null,
+    })
+    const small = option({
+      option_id: 'o-small',
+      model_id: 'small',
+      display_name: 'Faster Whisper small',
+      recommendation: null,
+    })
+    const custom = option({
+      option_id: 'o-custom',
+      model_id: 'zzz-custom',
+      display_name: 'Custom',
+      recommendation: null,
+    })
+    stubFetch(jsonResponse(200, { options: [custom, BLOCKED, tiny, small, READY] }))
+
+    render(<TranscriptionOptionsSelector value={null} onChange={vi.fn()} />)
+
+    await screen.findAllByRole('radio')
+    expect(
+      screen.getAllByRole('radio').map((radio) => radio.getAttribute('value')),
+    ).toEqual(['option-v1-ready', 'o-small', 'o-tiny', 'o-custom', 'option-v1-blocked'])
+  })
+
+  it('vuelve a pedir las opciones cuando cambia refreshKey', async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(200, { options: [BLOCKED] }),
+      jsonResponse(200, { options: [READY] }),
+    )
+
+    const { rerender } = render(
+      <TranscriptionOptionsSelector value={null} onChange={vi.fn()} refreshKey={0} />,
+    )
+    const blocked = await screen.findByRole('radio', { name: /large-v3/i })
+    expect(blocked).toHaveProperty('disabled', true)
+
+    rerender(
+      <TranscriptionOptionsSelector value={null} onChange={vi.fn()} refreshKey={1} />,
+    )
+
+    const ready = await screen.findByRole('radio', { name: /turbo/i })
+    expect(ready).toHaveProperty('disabled', false)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })

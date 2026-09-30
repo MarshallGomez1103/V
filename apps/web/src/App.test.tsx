@@ -9,13 +9,24 @@ describe('App', () => {
   })
 
   it('renders the import card enabled and the health status', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce({
+    let healthCalls = 0
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/health')) {
+        healthCalls += 1
+        return healthCalls === 1
+          ? Promise.reject(new Error('offline'))
+          : Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({ status: 'ok', service: 'voz' }),
+            })
+      }
+      // Otras secciones (p.ej. Modelos) cargan su propio estado.
+      return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ status: 'ok', service: 'voz' }),
+        json: () =>
+          Promise.resolve({ models: [], disk: { models_bytes: 0, free_bytes: null }, tasks: [] }),
       })
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
@@ -31,6 +42,6 @@ describe('App', () => {
     )
 
     expect(await screen.findByText('Disponible')).toBeDefined()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(healthCalls).toBe(2)
   })
 })

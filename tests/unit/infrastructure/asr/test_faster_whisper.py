@@ -68,7 +68,7 @@ class _Engine:
     ) -> tuple[Iterable[_Segment], _Info]:
         assert audio.read() == b"pcm"
         assert language == self.expected_language
-        assert word_timestamps is False
+        assert word_timestamps is True
         assert clip_timestamps == "0"
         return iter(self.segments), _Info(self.language)
 

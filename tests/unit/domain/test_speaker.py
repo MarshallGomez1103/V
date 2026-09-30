@@ -6,7 +6,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from voz.domain.entities.speaker import Speaker
+from voz.domain.entities.speaker import (
+    SPEAKER_PALETTE,
+    Speaker,
+    speaker_palette_color,
+)
 
 
 def test_speaker_generates_identity_and_aware_timestamps() -> None:
@@ -128,3 +132,13 @@ def test_speaker_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         speaker.name = "Docente"  # type: ignore[misc]
+
+
+def test_palette_is_fixed_valid_and_cycles() -> None:
+    assert len(set(SPEAKER_PALETTE)) == len(SPEAKER_PALETTE)
+    for index, color in enumerate(SPEAKER_PALETTE):
+        assert speaker_palette_color(index) == color
+        Speaker(uuid4(), "x", color)  # every entry is a valid #rrggbb color
+    assert speaker_palette_color(len(SPEAKER_PALETTE)) == SPEAKER_PALETTE[0]
+    with pytest.raises(ValueError):
+        speaker_palette_color(-1)

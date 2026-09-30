@@ -116,7 +116,7 @@ class _ContractEngine:
         clip_timestamps: str | list[float],
     ) -> tuple[Iterable[_EngineSegment], _EngineInfo]:
         del language
-        assert word_timestamps is False
+        assert word_timestamps is True
         assert clip_timestamps == "0"
         try:
             with wave.open(BytesIO(audio.read()), "rb") as normalized:

@@ -54,7 +54,7 @@ class _Engine:
         clip_timestamps: str | list[float],
     ) -> tuple[Iterable[_Segment], _Info]:
         assert language is None
-        assert word_timestamps is False
+        assert word_timestamps is True
         self.clip_timestamps.append(clip_timestamps)
         with wave.open(audio, "rb") as clipped:
             assert clipped.getnchannels() == 1

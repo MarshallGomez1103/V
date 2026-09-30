@@ -33,6 +33,14 @@ def segment_view(segment: Segment) -> dict[str, object]:
         "edited": segment.edited,
         "revision": segment.revision,
         "speaker_id": None if segment.speaker_id is None else str(segment.speaker_id),
+        # Timings describe the ASR text; once the text is edited they no longer
+        # match it, so they are withheld (kept in storage, not exposed).
+        "words": []
+        if segment.edited
+        else [
+            {"start_ms": word.start_ms, "end_ms": word.end_ms, "text": word.text}
+            for word in segment.words
+        ],
     }
 
 

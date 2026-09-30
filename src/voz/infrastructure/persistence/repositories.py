@@ -511,6 +511,15 @@ class SqliteSegmentRepository:
             )
             return result.rowcount == 1
 
+    def update_speakers(self, assignments: Mapping[UUID, UUID | None]) -> None:
+        with self._engine.begin() as connection:
+            for segment_id, speaker_id in assignments.items():
+                connection.execute(
+                    update(segments)
+                    .where(segments.c.id == str(segment_id))
+                    .values(speaker_id=None if speaker_id is None else str(speaker_id))
+                )
+
     def get(self, segment_id: UUID) -> Segment | None:
         with self._engine.connect() as connection:
             row = (
@@ -633,6 +642,25 @@ class SqliteSpeakerTurnRepository:
             speaker_turn.id,
             _speaker_turn_values(speaker_turn),
         )
+
+    def replace_for_transcript(
+        self,
+        transcript_id: UUID,
+        turns: Sequence[SpeakerTurn],
+    ) -> None:
+        if any(turn.transcript_id != transcript_id for turn in turns):
+            raise ValueError("every speaker turn must belong to the transcript")
+        with self._engine.begin() as connection:
+            connection.execute(
+                delete(speaker_turns).where(
+                    speaker_turns.c.transcript_id == str(transcript_id)
+                )
+            )
+            if turns:
+                connection.execute(
+                    insert(speaker_turns),
+                    [_speaker_turn_values(turn) for turn in turns],
+                )
 
     def get(self, speaker_turn_id: UUID) -> SpeakerTurn | None:
         row = _one_or_none(self._engine, speaker_turns, speaker_turn_id)

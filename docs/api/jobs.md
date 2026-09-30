@@ -33,7 +33,7 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
 
 | Método y ruta | Request | Respuesta |
 | --- | --- | --- |
-| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` |
+| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; ver "Memoria insuficiente") |
 | `GET /api/jobs/{job_id}` | — | `JobView`; 404 `job_not_found` |
 | `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` |
 | `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 409 `job_terminal` |
@@ -105,6 +105,28 @@ tipado `InsufficientDiskSpace` (`code="disk_space_insufficient"`,
 
 La comprobación es opcional en los casos de uso (`disk_space=None` la omite) y
 se cablea en `bootstrap.py` con el adaptador `ShutilDiskSpace`.
+
+### Memoria insuficiente (S14.05, S14.06)
+
+`POST /api/jobs` compara la memoria **libre medida** (VRAM vía `nvidia-smi`; RAM
+vía `/proc/meminfo`, `MemAvailable`) con el requisito estimado del modelo en el
+dispositivo y precisión que la opción ya resolvió (`execution`). Si no alcanza,
+no se crea el job y se responde 409:
+
+```json
+{"detail": {"code": "insufficient_vram", "message": "Not enough free GPU memory to load this model. Choose a smaller model or use the CPU.", "required_mib": 5000, "available_mib": 1200}}
+```
+
+`insufficient_ram` es análogo para CPU (mensaje: elegir un modelo menor o liberar
+memoria). El mensaje nunca incluye el nombre de la GPU ni rutas; la sugerencia va
+en el propio texto y el cliente puede comparar `required_mib`/`available_mib`.
+
+Requisitos aproximados (MiB; `application/resource_requirements.py`, estimación
+conservadora, no medida sobre VOZ): VRAM float16 tiny 600, base 800, small 1500,
+medium 3000, turbo 2500, large-v3 5000 (x0,7 para `int8`/`int8_float16`); RAM en
+CPU int8 tiny 500, base 600, small 1000, medium 2200, turbo 2200, large-v3 3500
+(x2 para precisiones más anchas). Un modelo fuera de la tabla, o memoria sin
+medir, **nunca bloquea**: la estimación es un aviso temprano, no una garantía.
 
 ### Idempotencia de la reanudación (S14.14)
 

@@ -14,7 +14,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
@@ -43,6 +43,8 @@ from voz.application.ports.transcription import (
     TranscriptionProvider,
     TranscriptionResult,
     TranscriptionSegment,
+    TranscriptionWord,
+    clamp_words,
 )
 from voz.application.ports.transcription_checkpoint import (
     TranscriptionCheckpoint,
@@ -59,6 +61,7 @@ from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
 )
+from voz.domain.entities.word import Word
 
 DEFAULT_CHUNK_DURATION_MS = 30 * 60 * 1_000
 DEFAULT_OVERLAP_MS = 5_000
@@ -429,6 +432,7 @@ class JobRunner:
                         item.end_ms,
                         text,
                         id=segment_id,
+                        words=_domain_words(segment_id, item),
                     )
                 )
 
@@ -459,6 +463,27 @@ class JobRunner:
     def _not_before(self, job: TranscriptionJob) -> datetime:
         now = self.clock()
         return job.updated_at if now < job.updated_at else now
+
+
+def _domain_words(segment_id: UUID, item: TranscriptionSegment) -> tuple[Word, ...]:
+    """Words for one segment: trimmed, non-empty, inside it, ids stable on resume."""
+    stripped: list[TranscriptionWord] = []
+    for word in item.words:
+        text = word.text.strip()  # same boundary-space rule as the segment text
+        if text:
+            stripped.append(replace(word, text=text))
+    return tuple(
+        Word(
+            segment_id,
+            word.start_ms,
+            word.end_ms,
+            word.text,
+            id=uuid5(segment_id, f"word:{index}"),
+        )
+        for index, word in enumerate(
+            clamp_words(tuple(stripped), item.start_ms, item.end_ms)
+        )
+    )
 
 
 def _error_code(error: BaseException) -> str:

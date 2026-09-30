@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from itertools import pairwise
 from pathlib import Path
 from typing import BinaryIO, cast
 from uuid import UUID, uuid4
@@ -44,6 +45,7 @@ from voz.application.ports.transcription import (
     TranscriptionOptions,
     TranscriptionResult,
     TranscriptionSegment,
+    TranscriptionWord,
 )
 from voz.application.ports.transcription_checkpoint import TranscriptionCheckpoint
 from voz.application.ports.transcription_job_selection import JobSelection
@@ -709,4 +711,112 @@ def test_persisted_segments_drop_boundary_spaces_and_blank_spans(
         transcript_id_for(fixture.job.id)
     )
     assert [s.text for s in segments] == ["chunk-1", "chunk-3"]
+    fixture.engine.dispose()
+
+
+class _WordProvider(Provider):
+    """Emits padded and blank words the way raw Whisper output does."""
+
+    def transcribe(
+        self,
+        *,
+        audio: BinaryIO,
+        options: TranscriptionOptions,
+        cancellation: TranscriptionCancellationToken | None = None,
+    ) -> TranscriptionResult:
+        result = super().transcribe(
+            audio=audio, options=options, cancellation=cancellation
+        )
+        (segment,) = result.segments
+        half = segment.end_ms // 2
+        words = (
+            TranscriptionWord(0, half, " hola", 0.5),
+            TranscriptionWord(half, half + 1, "  "),  # blank after strip: dropped
+            TranscriptionWord(half + 1, segment.end_ms, " mundo "),
+        )
+        return TranscriptionResult(
+            (TranscriptionSegment(0, segment.end_ms, segment.text, words=words),),
+            result.language,
+        )
+
+
+WordSnapshot = list[tuple[int, int, list[tuple[int, int, str]]]]
+
+
+def _word_snapshot(fixture: Harness) -> WordSnapshot:
+    stored = SqliteSegmentRepository(fixture.engine).list_by_transcript(
+        transcript_id_for(fixture.job.id)
+    )
+    all_ids = [w.id for s in stored for w in s.words]
+    assert len(set(all_ids)) == len(all_ids)  # no duplicated word rows
+    return [
+        (s.start_ms, s.end_ms, [(w.start_ms, w.end_ms, w.text) for w in s.words])
+        for s in stored
+    ]
+
+
+def test_job_persists_trimmed_words_inside_their_segments(tmp_path: Path) -> None:
+    fixture = harness(tmp_path, provider=_WordProvider(content_text=True))
+
+    fixture.runner.run_job(fixture.job.id)
+
+    snapshot = _word_snapshot(fixture)
+    assert [(start, end) for start, end, _ in snapshot] == [
+        (0, 100),
+        (100, 200),
+        (200, 250),
+    ]
+    # The chunk-local words of chunk 0 cover 0-120 and are clamped to its 0-100
+    # segment; blank words are gone and boundary spaces are stripped.
+    assert snapshot[0][2] == [(0, 60, "hola"), (61, 100, "mundo")]
+    for start, end, words in snapshot:
+        assert words
+        assert all(start <= w0 < w1 <= end for w0, w1, _ in words)
+        assert all(a[1] <= b[0] for a, b in pairwise(words))
+        assert all(text == text.strip() and text for _, _, text in words)
+    fixture.engine.dispose()
+
+
+@pytest.mark.parametrize("crash_on_add", [1, 2, 3])
+def test_resume_after_crash_while_persisting_words_matches_a_clean_run(
+    tmp_path: Path, crash_on_add: int
+) -> None:
+    clean = harness(tmp_path / "clean", provider=_WordProvider(content_text=True))
+    clean.runner.run_job(clean.job.id)
+    expected = _word_snapshot(clean)
+    clean.engine.dispose()
+    fixture = harness(tmp_path / "resumed", provider=_WordProvider(content_text=True))
+    segments = _CrashingSegments(fixture.engine)
+    segments.crash_on_add = crash_on_add
+    fixture.runner.segments = segments
+
+    _crash_then_resume(fixture)
+
+    assert _word_snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+def test_persisting_twice_does_not_duplicate_words(tmp_path: Path) -> None:
+    fixture = harness(tmp_path, provider=_WordProvider(content_text=True))
+    fixture.runner.run_job(fixture.job.id)
+    expected = _word_snapshot(fixture)
+    job = fixture.persisted()
+    result = fixture.runner._result_from_checkpoints(job.id)  # pyright: ignore[reportPrivateUsage]
+
+    selection = fixture.runner.selections.get(job.id)
+    assert selection is not None
+    fixture.runner._persist_transcript(job, selection, result)  # pyright: ignore[reportPrivateUsage]
+
+    assert _word_snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+def test_words_are_optional_the_job_completes_without_them(tmp_path: Path) -> None:
+    fixture = harness(tmp_path)  # the base provider emits no words at all
+
+    finished = fixture.runner.run_job(fixture.job.id)
+
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.COMPLETED
+    assert [words for _, _, words in _word_snapshot(fixture)] == [[], [], []]
     fixture.engine.dispose()

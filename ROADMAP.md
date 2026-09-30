@@ -129,15 +129,15 @@ alterar los IDs.
 | PKG-002 | S15.04, S15.05 | `packaging` | verificado | Wheel con static y migraciones 0001–0004 (test); instalado fuera del checkout sirve / y /api/health. |
 | PKG-003 | S15.07-S15.09, S15.11 | `packaging` | verificado | scripts/checksums.sh, CHANGELOG Keep a Changelog, docs/release.md con semver/API pública, docs/install/linux.md. |
 | DIAG-001 | S14.10, S14.11, S8.14 | `diagnostics` | verificado | Backup sqlite antes de migrar (5 retenidos, aborta si falla), voz doctor --bundle redactado, checks de disco/modelos/keys set|unset. |
-| MODELS-TASKS-001 | S8.04 (UI), S8.05 (UI) | `model_tasks_api` | en curso | Oleada 4b: tareas de descarga/importación en segundo plano con progreso y cancelación por HTTP. |
-| MODELS-UI-001 | S8.02 (UI), S8.03 (UI), S8.07 (UI) | `model_manager_ui` | en curso | Oleada 4b: pantalla Modelos con tamaño, instalar/importar desde Buzz, progreso y borrado confirmado. |
-| HW-RECOMMEND-001 | S8.11, S14.05, S14.06 | `hardware_recommend` | en curso | Oleada 4b: recomendación por hardware medido (VRAM/RAM) y guards antes de cargar modelos. |
-| DIAR-CORE-001 | S6.01, S6.02, S6.08 | `diarization_core` | en curso | Oleada 5a: port, clusters/assignments y reconciliación turns↔segmentos. |
-| DIAR-CORE-002 | S6.14 | `diarization_core` | en curso | Oleada 5a: overlap y segmentos sin speaker. |
-| DIAR-SHERPA-001 | S6.16, S6.04 | `diarization_sherpa` | en curso | Oleada 5a: adapter sherpa-onnx (sin torch/token) y descarga explícita de modelos ONNX fijados. |
-| DIAR-SHERPA-002 | S6.05-S6.07 | `diarization_sherpa` | en curso | Oleada 5a: speakers automático, rango mín/máx y número exacto. |
-| WORDS-001 | S7.01, S7.03, S7.04 | `word_timestamps` | en curso | Oleada 5a: port de alignment, decisión (timestamps nativos de faster-whisper) y persistencia de palabras. |
-| WORDS-002 | S7.08, S7.09 | `word_timestamps` | en curso | Oleada 5a: fallback sin palabras y pruebas de monotonicidad/límites. |
+| MODELS-TASKS-001 | S8.04 (UI), S8.05 (UI) | `model_tasks_api` | verificado | ModelTaskRunner FIFO con progreso/cancelación; POST /api/models/{id}/install con confirmación, /api/model-tasks; test contra store real y http.server local. |
+| MODELS-UI-001 | S8.02 (UI), S8.03 (UI), S8.07 (UI) | `model_manager_ui` | verificado | Sección Modelos montada: tamaño previo, importar desde Buzz, descarga con <dialog>, progreso, cancelar, borrado tecleando el id; selector ordenado y refrescado. |
+| HW-RECOMMEND-001 | S8.11, S14.05, S14.06 | `hardware_recommend` | verificado | nvidia-smi/meminfo sin shell; turbo recomendado con VRAM ≥ 6 GiB, small/base en CPU; 409 insufficient_vram/ram antes de crear job. |
+| DIAR-CORE-001 | S6.01, S6.02, S6.08 | `diarization_core` | verificado | Port DiarizationProvider, cluster≠Speaker con paleta persistente, reconciliación por solape máximo; AssignSpeakers idempotente conserva renombres. |
+| DIAR-CORE-002 | S6.14 | `diarization_core` | verificado | 17 casos de reconciliación: overlap, silencio, turn que cruza segmentos, bordes, desorden y 0 turns. |
+| DIAR-SHERPA-001 | S6.16, S6.04 | `diarization_sherpa` | verificado | Modelos ONNX descargados de verdad desde GitHub con SHA-256 verificado; adapter sherpa-onnx real separa A/B/A en diálogo sintético; ADR-0007. |
+| DIAR-SHERPA-002 | S6.05-S6.07 | `diarization_sherpa` | verificado | Real: automático y exacto=2 → A/B/A; rango 1–1 re-ejecuta recortado a 1 speaker sin recargar modelos. |
+| WORDS-001 | S7.01, S7.03, S7.04 | `word_timestamps` | verificado | AlignmentProvider sin implementación extra; ADR-0008 (nativo faster-whisper, WhisperX no evaluado); Words persistidas con uuid5 y clamp; API words ([] si editado). |
+| WORDS-002 | S7.08, S7.09 | `word_timestamps` | verificado | Fallback sin palabras completa el job; checkpoints viejos compatibles; monotonicidad, clamp y overlap sin duplicar probados; 1011 tests. |
 
 ### Retomar en una sesión nueva
 
@@ -145,8 +145,9 @@ Leer `AGENTS.md`, este tablero, `.ai/HANDOFF.md` y `.ai/CHECKLIST.md` si
 existen, y los contratos en `docs/api/`; comprobar Git y las validaciones antes
 de editar. Oleada 3 (2026-09-30) cerró S5 salvo S5.17 (E2E), S10 completa,
 S14.03/12/14 y S16.09–S16.16. Oleada 4a cerró S5.17, S8 casi completa (falta
-S8.11), S14.04/09/10/11 y packaging. Siguiente: oleada 4b (endpoints de tareas
-de modelo + UI Model Manager) y oleada 5 (S6/S7/S13 con motores reales ligeros).
+S8.11), S14.04/09/10/11 y packaging. Oleada 4b+5a cerró Model Manager en UI,
+S8.11, S14.05/06, núcleo y adapter de diarización (sherpa-onnx) y palabras.
+Siguiente (5b): etapa DIARIZING en el runner + UI de speakers, S7.05–S7.07, S13.
 
 ## Sección 1 — Bootstrap del repositorio
 
@@ -290,37 +291,37 @@ edición es usable con una grabación larga.
 
 ## Sección 6 — Diarización
 
-- [ ] **S6.01** Definir el port `DiarizationProvider`.
-- [ ] **S6.02** Modelar clusters, speakers y assignments por separado.
+- [x] **S6.01** Definir el port `DiarizationProvider`.
+- [x] **S6.02** Modelar clusters, speakers y assignments por separado.
 - [ ] **S6.03** Implementar adapter pyannote Community-1.
-- [ ] **S6.04** Implementar descarga/configuración explícita del modelo.
-- [ ] **S6.05** Ejecutar detección automática del número de speakers.
-- [ ] **S6.06** Permitir mínimo y máximo de speakers.
-- [ ] **S6.07** Permitir número exacto de speakers.
-- [ ] **S6.08** Reconciliar turns con segmentos ASR.
+- [x] **S6.04** Implementar descarga/configuración explícita del modelo.
+- [x] **S6.05** Ejecutar detección automática del número de speakers.
+- [x] **S6.06** Permitir mínimo y máximo de speakers.
+- [x] **S6.07** Permitir número exacto de speakers.
+- [x] **S6.08** Reconciliar turns con segmentos ASR.
 - [ ] **S6.09** Asignar colores persistentes por speaker.
 - [ ] **S6.10** Renombrar speaker sin reejecutar modelos.
 - [ ] **S6.11** Fusionar speakers sin reejecutar ASR.
 - [ ] **S6.12** Reasignar un segmento manualmente.
 - [ ] **S6.13** Probar diarización con dos speakers.
-- [ ] **S6.14** Probar overlap y segmentos sin speaker.
+- [x] **S6.14** Probar overlap y segmentos sin speaker.
 - [ ] **S6.15** Verificar liberación secuencial de VRAM entre ASR y diarización.
-- [ ] **S6.16** Implementar adapter sherpa-onnx local sin torch ni token (ADR-0007).
+- [x] **S6.16** Implementar adapter sherpa-onnx local sin torch ni token (ADR-0007).
 
 **Criterio de salida:** “quién dijo qué” se puede revisar y corregir sin volver a
 transcribir.
 
 ## Sección 7 — Word timestamps y alignment
 
-- [ ] **S7.01** Definir el port `AlignmentProvider`.
+- [x] **S7.01** Definir el port `AlignmentProvider`.
 - [ ] **S7.02** Evaluar WhisperX contra fixtures e idiomas objetivo.
-- [ ] **S7.03** Documentar la decisión de adapter de alignment.
-- [ ] **S7.04** Persistir timestamps a nivel de palabra.
+- [x] **S7.03** Documentar la decisión de adapter de alignment.
+- [x] **S7.04** Persistir timestamps a nivel de palabra.
 - [ ] **S7.05** Reconciliar palabra con speaker.
 - [ ] **S7.06** Hacer seek al seleccionar una palabra.
 - [ ] **S7.07** Resaltar la palabra actual durante playback.
-- [ ] **S7.08** Implementar fallback cuando no exista aligner del idioma.
-- [ ] **S7.09** Probar monotonicidad y límites de word timestamps.
+- [x] **S7.08** Implementar fallback cuando no exista aligner del idioma.
+- [x] **S7.09** Probar monotonicidad y límites de word timestamps.
 
 **Criterio de salida:** palabra y audio permanecen sincronizados donde haya
 soporte, con degradación explícita donde no lo haya.
@@ -337,7 +338,7 @@ soporte, con degradación explícita donde no lo haya.
 - [x] **S8.08** Mostrar uso de disco por modelo/proveedor.
 - [x] **S8.09** Detectar cache de Buzz sin modificarlo.
 - [x] **S8.10** Reutilizar/importar un modelo compatible sin mover el original.
-- [ ] **S8.11** Recomendar perfiles según hardware detectado.
+- [x] **S8.11** Recomendar perfiles según hardware detectado.
 - [x] **S8.12** Implementar `voz doctor` para FFmpeg y puertos.
 - [x] **S8.13** Extender `voz doctor` para GPU/CUDA y runtime ASR.
 - [x] **S8.14** Extender `voz doctor` para disco, modelos y API keys opcionales.
@@ -442,8 +443,8 @@ con sus grabaciones sin presentar intuiciones como resultados.
 - [ ] **S14.02** Escribir checkpoints y metadatos críticos atómicamente.
 - [x] **S14.03** Comprobar espacio antes de import/normalización.
 - [x] **S14.04** Comprobar espacio antes de descargar modelos.
-- [ ] **S14.05** Añadir guard de RAM.
-- [ ] **S14.06** Añadir guard de VRAM.
+- [x] **S14.05** Añadir guard de RAM.
+- [x] **S14.06** Añadir guard de VRAM.
 - [ ] **S14.07** Liberar modelos entre ASR y diarización por defecto.
 - [x] **S14.08** Implementar cancelación real por cada etapa procesable.
 - [x] **S14.09** Recuperar descargas corruptas/incompletas.
