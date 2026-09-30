@@ -220,7 +220,8 @@ def _check_runtime(runtime_probe: TranscriptionRuntimeProbe) -> DoctorCheck:
     return DoctorCheck(
         "runtime ASR",
         "warn",
-        "extra asr-local no instalado (uv sync --extra asr-local)",
+        "extra asr-local no instalado (uv tool install con el extra, o "
+        "uv sync --extra asr-local en un checkout; ver docs/install/linux.md)",
     )
 
 

@@ -165,6 +165,22 @@ class SpeakerRepository(Protocol):
         """Return speakers owned by a project."""
         ...
 
+    def list_by_transcript(self, transcript_id: UUID) -> Sequence[Speaker]:
+        """Return speakers referenced by a transcript's segments or turns."""
+        ...
+
+    def transcript_ids(self, speaker_id: UUID) -> frozenset[UUID]:
+        """Return transcripts whose segments or turns reference the speaker."""
+        ...
+
+    def merge(self, source_id: UUID, target_id: UUID) -> None:
+        """Move segments and turns of ``source_id`` to ``target_id``, then delete it.
+
+        One transaction: either everything moves and the source disappears, or
+        nothing changes.
+        """
+        ...
+
 
 @runtime_checkable
 class SpeakerTurnRepository(Protocol):

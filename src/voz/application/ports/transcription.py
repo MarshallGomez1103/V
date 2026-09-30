@@ -125,6 +125,7 @@ class TranscriptionSegment:
     end_ms: int
     text: str
     words: tuple[TranscriptionWord, ...] = ()
+    speaker: str | None = None  # opaque provider label when it diarizes
 
     def __post_init__(self) -> None:
         if type(self.start_ms) is not int or type(self.end_ms) is not int:
@@ -141,6 +142,9 @@ class TranscriptionSegment:
         raw_words = cast(object, self.words)
         if not isinstance(raw_words, tuple):
             raise TypeError("segment words must be a tuple")
+        raw_speaker = cast(object, self.speaker)
+        if raw_speaker is not None and not isinstance(raw_speaker, str):
+            raise TypeError("segment speaker must be a string or None")
         previous_end_ms = self.start_ms
         for word in cast(tuple[object, ...], raw_words):
             if not isinstance(word, TranscriptionWord):

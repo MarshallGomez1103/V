@@ -273,7 +273,10 @@ class FfmpegWaveformPeaks:
         # ponytail: the cache is best-effort; a failed write only costs a re-decode.
         try:
             self._cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-            temporary.write_text(json.dumps(payload), encoding="utf-8")
+            with temporary.open("w", encoding="utf-8") as output:
+                json.dump(payload, output)
+                output.flush()
+                os.fsync(output.fileno())  # data on disk before the rename
             os.replace(temporary, cache_file)
         except OSError:
             with suppress(OSError):

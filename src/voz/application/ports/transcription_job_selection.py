@@ -8,6 +8,7 @@ from typing import Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from voz.application.asr_device_selection import ExecutionDecision
+from voz.application.ports.diarization import DiarizationOptions
 from voz.domain.entities.model_descriptor import ModelDescriptor
 
 
@@ -26,6 +27,10 @@ class JobSelection:
     execution: ExecutionDecision | None
     language: str | None
     created_at: datetime
+    diarization: DiarizationOptions | None = None
+    """Speaker diarization requested for this job; ``None`` means disabled."""
+    diarization_error_code: str | None = None
+    """Stable code when diarization failed but the transcript was kept."""
 
     def __post_init__(self) -> None:
         if not isinstance(cast(object, self.job_id), UUID):
@@ -48,6 +53,10 @@ class TranscriptionJobSelectionRepository(Protocol):
 
     def get(self, job_id: UUID) -> JobSelection | None:
         """Return the snapshot for a job, or ``None`` when absent."""
+        ...
+
+    def record_diarization_error(self, job_id: UUID, code: str) -> None:
+        """Persist why diarization failed; the rest of the snapshot is immutable."""
         ...
 
 

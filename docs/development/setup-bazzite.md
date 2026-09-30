@@ -1,9 +1,10 @@
 # Desarrollo de VOZ en Bazzite
 
 Esta guía prepara un entorno de desarrollo sin modificar la imagen base de
-Bazzite. VOZ está todavía en fase de skeleton: los comandos documentados aquí
-son el contrato de desarrollo esperado y cada paso debe contrastarse con el
-estado de [ROADMAP.md](../../ROADMAP.md).
+Bazzite. Los comandos de la Opción A se ejecutaron tal cual en un checkout limpio
+(ver [Verificado en Bazzite](#verificado-en-bazzite)); el estado de cada
+funcionalidad sigue en [ROADMAP.md](../../ROADMAP.md). Para **instalar** VOZ como
+usuario, sin checkout de desarrollo, usa [../install/linux.md](../install/linux.md).
 
 ## Principios para Bazzite/Fedora Atomic
 
@@ -28,8 +29,8 @@ node --version
 npm --version
 ```
 
-Para la etapa de ingestión multimedia también harán falta `ffmpeg` y `ffprobe`,
-pero no son necesarios para demostrar el skeleton HTTP/UI de la Sección 1:
+Para importar y normalizar audio hacen falta `ffmpeg` y `ffprobe` (los tests de
+integración y E2E se saltan solos si faltan; la UI arranca sin ellos):
 
 ```bash
 ffmpeg -version
@@ -50,7 +51,7 @@ Esta es la ruta más corta cuando `uv`, Node y npm ya están disponibles en el
 usuario. Desde la raíz del checkout:
 
 ```bash
-uv sync --all-groups
+uv sync --all-groups --all-extras
 cd apps/web
 npm ci
 npm run build
@@ -59,9 +60,14 @@ uv run pytest
 uv run voz --no-browser
 ```
 
-La URL objetivo es `http://127.0.0.1:8765`. Mientras el bootstrap no esté
-completo, consulta los IDs S1.* en el roadmap: no todos los comandos tienen que
-existir todavía.
+La URL es `http://127.0.0.1:8765`. `--all-extras` instala también `asr-local`
+(`faster-whisper`, cuBLAS/cuDNN, unos 2,6 GB) y `diarization` (`sherpa-onnx`):
+**hace falta** porque `httpx`, que usan los tests HTTP (`TestClient`), solo llega
+hoy de forma transitiva por `huggingface-hub`. Con solo `--all-groups`, `uv run
+pytest` se interrumpe al recolectar `tests/e2e/test_workspace_flow.py`,
+`tests/integration/test_jobs_memory_guard_api.py` y
+`tests/integration/test_model_tasks_api.py` con `No module named 'httpx'`. Si
+quieres un entorno mínimo, añade `httpx` al grupo `dev` de `pyproject.toml`.
 
 ## Opción B: Distrobox de desarrollo
 
@@ -137,13 +143,16 @@ comandos realmente ejecutados en el handoff local antes de marcar S1.22.
 VOZ deberá respetar estas ubicaciones Linux:
 
 ```text
-~/.config/voz/config.toml
-~/.local/share/voz/voz.db
-~/.local/share/voz/projects/
+~/.config/voz/                      (reservado; aún no se escribe)
+~/.local/share/voz/voz.sqlite3      (+ -wal y -shm)
+~/.local/share/voz/projects/<id>/originals/ y derivatives/
 ~/.local/share/voz/models/
-~/.cache/voz/
-~/.local/state/voz/logs/
+~/.cache/voz/                       (uploads/, downloads/, waveforms/)
+~/.local/state/voz/backups/         (copias previas a migrar la base)
 ```
+
+La tabla completa y quién escribe cada ruta están en
+[ADR-0002](../adr/0002-sqlite-persistence.md).
 
 Estos datos no se versionan. Un entorno de prueba debe poder redirigir las
 variables XDG a un directorio temporal para no contaminar datos reales.
@@ -177,13 +186,37 @@ Verifica por separado:
 
 ### FFmpeg no está disponible
 
-Esto bloquea la futura ingestión, no el skeleton. Registra el diagnóstico y
-elige una instalación de usuario o Distrobox. No añadas layering del sistema
-base como respuesta automática.
+Esto bloquea la importación de audio, no el arranque de la UI. Registra el
+diagnóstico (`uv run voz doctor`) y elige una instalación de usuario o Distrobox.
+No añadas layering del sistema base como respuesta automática.
 
 ## Criterio de salida
 
 El setup de Bazzite se considera verificado únicamente cuando un checkout limpio
 permite instalar dependencias, ejecutar las comprobaciones relevantes, iniciar
-`voz` y abrir la UI local. Hasta entonces la documentación puede estar completa,
-pero el item de verificación S1.22 debe permanecer pendiente.
+`voz` y abrir la UI local. Esa verificación está hecha y registrada abajo; repítela
+y actualiza la fecha cuando cambien las dependencias o el flujo.
+
+## Verificado en Bazzite
+
+**Fecha:** 2026-09-30 (S15.10). **Máquina:** Bazzite `bazzite-nvidia-open`
+(Fedora 44), `uv 0.12.21`, Node 22.22.3, npm 10.9.8, FFmpeg 8.1.3.
+
+Checkout limpio (`git clone` del commit `435ed0a`), con `XDG_*` y
+`UV_PROJECT_ENVIRONMENT` en un directorio temporal; red solo hacia PyPI.
+
+| Comando | Resultado |
+| --- | --- |
+| `uv sync --all-groups` | instala en unos 8 s, pero `uv run pytest` falla al recolectar (falta `httpx`, ver Opción A) |
+| `uv sync --all-groups --all-extras` | instala en unos 4 min con la caché vacía |
+| `uv run ruff check .` / `uv run ruff format --check .` | sin errores; 248 archivos formateados |
+| `uv run pyright` | 0 errores, 0 avisos |
+| `uv run pytest -q` | 1011 passed, 2 skipped (los smokes opt-in de modelo real y de diarización) |
+| `uv run voz --no-browser --port 9002` | `GET /` 200 y `GET /api/health` 200; apagado con SIGINT limpio |
+| `npm run lint`, `npm run typecheck` | sin errores |
+| `npm run test` | 25 archivos, 198 tests pasan |
+| `npm run build` | el bundle generado es idéntico al versionado en `src/voz/static` (`git status` limpio) |
+
+No verificado: `npm ci` (esta sesión no tenía red hacia el registro de npm; el
+frontend se comprobó con el `node_modules` ya instalado), la Opción B (Distrobox)
+y los tests con un modelo real (`VOZ_FASTER_WHISPER_MODEL_*`).

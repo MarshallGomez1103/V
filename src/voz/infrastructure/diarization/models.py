@@ -197,7 +197,10 @@ class DiarizationModelStore:
             "files": sizes,
             "installed_at": datetime.now(UTC).isoformat(),
         }
-        (self._staging / _MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
+        with (self._staging / _MANIFEST_NAME).open("w") as output:
+            json.dump(manifest, output, indent=2)
+            output.flush()
+            os.fsync(output.fileno())  # the manifest is the commit marker
         if self._directory.exists():  # stale or corrupt copy: replace it
             shutil.rmtree(self._directory)
         os.rename(self._staging, self._directory)
@@ -223,6 +226,8 @@ class DiarizationModelStore:
                         continue  # the license is informational, never required
                     with source, (self._staging / target).open("wb") as output:
                         shutil.copyfileobj(source, output)
+                        output.flush()
+                        os.fsync(output.fileno())
                     sizes[target] = info.size
         except (tarfile.TarError, EOFError) as error:
             raise self._invalid() from error

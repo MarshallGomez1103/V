@@ -138,26 +138,26 @@ alterar los IDs.
 | DIAR-SHERPA-002 | S6.05-S6.07 | `diarization_sherpa` | verificado | Real: automático y exacto=2 → A/B/A; rango 1–1 re-ejecuta recortado a 1 speaker sin recargar modelos. |
 | WORDS-001 | S7.01, S7.03, S7.04 | `word_timestamps` | verificado | AlignmentProvider sin implementación extra; ADR-0008 (nativo faster-whisper, WhisperX no evaluado); Words persistidas con uuid5 y clamp; API words ([] si editado). |
 | WORDS-002 | S7.08, S7.09 | `word_timestamps` | verificado | Fallback sin palabras completa el job; checkpoints viejos compatibles; monotonicidad, clamp y overlap sin duplicar probados; 1011 tests. |
-| DIAR-PIPE-001 | S6.13, S6.15, S14.07 | `diarization_pipeline` | en curso | Oleada 5b: etapa DIARIZING opcional, liberación del ASR antes de diarizar y prueba de 2 speakers. |
-| SPEAKERS-001 | S6.09-S6.11 | `speakers_ui_api` | en curso | Oleada 5b: colores persistentes, renombrar y fusionar speakers sin reejecutar modelos. |
-| SPEAKERS-002 | S6.12 | `speakers_ui_api` | en curso | Oleada 5b: reasignación manual de un segmento. |
-| WORDS-003 | S7.05 | `word_ui` | en curso | Oleada 5b: palabra↔speaker por turn. |
-| WORDS-UI-001 | S7.06, S7.07 | `word_ui` | en curso | Oleada 5b: seek por palabra y resaltado de la palabra actual. |
-| CLOUD-SECRETS-001 | S11.01 | `openai_provider` | en curso | Oleada 5b: claves fuera de SQLite/logs (env o secrets.toml 0600). |
-| OPENAI-001 | S11.02, S11.05, S11.06 | `openai_provider` | en curso | Oleada 5b: adapter de archivo con división y offsets globales (transporte fake). |
-| OPENAI-002 | S11.03, S11.04, S11.07 | `openai_provider` | en curso | Oleada 5b: diarizado, límites fechados y retries solo recuperables. |
-| OPENAI-003 | S11.08, S11.10, S11.11 | `openai_provider` | en curso | Oleada 5b: coste estimado, fake client y suite de contrato. |
-| OPENAI-004 | S11.12, S11.13 | `openai_provider` | en curso | Oleada 5b: privacidad documentada y nunca activación implícita. |
-| ELEVEN-001 | S12.01-S12.03 | `elevenlabs_provider` | en curso | Oleada 5b: clave segura, adapter Scribe y diarización canónica (fake). |
-| ELEVEN-002 | S12.04-S12.06 | `elevenlabs_provider` | en curso | Oleada 5b: palabras, keyterms y archivos largos con progreso. |
-| ELEVEN-003 | S12.07-S12.09 | `elevenlabs_provider` | en curso | Oleada 5b: coste, fake client y contrato. |
-| ELEVEN-004 | S12.10, S12.11 | `elevenlabs_provider` | en curso | Oleada 5b: privacidad y aislamiento del adapter. |
-| WCPP-001 | S9.01, S9.02, S9.05 | `whispercpp_provider` | en curso | Oleada 5b: adapter, detección del binario y modelos ggml fijados. |
-| WCPP-002 | S9.06-S9.08 | `whispercpp_provider` | en curso | Oleada 5b: mapeo, errores/cancelación y contrato con binario fake. |
-| WCPP-003 | S9.03, S9.04, S9.09 | `whispercpp_provider` | en curso | Oleada 5b: docs CUDA/Vulkan y política de fallback visible. |
-| ROBUST-002 | S14.02, S14.13 | `robustness2` | en curso | Oleada 5b: auditoría de escrituras atómicas y cierre/reapertura en job largo. |
-| PKG-004 | S15.10 | `robustness2` | en curso | Oleada 5b: instalación documentada verificada en Bazzite. |
-| OSS-AUDIT-001 | S16.19 | `robustness2` | en curso | Oleada 5b: auditoría de secretos, historial e ignorados. |
+| DIAR-PIPE-001 | S6.13, S6.15, S14.07 | `diarization_pipeline` | verificado | Etapa DIARIZING opcional por job (migración 0005), ASR liberado antes de diarizar, fallo de diarización no pierde el transcript; runner con sherpa real sobre diálogo pasa. |
+| SPEAKERS-001 | S6.09-S6.11 | `speakers_ui_api` | verificado | GET/PATCH/merge de speakers con color y nombre persistentes, fusión transaccional; SpeakersPanel montado; 19 tests HTTP. |
+| SPEAKERS-002 | S6.12 | `speakers_ui_api` | verificado | PUT /api/segments/{id}/speaker y SegmentSpeakerSelect por fila; la lista recarga sin perder búsqueda (reloadKey). |
+| WORDS-003 | S7.05 | `word_ui` | verificado | Speaker por palabra según el turn de su punto medio, calculado al vuelo en la vista (SpeakerTimeline). |
+| WORDS-UI-001 | S7.06, S7.07 | `word_ui` | verificado | WordText con seek por clic/teclado y palabra actual vía store externo (solo re-renderiza 2 palabras); modo Leer/Editar. |
+| CLOUD-SECRETS-001 | S11.01 | `openai_provider` | verificado | ProviderSecrets: env o secrets.toml 0600 atómico, nunca en SQLite/logs (tests); /api/providers sin eco de la clave. |
+| OPENAI-001 | S11.02, S11.05, S11.06 | `openai_provider` | verificado | Adapter whisper-1 con división bajo 25 MB y offsets globales sin solapes; transporte fake (experimental, no verificado contra el servicio). |
+| OPENAI-002 | S11.03, S11.04, S11.07 | `openai_provider` | verificado | gpt-4o-transcribe-diarize con speaker, límites fechados, backoff solo 429/5xx/timeout. |
+| OPENAI-003 | S11.08, S11.10, S11.11 | `openai_provider` | verificado | Estimación de coste por endpoint, FakeOpenAITransport y casos openai en la suite de contrato común. |
+| OPENAI-004 | S11.12, S11.13 | `openai_provider` | verificado | docs/privacy/openai.md; sin clave no inicia, con clave nunca recomendado ni fallback (tests de 0 requests). |
+| ELEVEN-001 | S12.01-S12.03 | `elevenlabs_provider` | verificado | Clave vía ProviderSecrets, adapter Scribe v1 y segmentos con speaker (transporte fake; experimental). |
+| ELEVEN-002 | S12.04-S12.06 | `elevenlabs_provider` | verificado | Palabras en ms monótonos, keyterms acotados, progreso y cancelación de subida sin reintentos que facturen doble. |
+| ELEVEN-003 | S12.07-S12.09 | `elevenlabs_provider` | verificado | Precio fechado reutilizando el endpoint de estimación; fake client y contrato común. |
+| ELEVEN-004 | S12.10, S12.11 | `elevenlabs_provider` | verificado | docs/privacy/elevenlabs.md y test estructural: el adapter solo vive en infrastructure/cloud. |
+| WCPP-001 | S9.01, S9.02, S9.05 | `whispercpp_provider` | verificado | WhisperCppProvider con binario fake, detección validada por --help y 6 modelos ggml fijados con SHA-256. |
+| WCPP-002 | S9.06-S9.08 | `whispercpp_provider` | verificado | JSON -ojf a segmentos/palabras, cancelación mata el proceso, errores tipados; suite de contrato común pasa. |
+| WCPP-003 | S9.03, S9.04, S9.09 | `whispercpp_provider` | verificado | docs/whisper-cpp.md (CUDA/Vulkan, documentado no verificado aquí) y sugerencia visible nunca automática; opciones solo si existe whisper-cli. |
+| ROBUST-002 | S14.02, S14.13 | `robustness2` | verificado | 18 escrituras críticas auditadas (synchronous=FULL, fsync antes de replace) y cierre/reapertura a mitad de job sin repetir chunks. |
+| PKG-004 | S15.10 | `robustness2` | verificado | Clone limpio en Bazzite: uv tool install, extra asr-local con CUDA float16 y servidor verificados; docs corregidas. |
+| OSS-AUDIT-001 | S16.19 | `robustness2` | verificado | scripts/audit-secrets.sh sobre árbol e historial: 0 HIGH; decisión de correo de autor pendiente antes de publicar. |
 
 ### Retomar en una sesión nueva
 
@@ -167,7 +167,9 @@ de editar. Oleada 3 (2026-09-30) cerró S5 salvo S5.17 (E2E), S10 completa,
 S14.03/12/14 y S16.09–S16.16. Oleada 4a cerró S5.17, S8 casi completa (falta
 S8.11), S14.04/09/10/11 y packaging. Oleada 4b+5a cerró Model Manager en UI,
 S8.11, S14.05/06, núcleo y adapter de diarización (sherpa-onnx) y palabras.
-Siguiente (5b): etapa DIARIZING en el runner + UI de speakers, S7.05–S7.07, S13.
+Oleada 5b cerró S6 (salvo S6.03), S7 (salvo S7.02), S9 (salvo S9.10),
+S11 (salvo S11.09), S12, S14.02/07/13, S15.10 y S16.19. Siguiente (5c): S13
+calidad, badge CLOUD (S11.09), S15.06, S16.02.
 
 ## Sección 1 — Bootstrap del repositorio
 
@@ -319,13 +321,13 @@ edición es usable con una grabación larga.
 - [x] **S6.06** Permitir mínimo y máximo de speakers.
 - [x] **S6.07** Permitir número exacto de speakers.
 - [x] **S6.08** Reconciliar turns con segmentos ASR.
-- [ ] **S6.09** Asignar colores persistentes por speaker.
-- [ ] **S6.10** Renombrar speaker sin reejecutar modelos.
-- [ ] **S6.11** Fusionar speakers sin reejecutar ASR.
-- [ ] **S6.12** Reasignar un segmento manualmente.
-- [ ] **S6.13** Probar diarización con dos speakers.
+- [x] **S6.09** Asignar colores persistentes por speaker.
+- [x] **S6.10** Renombrar speaker sin reejecutar modelos.
+- [x] **S6.11** Fusionar speakers sin reejecutar ASR.
+- [x] **S6.12** Reasignar un segmento manualmente.
+- [x] **S6.13** Probar diarización con dos speakers.
 - [x] **S6.14** Probar overlap y segmentos sin speaker.
-- [ ] **S6.15** Verificar liberación secuencial de VRAM entre ASR y diarización.
+- [x] **S6.15** Verificar liberación secuencial de VRAM entre ASR y diarización.
 - [x] **S6.16** Implementar adapter sherpa-onnx local sin torch ni token (ADR-0007).
 
 **Criterio de salida:** “quién dijo qué” se puede revisar y corregir sin volver a
@@ -337,9 +339,9 @@ transcribir.
 - [ ] **S7.02** Evaluar WhisperX contra fixtures e idiomas objetivo.
 - [x] **S7.03** Documentar la decisión de adapter de alignment.
 - [x] **S7.04** Persistir timestamps a nivel de palabra.
-- [ ] **S7.05** Reconciliar palabra con speaker.
-- [ ] **S7.06** Hacer seek al seleccionar una palabra.
-- [ ] **S7.07** Resaltar la palabra actual durante playback.
+- [x] **S7.05** Reconciliar palabra con speaker.
+- [x] **S7.06** Hacer seek al seleccionar una palabra.
+- [x] **S7.07** Resaltar la palabra actual durante playback.
 - [x] **S7.08** Implementar fallback cuando no exista aligner del idioma.
 - [x] **S7.09** Probar monotonicidad y límites de word timestamps.
 
@@ -369,15 +371,15 @@ manualmente.
 
 ## Sección 9 — whisper.cpp
 
-- [ ] **S9.01** Implementar adapter whisper.cpp bajo el port común.
-- [ ] **S9.02** Detectar y validar el binario.
-- [ ] **S9.03** Documentar build/uso con CUDA.
-- [ ] **S9.04** Documentar build/uso con Vulkan.
-- [ ] **S9.05** Registrar modelos cuantizados compatibles.
-- [ ] **S9.06** Mapear salida a segmentos canónicos.
-- [ ] **S9.07** Mapear fallos/cancelación a errores comunes.
-- [ ] **S9.08** Pasar la suite completa de contract tests.
-- [ ] **S9.09** Implementar fallback automático solo cuando sea seguro y visible.
+- [x] **S9.01** Implementar adapter whisper.cpp bajo el port común.
+- [x] **S9.02** Detectar y validar el binario.
+- [x] **S9.03** Documentar build/uso con CUDA.
+- [x] **S9.04** Documentar build/uso con Vulkan.
+- [x] **S9.05** Registrar modelos cuantizados compatibles.
+- [x] **S9.06** Mapear salida a segmentos canónicos.
+- [x] **S9.07** Mapear fallos/cancelación a errores comunes.
+- [x] **S9.08** Pasar la suite completa de contract tests.
+- [x] **S9.09** Implementar fallback automático solo cuando sea seguro y visible.
 - [ ] **S9.10** Comparar rendimiento CPU/GPU con fixtures controlados.
 
 **Criterio de salida:** existe una segunda implementación local completa bajo el
@@ -405,36 +407,36 @@ el MVP junto con las Secciones 1–6.
 
 ## Sección 11 — OpenAI opcional
 
-- [ ] **S11.01** Diseñar configuración de API key fuera de SQLite y logs.
-- [ ] **S11.02** Implementar adapter de file transcription.
-- [ ] **S11.03** Implementar adapter de diarized transcription.
-- [ ] **S11.04** Detectar límites reales mediante configuración/versiones probadas.
-- [ ] **S11.05** Dividir archivos cuando el provider lo exija.
-- [ ] **S11.06** Reconstruir offsets globales sin solapamientos inválidos.
-- [ ] **S11.07** Implementar retries/backoff solo para fallos recuperables.
-- [ ] **S11.08** Estimar coste antes de enviar.
+- [x] **S11.01** Diseñar configuración de API key fuera de SQLite y logs.
+- [x] **S11.02** Implementar adapter de file transcription.
+- [x] **S11.03** Implementar adapter de diarized transcription.
+- [x] **S11.04** Detectar límites reales mediante configuración/versiones probadas.
+- [x] **S11.05** Dividir archivos cuando el provider lo exija.
+- [x] **S11.06** Reconstruir offsets globales sin solapamientos inválidos.
+- [x] **S11.07** Implementar retries/backoff solo para fallos recuperables.
+- [x] **S11.08** Estimar coste antes de enviar.
 - [ ] **S11.09** Mostrar indicador `CLOUD` antes y durante el job.
-- [ ] **S11.10** Añadir fake client sin llamadas facturables.
-- [ ] **S11.11** Pasar contract tests con el fake client.
-- [ ] **S11.12** Documentar privacidad y datos enviados.
-- [ ] **S11.13** Verificar que el provider nunca se activa implícitamente.
+- [x] **S11.10** Añadir fake client sin llamadas facturables.
+- [x] **S11.11** Pasar contract tests con el fake client.
+- [x] **S11.12** Documentar privacidad y datos enviados.
+- [x] **S11.13** Verificar que el provider nunca se activa implícitamente.
 
 **Criterio de salida:** OpenAI es intercambiable, explícito y opcional; offline
 sigue siendo el modo predeterminado.
 
 ## Sección 12 — ElevenLabs opcional
 
-- [ ] **S12.01** Diseñar configuración segura de API key.
-- [ ] **S12.02** Implementar adapter Scribe.
-- [ ] **S12.03** Mapear diarización al formato canónico.
-- [ ] **S12.04** Mapear word timestamps al formato canónico.
-- [ ] **S12.05** Implementar keyterms por proyecto sin contaminar dominio.
-- [ ] **S12.06** Manejar archivos largos y progreso.
-- [ ] **S12.07** Estimar coste antes de enviar.
-- [ ] **S12.08** Añadir fake client sin llamadas facturables.
-- [ ] **S12.09** Pasar contract tests con el fake client.
-- [ ] **S12.10** Documentar privacidad y datos enviados.
-- [ ] **S12.11** Verificar que UI/dominio central no cambian por este adapter.
+- [x] **S12.01** Diseñar configuración segura de API key.
+- [x] **S12.02** Implementar adapter Scribe.
+- [x] **S12.03** Mapear diarización al formato canónico.
+- [x] **S12.04** Mapear word timestamps al formato canónico.
+- [x] **S12.05** Implementar keyterms por proyecto sin contaminar dominio.
+- [x] **S12.06** Manejar archivos largos y progreso.
+- [x] **S12.07** Estimar coste antes de enviar.
+- [x] **S12.08** Añadir fake client sin llamadas facturables.
+- [x] **S12.09** Pasar contract tests con el fake client.
+- [x] **S12.10** Documentar privacidad y datos enviados.
+- [x] **S12.11** Verificar que UI/dominio central no cambian por este adapter.
 
 **Criterio de salida:** ElevenLabs funciona como backend adicional sin convertirse
 en dependencia del producto.
@@ -460,18 +462,18 @@ con sus grabaciones sin presentar intuiciones como resultados.
 ## Sección 14 — Robustez
 
 - [x] **S14.01** Recuperar jobs interrumpidos al iniciar.
-- [ ] **S14.02** Escribir checkpoints y metadatos críticos atómicamente.
+- [x] **S14.02** Escribir checkpoints y metadatos críticos atómicamente.
 - [x] **S14.03** Comprobar espacio antes de import/normalización.
 - [x] **S14.04** Comprobar espacio antes de descargar modelos.
 - [x] **S14.05** Añadir guard de RAM.
 - [x] **S14.06** Añadir guard de VRAM.
-- [ ] **S14.07** Liberar modelos entre ASR y diarización por defecto.
+- [x] **S14.07** Liberar modelos entre ASR y diarización por defecto.
 - [x] **S14.08** Implementar cancelación real por cada etapa procesable.
 - [x] **S14.09** Recuperar descargas corruptas/incompletas.
 - [x] **S14.10** Crear backup antes de una migración destructiva.
 - [x] **S14.11** Generar bundle diagnóstico redactado.
 - [x] **S14.12** Añadir fuzz tests de metadata de importación.
-- [ ] **S14.13** Probar cierre/reapertura durante un job largo.
+- [x] **S14.13** Probar cierre/reapertura durante un job largo.
 - [x] **S14.14** Probar idempotencia de resume.
 
 **Criterio de salida:** cerrar o reabrir VOZ no destruye el trabajo confirmado y
@@ -488,7 +490,7 @@ los fallos dan acciones recuperables.
 - [x] **S15.07** Generar checksums de artefactos.
 - [x] **S15.08** Mantener changelog.
 - [x] **S15.09** Adoptar versionado semántico.
-- [ ] **S15.10** Verificar instalación documentada en Bazzite.
+- [x] **S15.10** Verificar instalación documentada en Bazzite.
 - [x] **S15.11** Documentar instalación Linux genérica.
 - [ ] **S15.12** Evaluar AppImage con prototipo medido.
 - [ ] **S15.13** Evaluar Flatpak con prototipo medido.
@@ -517,7 +519,7 @@ README, sin depender del checkout.
 - [x] **S16.16** Completar ADR local-first.
 - [x] **S16.17** Documentar licencias de todos los fixtures.
 - [x] **S16.18** Crear `NOTICE` para código/dependencias reutilizadas.
-- [ ] **S16.19** Auditar secretos y archivos ignorados antes de abrir el repo.
+- [x] **S16.19** Auditar secretos y archivos ignorados antes de abrir el repo.
 - [ ] **S16.20** Hacer público el repositorio solo con autorización explícita.
 
 **Criterio de salida:** el repositorio está listo para recibir contribuciones

@@ -14,6 +14,7 @@ from voz.application.edit_segment import (
     SegmentTextInvalid,
 )
 from voz.application.ports.repositories import SegmentRepository
+from voz.application.word_speakers import SpeakerTimeline, word_speaker_ids
 from voz.domain.entities.segment import Segment
 
 
@@ -23,8 +24,14 @@ class EditSegmentRequest:
     revision: int
 
 
-def segment_view(segment: Segment) -> dict[str, object]:
-    """Path-free segment item shared by the list and edit endpoints."""
+def segment_view(
+    segment: Segment, timeline: SpeakerTimeline | None = None
+) -> dict[str, object]:
+    """Path-free segment item shared by the list and edit endpoints.
+
+    ``timeline`` (the transcript's speaker turns) refines each word's speaker;
+    without it words inherit the speaker of their segment.
+    """
     return {
         "id": str(segment.id),
         "start_ms": segment.start_ms,
@@ -38,8 +45,15 @@ def segment_view(segment: Segment) -> dict[str, object]:
         "words": []
         if segment.edited
         else [
-            {"start_ms": word.start_ms, "end_ms": word.end_ms, "text": word.text}
-            for word in segment.words
+            {
+                "start_ms": word.start_ms,
+                "end_ms": word.end_ms,
+                "text": word.text,
+                "speaker_id": None if speaker_id is None else str(speaker_id),
+            }
+            for word, speaker_id in zip(
+                segment.words, word_speaker_ids(segment, timeline), strict=True
+            )
         ],
     }
 

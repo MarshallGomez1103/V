@@ -159,6 +159,9 @@ class Selections:
     def get(self, job_id: UUID) -> JobSelection | None:
         return self.items.get(job_id)
 
+    def record_diarization_error(self, job_id: UUID, code: str) -> None:
+        del job_id, code
+
 
 PROJECT = Project("Demo", id=uuid4(), created_at=NOW)
 ASSET = MediaAsset(PROJECT.id, "b" * 64, "tone.wav", 8_044, duration_ms=250)

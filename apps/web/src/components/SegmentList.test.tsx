@@ -25,6 +25,7 @@ function seg(
     edited: false,
     revision: 1,
     speaker_id: null,
+    words: [],
   }
 }
 

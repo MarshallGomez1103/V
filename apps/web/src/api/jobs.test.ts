@@ -126,6 +126,7 @@ describe('api/jobs', () => {
       edited: false,
       revision: 1,
       speaker_id: null,
+      words: [],
     }
     stubFetch({ segments: [segment, { ...segment, id: 's2', speaker_id: 'S1' }] })
     expect(await getSegments('tr-1')).toHaveLength(2)
@@ -133,6 +134,15 @@ describe('api/jobs', () => {
     stubFetch({ segments: [{ id: 's1' }] })
     const error = await getSegments('tr-1').catch((caught: unknown) => caught)
     expect((error as JobApiError).code).toBe('invalid_response')
+
+    // S7.05: las palabras llevan speaker_id (nullable); una palabra sin él es inválida.
+    const word = { start_ms: 0, end_ms: 5, text: 'a', speaker_id: 'S1' }
+    stubFetch({ segments: [{ ...segment, words: [word, { ...word, speaker_id: null }] }] })
+    expect((await getSegments('tr-1'))[0]?.words).toHaveLength(2)
+
+    stubFetch({ segments: [{ ...segment, words: [{ start_ms: 0, end_ms: 5, text: 'a' }] }] })
+    const noSpeaker = await getSegments('tr-1').catch((caught: unknown) => caught)
+    expect((noSpeaker as JobApiError).code).toBe('invalid_response')
 
     // Contrato nuevo: sin edited/revision/speaker_id el segmento es inválido.
     stubFetch({ segments: [{ id: 's1', start_ms: 0, end_ms: 10, text: 'a' }] })

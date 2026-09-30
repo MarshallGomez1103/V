@@ -62,6 +62,7 @@ const SEGMENTS = [
   edited: false,
   revision: 0,
   speaker_id: null,
+  words: [],
 }))
 
 function jobView(state: string, progress: number, transcriptId: string | null) {
@@ -316,6 +317,7 @@ describe('App E2E con API simulada', () => {
         media_asset_id: 'a1',
         option_id: OPTION.option_id,
         language: null,
+        diarization: { enabled: false, speakers: {} },
       },
     })
     expect(stream.url).toBe('/api/jobs/job-1/events')
@@ -327,6 +329,9 @@ describe('App E2E con API simulada', () => {
     })
     const rows = within(list).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
+    // Modo Leer por defecto: texto por palabras; Editar muestra el textarea.
+    expect(within(rows[1] as HTMLElement).getByText(/Hoy vemos el servicio/)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
     expect(
       screen.getByLabelText<HTMLTextAreaElement>('Texto del segmento s2').value,
     ).toBe('Hoy vemos el servicio.')
@@ -357,6 +362,7 @@ describe('App E2E con API simulada', () => {
 
   it('edita un segmento y el autosave envía PUT con la revisión cargada', async () => {
     await importAndTranscribe()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
     const textarea = await screen.findByLabelText('Texto del segmento s3')
 
     fireEvent.change(textarea, { target: { value: 'Gracias por venir hoy.' } })

@@ -18,6 +18,7 @@ class ModelRegistration:
     descriptor: ModelDescriptor
     installation_status: InstallationStatus
     files_available: bool = False
+    cloud: bool = False  # audio leaves the machine; never installable or recommended
 
 
 @dataclass(frozen=True, slots=True)

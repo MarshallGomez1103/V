@@ -28,6 +28,9 @@ interface SegmentListProps {
   // Sustituye el texto de la fila (p. ej. un editor). Debe tener identidad
   // estable (useCallback) o las filas memoizadas se re-renderizan todas.
   renderText?: (segment: TranscriptSegment, query: string) => ReactNode
+  // Cambiarlo recarga los segmentos (p. ej. tras reasignar speakers) sin
+  // perder búsqueda ni scroll: se conserva la lista vieja hasta que llega la nueva.
+  reloadKey?: number
 }
 
 type Outcome =
@@ -356,6 +359,7 @@ export function SegmentList({
   onSeek,
   currentMs,
   renderText,
+  reloadKey = 0,
 }: SegmentListProps) {
   // El estado se asocia al id cargado; si no coincide con la prop, seguimos
   // cargando. Así el efecto nunca llama a setState de forma sincrónica.
@@ -391,7 +395,7 @@ export function SegmentList({
     return () => {
       controller.abort()
     }
-  }, [transcriptId])
+  }, [transcriptId, reloadKey])
 
   if (transcriptId === null) {
     return null

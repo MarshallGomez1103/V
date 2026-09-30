@@ -57,6 +57,7 @@ class TranscriptionOption:
     device_name: str | None
     recommendation: Recommendation | None
     blocking_reasons: tuple[BlockingReason, ...]
+    cloud: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,22 +118,31 @@ class GetTranscriptionOptions:
                 reasons.append(BlockingReason.MODEL_NOT_REGISTERED)
             elif not registration.files_available:
                 reasons.append(BlockingReason.MODEL_FILES_MISSING)
-            if model.provenance is None:
+            if model.provenance is None and not registration.cloud:
                 reasons.append(BlockingReason.REVISION_UNPINNED)
             if not runtime.available:
                 reasons.append(BlockingReason.RUNTIME_UNAVAILABLE)
             execution = None
-            if runtime.available and runtime.hardware is not None and model.profile:
+            local = not registration.cloud  # cloud: remote compute, no local plan
+            if (
+                local
+                and runtime.available
+                and runtime.hardware is not None
+                and model.profile
+            ):
                 with suppress(TranscriptionError):
                     execution = select_execution(model.profile, runtime.hardware)
-            if runtime.available and execution is None:
+            if runtime.available and execution is None and local:
                 reasons.append(BlockingReason.EXECUTION_UNAVAILABLE)
             capabilities = tuple(sorted(model.capabilities & runtime.capabilities))
             if ModelCapability.TRANSCRIPTION not in capabilities:
                 reasons.append(BlockingReason.TRANSCRIPTION_UNAVAILABLE)
             recommendation = None
             hardware = runtime.hardware
-            if (
+            # ponytail: cloud is never recommended, not even by default.
+            if not local:
+                pass
+            elif (
                 hardware is not None
                 and execution is not None
                 and is_measured(hardware)
@@ -164,6 +174,7 @@ class GetTranscriptionOptions:
                     device_name=_device_name(runtime, execution),
                     recommendation=recommendation,
                     blocking_reasons=tuple(reasons),
+                    cloud=registration.cloud,
                 )
             )
         return TranscriptionOptions(

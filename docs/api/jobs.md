@@ -33,7 +33,7 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
 
 | Método y ruta | Request | Respuesta |
 | --- | --- | --- |
-| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; ver "Memoria insuficiente") |
+| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; ver "Memoria insuficiente") / `diarization_unavailable`; 422 `diarization_options_invalid` (ver "Diarización") |
 | `GET /api/jobs/{job_id}` | — | `JobView`; 404 `job_not_found` |
 | `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` |
 | `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 409 `job_terminal` |
@@ -46,13 +46,14 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
 {
   "id": "uuid", "project_id": "uuid", "media_asset_id": "uuid",
   "state": "TRANSCRIBING", "progress": 0.42,
-  "error_code": null, "transcript_id": null,
+  "error_code": null, "diarization_error_code": null, "transcript_id": null,
   "selection": {
     "option_id": "option-v1-…", "provider_id": "faster-whisper",
     "model_id": "turbo", "source": "…", "revision": "sha40",
     "profile": { "...": "ProcessingProfile completo" },
     "execution": { "device": "cuda", "precision": "float16", "fallback_reason": null },
-    "language": null
+    "language": null,
+    "diarization": { "enabled": false, "speakers": { "exact": null, "minimum": null, "maximum": null } }
   },
   "created_at": "…", "updated_at": "…"
 }
@@ -135,3 +136,67 @@ persistir, `Transcript` y `Segment`s usan identidades deterministas
 (`uuid5` del job), por lo que reanudar tras una interrupción en `PERSISTING`
 añade solo los segmentos que faltan: el resultado es idéntico al de una
 ejecución limpia y repetir la etapa no duplica nada.
+
+## Diarización (S6.13, S6.15, S14.07)
+
+La diarización (quién habla) es una etapa **opcional** del job, desactivada por
+defecto y siempre local (sherpa-onnx, ADR-0007). Se pide al crear el job:
+
+```json
+{"project_id": "…", "media_asset_id": "…", "option_id": "…",
+ "diarization": {"enabled": true, "speakers": {"exact": 2}}}
+```
+
+| Campo | Regla |
+| --- | --- |
+| `diarization` | opcional; ausente o `null` = desactivada |
+| `enabled` | booleano; si falta se toma `false`. Con `false` se ignora `speakers` (aunque se valida su forma) |
+| `speakers` | objeto opcional con `exact`, `minimum`, `maximum` (enteros de 1 a 32; `null` equivale a ausente). `exact` excluye a los otros dos y `minimum <= maximum`. Sin pistas, el motor estima el número de hablantes |
+
+Errores:
+
+- 422 `diarization_options_invalid`: forma o valores inválidos (campo desconocido,
+  no booleano/entero, fuera de 1–32, `exact` junto a `minimum`/`maximum`,
+  `minimum > maximum`). Se evalúa antes de tocar el proyecto o la opción.
+- 409 `diarization_unavailable`: se pidió activar la diarización pero no están
+  instalados los modelos o falta el runtime (extra `diarization`). No se crea el
+  job; pedirla desactivada funciona siempre. La disponibilidad la decide el port
+  `DiarizationAvailability`, cableado en `bootstrap.py`; sin cablear cuenta como
+  no disponible.
+
+La petición se guarda en el snapshot del job (`transcription_job_selections`,
+columna `diarization_json`, migración `0005_job_diarization`) y se devuelve en
+`JobView.selection.diarization` como `{"enabled": bool, "speakers": {"exact",
+"minimum", "maximum"}}` (`null` en lo no pedido). Las filas anteriores a la
+migración quedan con la diarización desactivada.
+
+### Etapa del pipeline
+
+Con la diarización activa el runner, tras `TRANSCRIBING` (y `ALIGNING`):
+
+1. entra en `DIARIZING`, **libera el motor ASR** mediante el callback inyectado
+   `release_asr(selection)` (S6.15/S14.07: los modelos de ASR y de diarización
+   nunca conviven en memoria) y ejecuta el `DiarizationProvider` sobre el mismo
+   derivado normalizado que usó el ASR;
+2. en `PERSISTING`, tras crear el transcript y sus segmentos, `AssignSpeakers`
+   guarda `Speaker`s, `SpeakerTurn`s y asigna `speaker_id` a cada segmento. Es
+   idempotente: reanudar tras una caída en `PERSISTING` vuelve a diarizar (los
+   turnos vivían solo en memoria) y reutiliza los `Speaker`s ya creados.
+
+Cancelación (`POST …/cancel`) y apagado del servidor se atienden entre etapas y
+también **dentro** de la diarización (mismo token): cancelar termina en
+`CANCELLED` sin transcript; apagar deja el job en `DIARIZING` para reanudarlo.
+
+### Fallo de diarización: el ASR nunca se pierde
+
+Si la diarización falla (modelo ausente, runtime ausente, fallo del proveedor o
+de la asignación), el transcript **se persiste igual** y el job termina
+`COMPLETED` con `error_code = null`. El fallo se expone en
+`JobView.diarization_error_code`, un código estable
+(`diarization_model_unavailable`, `diarization_runtime_unavailable`,
+`diarization_invalid_audio`, `diarization_provider_failed`; nunca mensajes ni
+rutas). El código se persiste en `transcription_job_selections.diarization_error_code`
+(misma migración) y no se reintenta solo: un job con el código guardado no
+vuelve a diarizar al reanudarse. Se eligió la tabla de selecciones y no
+`transcription_jobs` para no ampliar la entidad de dominio `TranscriptionJob`,
+cuyo `error_code` solo es válido para jobs `FAILED`.

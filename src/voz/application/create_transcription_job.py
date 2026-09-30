@@ -15,6 +15,8 @@ from voz.application.get_transcription_options import (
     TranscriptionOption,
     option_identity,
 )
+from voz.application.ports.diarization import DiarizationOptions
+from voz.application.ports.diarization_availability import DiarizationAvailability
 from voz.application.ports.repositories import (
     MediaAssetRepository,
     ProjectRepository,
@@ -39,6 +41,7 @@ class CreateJobFailureCode(StrEnum):
     JOB_ALREADY_ACTIVE = "job_already_active"
     INSUFFICIENT_VRAM = "insufficient_vram"
     INSUFFICIENT_RAM = "insufficient_ram"
+    DIARIZATION_UNAVAILABLE = "diarization_unavailable"
 
 
 class CreateJobError(RuntimeError):
@@ -76,6 +79,8 @@ class CreateTranscriptionJob:
     media_assets: MediaAssetRepository
     jobs: TranscriptionJobRepository
     selections: TranscriptionJobSelectionRepository
+    diarization_availability: DiarizationAvailability | None = None
+    """``None`` means diarization is not wired, so requesting it is refused."""
     id_factory: Callable[[], UUID] = uuid4
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
@@ -86,6 +91,7 @@ class CreateTranscriptionJob:
         media_asset_id: UUID,
         option_id: str,
         language: str | None = None,
+        diarization: DiarizationOptions | None = None,
     ) -> CreatedJob:
         if self.projects.get(project_id) is None:
             raise CreateJobError(
@@ -109,6 +115,15 @@ class CreateTranscriptionJob:
                 "A transcription job is already active for this media asset.",
             )
         self._check_memory(option, model)
+        if diarization is not None and not (
+            self.diarization_availability is not None
+            and self.diarization_availability.is_available()
+        ):
+            raise CreateJobError(
+                CreateJobFailureCode.DIARIZATION_UNAVAILABLE,
+                "Speaker diarization is not available. "
+                "Install its models and runtime, or disable it.",
+            )
 
         now = self.clock()
         job = TranscriptionJob.create(
@@ -124,6 +139,7 @@ class CreateTranscriptionJob:
             execution=option.execution,
             language=language,
             created_at=now,
+            diarization=diarization,
         )
         self.jobs.add(job)
         self.selections.add(selection)

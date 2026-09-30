@@ -15,10 +15,12 @@ from fastapi import FastAPI
 from starlette.types import Message
 
 from voz.application.edit_segment import EditSegmentText
+from voz.application.word_speakers import SpeakerTimeline
 from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.entities.project import Project
 from voz.domain.entities.segment import Segment
 from voz.domain.entities.speaker import Speaker
+from voz.domain.entities.speaker_turn import SpeakerTurn
 from voz.domain.entities.transcript import Transcript
 from voz.domain.entities.word import Word
 from voz.infrastructure.persistence.database import create_sqlite_engine
@@ -179,8 +181,25 @@ def test_put_unknown_segment_and_invalid_text(harness: Harness) -> None:
 def test_segment_view_exposes_words_only_while_the_text_is_unedited(
     harness: Harness,
 ) -> None:
+    speaker = str(harness.speaker.id)
     assert segment_view(harness.segment)["words"] == [
-        {"start_ms": 0, "end_ms": 100, "text": "hola"},
-        {"start_ms": 100, "end_ms": 250, "text": "mundo"},
+        {"start_ms": 0, "end_ms": 100, "text": "hola", "speaker_id": speaker},
+        {"start_ms": 100, "end_ms": 250, "text": "mundo", "speaker_id": speaker},
     ]
     assert segment_view(harness.segment.edit_text("otro"))["words"] == []
+
+
+def test_segment_view_refines_word_speakers_with_the_turn_timeline(
+    harness: Harness,
+) -> None:
+    other = uuid4()
+    timeline = SpeakerTimeline(
+        [SpeakerTurn(harness.segment.transcript_id, "c", 90, 250, speaker_id=other)]
+    )
+
+    words = cast(
+        list[dict[str, object]], segment_view(harness.segment, timeline)["words"]
+    )
+
+    # "hola" (midpoint 50) is outside the turn -> segment speaker; "mundo" -> turn
+    assert [w["speaker_id"] for w in words] == [str(harness.speaker.id), str(other)]

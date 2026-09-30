@@ -622,6 +622,55 @@ class SqliteSpeakerRepository:
             )
         return tuple(_speaker_from_row(row) for row in rows)
 
+    def list_by_transcript(self, transcript_id: UUID) -> Sequence[Speaker]:
+        transcript = str(transcript_id)
+        in_segments = select(segments.c.speaker_id).where(
+            segments.c.transcript_id == transcript,
+            segments.c.speaker_id.is_not(None),
+        )
+        in_turns = select(speaker_turns.c.speaker_id).where(
+            speaker_turns.c.transcript_id == transcript,
+            speaker_turns.c.speaker_id.is_not(None),
+        )
+        with self._engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    select(speakers)
+                    .where(speakers.c.id.in_(in_segments) | speakers.c.id.in_(in_turns))
+                    .order_by(speakers.c.created_at, speakers.c.id)
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(_speaker_from_row(row) for row in rows)
+
+    def transcript_ids(self, speaker_id: UUID) -> frozenset[UUID]:
+        speaker = str(speaker_id)
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                select(segments.c.transcript_id)
+                .where(segments.c.speaker_id == speaker)
+                .union(
+                    select(speaker_turns.c.transcript_id).where(
+                        speaker_turns.c.speaker_id == speaker
+                    )
+                )
+            ).all()
+        return frozenset(UUID(str(row[0])) for row in rows)
+
+    def merge(self, source_id: UUID, target_id: UUID) -> None:
+        source, target = str(source_id), str(target_id)
+        with self._engine.begin() as connection:
+            for table in (segments, speaker_turns):
+                connection.execute(
+                    update(table)
+                    .where(table.c.speaker_id == source)
+                    .values(speaker_id=target)
+                )
+            result = connection.execute(delete(speakers).where(speakers.c.id == source))
+            if result.rowcount != 1:
+                raise LookupError(f"cannot merge missing speakers row {source_id}")
+
 
 class SqliteSpeakerTurnRepository:
     """SQLAlchemy Core adapter for acoustic speaker turns."""

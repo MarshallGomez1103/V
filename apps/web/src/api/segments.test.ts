@@ -30,6 +30,7 @@ describe('updateSegment', () => {
       edited: true,
       revision: 3,
       speaker_id: null,
+      words: [],
     })
 
     await expect(

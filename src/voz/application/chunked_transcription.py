@@ -127,6 +127,7 @@ def owned_chunk_segments(
                     end_ms=end_ms,
                     text=segment.text,
                     words=clamp_words(segment.words, start_ms, end_ms),
+                    speaker=segment.speaker,
                 )
             )
     return tuple(owned)
@@ -143,6 +144,7 @@ def globalize_chunk_result(
                 start_ms=segment.start_ms + chunk.process_start_ms,
                 end_ms=segment.end_ms + chunk.process_start_ms,
                 text=segment.text,
+                speaker=segment.speaker,
                 words=tuple(
                     replace(
                         word,

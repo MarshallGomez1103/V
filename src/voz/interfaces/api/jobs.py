@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -18,8 +19,10 @@ from voz.application.job_runner import (
     JobTerminal,
     transcript_id_for,
 )
+from voz.application.ports.diarization import DiarizationOptions, SpeakerCountHint
 from voz.application.ports.repositories import (
     SegmentRepository,
+    SpeakerTurnRepository,
     TranscriptionJobRepository,
     TranscriptRepository,
 )
@@ -27,6 +30,7 @@ from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
 )
+from voz.application.word_speakers import SpeakerTimeline
 from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
@@ -41,7 +45,11 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.JOB_ALREADY_ACTIVE: 409,
     CreateJobFailureCode.INSUFFICIENT_VRAM: 409,
     CreateJobFailureCode.INSUFFICIENT_RAM: 409,
+    CreateJobFailureCode.DIARIZATION_UNAVAILABLE: 409,
 }
+
+MAX_DIARIZATION_SPEAKERS = 32
+_SPEAKER_KEYS = ("exact", "minimum", "maximum")
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +58,8 @@ class CreateJobRequest:
     media_asset_id: UUID
     option_id: str
     language: str | None = None
+    diarization: object = None
+    """``{"enabled": bool, "speakers": {"exact"?, "minimum"?, "maximum"?}}``."""
 
 
 def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
@@ -59,9 +69,48 @@ def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPEx
     )
 
 
+def _invalid_diarization(message: str) -> HTTPException:
+    return _error(422, "diarization_options_invalid", message)
+
+
+def parse_diarization(raw: object) -> DiarizationOptions | None:
+    """Validate the request body; ``None`` means diarization is disabled."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise _invalid_diarization("diarization must be an object.")
+    body = cast(dict[str, object], raw)
+    if set(body) - {"enabled", "speakers"}:
+        raise _invalid_diarization("diarization has unknown fields.")
+    enabled = body.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise _invalid_diarization("diarization.enabled must be a boolean.")
+    raw_speakers = body.get("speakers", {})
+    if not isinstance(raw_speakers, dict):
+        raise _invalid_diarization("diarization.speakers must be an object.")
+    speakers = cast(dict[str, object], raw_speakers)
+    if set(speakers) - set(_SPEAKER_KEYS):
+        raise _invalid_diarization("diarization.speakers has unknown fields.")
+    for value in speakers.values():
+        if value is not None and (
+            type(value) is not int or not 1 <= value <= MAX_DIARIZATION_SPEAKERS
+        ):
+            raise _invalid_diarization(
+                f"Speaker counts must be integers from 1 to {MAX_DIARIZATION_SPEAKERS}."
+            )
+    try:
+        hint = SpeakerCountHint(**cast(dict[str, int | None], speakers))
+    except (TypeError, ValueError):
+        raise _invalid_diarization(
+            "Use either exact, or minimum not greater than maximum."
+        ) from None
+    return DiarizationOptions(hint) if enabled else None
+
+
 def selection_view(selection: JobSelection) -> dict[str, object]:
     """Same profile/execution JSON shape as ``/api/transcription-options``."""
     model = selection.model
+    hint = (selection.diarization or DiarizationOptions()).speakers
     profile = model.profile
     execution = selection.execution
     return {
@@ -90,6 +139,14 @@ def selection_view(selection: JobSelection) -> dict[str, object]:
             ),
         },
         "language": selection.language,
+        "diarization": {
+            "enabled": selection.diarization is not None,
+            "speakers": {
+                "exact": hint.exact,
+                "minimum": hint.minimum,
+                "maximum": hint.maximum,
+            },
+        },
     }
 
 
@@ -103,6 +160,7 @@ def job_view(job: TranscriptionJob, selection: JobSelection) -> dict[str, object
         "state": job.state.value,
         "progress": job.progress,
         "error_code": job.error_code,
+        "diarization_error_code": selection.diarization_error_code,
         "transcript_id": str(transcript_id_for(job.id)) if completed else None,
         "selection": selection_view(selection),
         "created_at": job.created_at.isoformat(),
@@ -117,6 +175,7 @@ def create_jobs_router(
     transcripts_repo: TranscriptRepository,
     segments_repo: SegmentRepository,
     runner: JobRunner,
+    speaker_turns_repo: SpeakerTurnRepository | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["jobs"])
 
@@ -135,12 +194,14 @@ def create_jobs_router(
         return job
 
     def post_job(request: CreateJobRequest) -> dict[str, object]:
+        diarization = parse_diarization(request.diarization)
         try:
             created = create_job.execute(
                 project_id=request.project_id,
                 media_asset_id=request.media_asset_id,
                 option_id=request.option_id,
                 language=request.language,
+                diarization=diarization,
             )
         except CreateJobError as error:
             extra: dict[str, object] = {}
@@ -182,9 +243,15 @@ def create_jobs_router(
     def list_segments(transcript_id: UUID) -> dict[str, object]:
         if transcripts_repo.get(transcript_id) is None:
             raise _error(404, "transcript_not_found", "The transcript does not exist.")
+        # S7.05: each word takes the speaker of the turn covering its midpoint.
+        timeline = (
+            None
+            if speaker_turns_repo is None
+            else SpeakerTimeline(speaker_turns_repo.list_by_transcript(transcript_id))
+        )
         return {
             "segments": [
-                segment_view(segment)
+                segment_view(segment, timeline)
                 for segment in segments_repo.list_by_transcript(transcript_id)
             ]
         }
@@ -201,4 +268,10 @@ def create_jobs_router(
     return router
 
 
-__all__ = ["CreateJobRequest", "create_jobs_router", "job_view", "selection_view"]
+__all__ = [
+    "CreateJobRequest",
+    "create_jobs_router",
+    "job_view",
+    "parse_diarization",
+    "selection_view",
+]

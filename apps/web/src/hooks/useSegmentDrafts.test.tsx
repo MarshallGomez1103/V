@@ -48,6 +48,7 @@ function item(text: string, revision: number) {
     edited: true,
     revision,
     speaker_id: null,
+    words: [],
   }
 }
 

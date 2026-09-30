@@ -20,9 +20,16 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID, uuid5
 
+from voz.application.assign_speakers import AssignSpeakers
 from voz.application.chunked_transcription import (
     ChunkProgress,
     merge_transcription_language,
+)
+from voz.application.ports.diarization import (
+    DiarizationError,
+    DiarizationFailureCode,
+    DiarizationProvider,
+    DiarizationResult,
 )
 from voz.application.ports.inference_audio import (
     InferenceAudioError,
@@ -97,6 +104,8 @@ class InferenceAudioPreparer(Protocol):
 
 
 ProviderFactory = Callable[[JobSelection], TranscriptionProvider]
+DiarizationProviderFactory = Callable[[], DiarizationProvider]
+ReleaseAsr = Callable[[JobSelection], None]
 AudioSourceFactory = Callable[[UUID, UUID], InferenceAudioSource]
 
 
@@ -115,6 +124,16 @@ class _EventToken:
 
     def is_cancelled(self) -> bool:
         return self.event.is_set()
+
+
+@dataclass(frozen=True, slots=True)
+class _AnyEventToken:
+    """Cancelled when the user cancels *or* the server is shutting down."""
+
+    events: tuple[threading.Event, ...]
+
+    def is_cancelled(self) -> bool:
+        return any(event.is_set() for event in self.events)
 
 
 @dataclass(slots=True)
@@ -177,6 +196,10 @@ class JobRunner:
     audio_source_for: AudioSourceFactory
     audio_preparer: InferenceAudioPreparer
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    diarization_provider_for: DiarizationProviderFactory | None = None
+    assign_speakers: AssignSpeakers | None = None
+    release_asr: ReleaseAsr = lambda selection: None
+    """Free the ASR engine before diarizing (S6.15/S14.07); must be idempotent."""
     chunk_duration_ms: int = DEFAULT_CHUNK_DURATION_MS
     overlap_ms: int = DEFAULT_OVERLAP_MS
     _queue: queue.Queue[UUID | None] = field(
@@ -307,6 +330,7 @@ class JobRunner:
                 return self._fail(job, JobRunnerFailureCode.DURATION_UNKNOWN.value)
             audio_source = self.audio_source_for(job.project_id, job.media_asset_id)
             result: TranscriptionResult | None = None
+            diarized: DiarizationResult | None = None
 
             while job.state is not TranscriptionJobState.COMPLETED:
                 if token.is_cancelled():
@@ -344,11 +368,23 @@ class JobRunner:
                     if outcome.cancelled:
                         return job
                     result = outcome.result
+                elif job.state is TranscriptionJobState.DIARIZING:
+                    if _wants_diarization(selection):
+                        diarized, selection = self._diarize(
+                            job, selection, audio_source, token
+                        )
                 elif job.state is TranscriptionJobState.PERSISTING:
                     if result is None:
                         result = self._result_from_checkpoints(job.id)
                     self._persist_transcript(job, selection, result)
-                # QUEUED / PROBING / ALIGNING / DIARIZING / MERGING: no work yet.
+                    if _wants_diarization(selection):
+                        if diarized is None:
+                            # Resumed after a crash: the turns were in memory only.
+                            diarized, selection = self._diarize(
+                                job, selection, audio_source, token
+                            )
+                        selection = self._assign_speakers(job, selection, diarized)
+                # QUEUED / PROBING / ALIGNING / MERGING: no work yet.
                 # ponytail: the original was probed at import; PROBING exists for
                 # the state contract and future re-validation.
                 job = self._advance(job)
@@ -360,6 +396,64 @@ class JobRunner:
             if token.is_cancelled() or job.state is TranscriptionJobState.CANCELLING:
                 return self._finish_cancelled(job)
             return self._fail(job, _error_code(error))
+
+    def _diarize(
+        self,
+        job: TranscriptionJob,
+        selection: JobSelection,
+        audio_source: InferenceAudioSource,
+        token: _EventToken,
+    ) -> tuple[DiarizationResult | None, JobSelection]:
+        """Run diarization; a failure is recorded and never loses the transcript."""
+        options = selection.diarization
+        assert options is not None
+        stop = _AnyEventToken((self._cancel, self._stopping))
+        try:
+            # The ASR engine and the diarization models must not share memory.
+            self.release_asr(selection)
+            if self.diarization_provider_for is None:
+                raise DiarizationError(
+                    DiarizationFailureCode.RUNTIME_UNAVAILABLE,
+                    "Speaker diarization is not wired.",
+                )
+            provider = self.diarization_provider_for()
+            with audio_source.open() as audio:
+                result = provider.diarize(
+                    audio=audio, options=options, cancellation=stop
+                )
+            return result, selection
+        except Exception as error:
+            if token.is_cancelled():
+                raise
+            if self._stopping.is_set():
+                raise _Stopping from error
+            return None, self._record_diarization_error(job, selection, error)
+
+    def _assign_speakers(
+        self,
+        job: TranscriptionJob,
+        selection: JobSelection,
+        diarized: DiarizationResult | None,
+    ) -> JobSelection:
+        if diarized is None:
+            return selection  # the failure was already recorded
+        try:
+            if self.assign_speakers is None:
+                raise DiarizationError(
+                    DiarizationFailureCode.RUNTIME_UNAVAILABLE,
+                    "Speaker assignment is not wired.",
+                )
+            self.assign_speakers.execute(transcript_id_for(job.id), diarized)
+        except Exception as error:
+            return self._record_diarization_error(job, selection, error)
+        return selection
+
+    def _record_diarization_error(
+        self, job: TranscriptionJob, selection: JobSelection, error: Exception
+    ) -> JobSelection:
+        code = _error_code(error, DiarizationFailureCode.PROVIDER_FAILED.value)
+        self.selections.record_diarization_error(job.id, code)
+        return replace(selection, diarization_error_code=code)
 
     def _on_progress(self, progress: ChunkProgress) -> None:
         # Progress was persisted atomically with the checkpoint; this hook only
@@ -486,21 +580,32 @@ def _domain_words(segment_id: UUID, item: TranscriptionSegment) -> tuple[Word, .
     )
 
 
-def _error_code(error: BaseException) -> str:
+def _wants_diarization(selection: JobSelection) -> bool:
+    """Requested, and not already given up on (a recorded failure is final)."""
+    return (
+        selection.diarization is not None and selection.diarization_error_code is None
+    )
+
+
+def _error_code(
+    error: BaseException, default: str = JobRunnerFailureCode.INTERNAL.value
+) -> str:
     """Adapters raise typed errors whose ``code`` is already a stable identifier."""
     code: object = getattr(error, "code", None)
     if isinstance(code, StrEnum):
         return code.value
-    return JobRunnerFailureCode.INTERNAL.value
+    return default
 
 
 __all__ = [
     "AudioSourceFactory",
+    "DiarizationProviderFactory",
     "InferenceAudioPreparer",
     "JobNotFound",
     "JobRunner",
     "JobRunnerFailureCode",
     "JobTerminal",
     "ProviderFactory",
+    "ReleaseAsr",
     "transcript_id_for",
 ]

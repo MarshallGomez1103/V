@@ -231,3 +231,13 @@ def test_alignment_port_is_structural_and_has_no_implementation() -> None:
 
     assert isinstance(Aligner(), AlignmentProvider)
     assert not isinstance(object(), AlignmentProvider)
+
+
+def test_provider_speaker_label_survives_globalization_and_ownership() -> None:
+    chunk = AudioChunk(1, 25_000, 65_000, 30_000, 60_000)
+    local = TranscriptionResult(
+        (TranscriptionSegment(10_000, 12_000, " hola", speaker="A"),), "es"
+    )
+    (globalized,) = globalize_chunk_result(chunk, local).segments
+    (kept,) = owned_chunk_segments(chunk, (globalized,))
+    assert (kept.start_ms, kept.speaker) == (35_000, "A")

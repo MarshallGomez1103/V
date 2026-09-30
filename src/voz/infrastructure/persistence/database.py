@@ -46,6 +46,9 @@ def create_sqlite_engine(
         try:
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA journal_mode=WAL")
+            # Explicit: a confirmed chunk must survive power loss, and some
+            # SQLite builds default to NORMAL (may drop the last WAL commits).
+            cursor.execute("PRAGMA synchronous=FULL")
             cursor.execute(f"PRAGMA busy_timeout={busy_timeout_ms:d}")
         finally:
             cursor.close()

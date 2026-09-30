@@ -46,6 +46,8 @@ export interface JobView {
   progress: number
   error_code: string | null
   transcript_id: string | null
+  // Si la diarización falló, el transcript existe igual y aquí va el código.
+  diarization_error_code?: string | null
   selection?: JobSelection
   created_at: string
   updated_at: string
@@ -56,6 +58,18 @@ export interface CreateJobInput {
   media_asset_id: string
   option_id: string
   language: string | null
+  // Diarización opcional (S6); ausente o enabled=false = desactivada.
+  diarization?: {
+    enabled: boolean
+    speakers: { exact?: number; minimum?: number; maximum?: number }
+  }
+}
+
+export interface TranscriptWord {
+  start_ms: number
+  end_ms: number
+  text: string
+  speaker_id: string | null
 }
 
 export interface TranscriptSegment {
@@ -66,6 +80,8 @@ export interface TranscriptSegment {
   edited: boolean
   revision: number
   speaker_id: string | null
+  // S7.04/S7.05: vacío si el segmento se editó o el modelo no dio palabras.
+  words: TranscriptWord[]
 }
 
 export class JobApiError extends Error {
@@ -134,6 +150,16 @@ export function isJobView(value: unknown): value is JobView {
   )
 }
 
+function isWord(value: unknown): value is TranscriptWord {
+  return (
+    isRecord(value) &&
+    typeof value.start_ms === 'number' &&
+    typeof value.end_ms === 'number' &&
+    typeof value.text === 'string' &&
+    isNullableString(value.speaker_id)
+  )
+}
+
 function isSegment(value: unknown): value is TranscriptSegment {
   return (
     isRecord(value) &&
@@ -143,7 +169,9 @@ function isSegment(value: unknown): value is TranscriptSegment {
     typeof value.text === 'string' &&
     typeof value.edited === 'boolean' &&
     typeof value.revision === 'number' &&
-    isNullableString(value.speaker_id)
+    isNullableString(value.speaker_id) &&
+    Array.isArray(value.words) &&
+    value.words.every(isWord)
   )
 }
 

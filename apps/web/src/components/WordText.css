@@ -1,0 +1,23 @@
+/* S7.06/S7.07: palabras clicables con palabra actual resaltada. */
+
+.word-text .word {
+  border-radius: 3px;
+}
+
+.word-text .word[role='button'] {
+  cursor: pointer;
+}
+
+.word-text .word[role='button']:hover {
+  background: var(--line);
+}
+
+.word-text .word[role='button']:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 1px;
+}
+
+.word-text .word.is-current {
+  background: rgb(184 244 153 / 22%);
+  color: var(--lime);
+}

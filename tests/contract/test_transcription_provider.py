@@ -1,5 +1,6 @@
 """Reusable behavioral contract for every transcription provider."""
 
+import sys
 import wave
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from typing import BinaryIO
 
 import pytest
 from _pytest.fixtures import FixtureRequest
+from elevenlabs_contract_fake import elevenlabs_contract_case
 
 from voz.application.asr_device_selection import ComputeDevice, ExecutionDecision
 from voz.application.ports.transcription import (
@@ -23,6 +25,10 @@ from voz.application.ports.transcription import (
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import ComputePrecision
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
+from voz.infrastructure.asr.whisper_cpp import WhisperCppProvider
+from voz.infrastructure.cloud.openai_fake import FakeOpenAITransport
+from voz.infrastructure.cloud.openai_limits import openai_descriptors
+from voz.infrastructure.cloud.openai_transcription import OpenAITranscriptionProvider
 
 DESCRIPTOR = ModelDescriptor(
     provider_id="contract-asr",
@@ -154,11 +160,90 @@ class _ProviderContractCase:
     options: TranscriptionOptions
 
 
-@pytest.fixture(params=("structural", "faster-whisper"))
+WHISPER_CPP_DESCRIPTOR = ModelDescriptor(
+    provider_id="whisper-cpp",
+    model_id="contract-fixture",
+    display_name="whisper.cpp contract fixture",
+    capabilities=frozenset({ModelCapability.TRANSCRIPTION, ModelCapability.CPU}),
+    source="example/whisper-cpp-contract",
+    revision="dddddddddddddddddddddddddddddddddddddddd",
+)
+
+
+def _whisper_cpp_case(tmp_path: Path) -> "_ProviderContractCase":
+    """whisper.cpp behind the shared contract, using the fake ``whisper-cli``."""
+    fake = Path(__file__).parents[1] / "fixtures/whisper_cpp/fake_whisper_cli.py"
+    binary = tmp_path / "whisper-cli"
+    binary.write_text(f"#!{sys.executable}\n{fake.read_text()}", encoding="utf-8")
+    binary.chmod(0o755)
+    (tmp_path / "ggml-contract-fixture.bin").write_bytes(b"ggml")
+    return _ProviderContractCase(
+        provider=WhisperCppProvider(
+            binary=binary,
+            model_resolver=_WhisperCppResolver(tmp_path),
+            poll_seconds=0.02,
+        ),
+        options=TranscriptionOptions(model=WHISPER_CPP_DESCRIPTOR, language="es"),
+    )
+
+
+class _WhisperCppResolver:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def resolve_path(self, descriptor: ModelDescriptor) -> Path:
+        assert descriptor is WHISPER_CPP_DESCRIPTOR
+        return self.path
+
+
+class _FixedSecrets:
+    """Key held by a test double only; the provider must never store it."""
+
+    def get(self, provider_id: str) -> str | None:
+        return "sk-contract-fake-key"
+
+    def configured(self, provider_id: str) -> bool:
+        return True
+
+    def set(self, provider_id: str, key: str) -> None:
+        raise AssertionError("contract tests never write keys")
+
+    def delete(self, provider_id: str) -> None:
+        raise AssertionError("contract tests never write keys")
+
+
+def _openai_case(diarized: bool) -> "_ProviderContractCase":
+    """OpenAI behind the shared contract with the offline fake transport."""
+    model = openai_descriptors()[1 if diarized else 0]
+    return _ProviderContractCase(
+        provider=OpenAITranscriptionProvider(
+            secrets=_FixedSecrets(), transport=FakeOpenAITransport()
+        ),
+        options=TranscriptionOptions(model=model, language="es"),
+    )
+
+
+@pytest.fixture(
+    params=(
+        "structural",
+        "faster-whisper",
+        "whisper-cpp",
+        "elevenlabs",
+        "openai",
+        "openai-diarized",
+    )
+)
 def provider_case(
     request: FixtureRequest,
     tmp_path: Path,
 ) -> _ProviderContractCase:
+    if request.param == "elevenlabs":
+        provider, options = elevenlabs_contract_case()
+        return _ProviderContractCase(provider=provider, options=options)
+    if request.param == "whisper-cpp":
+        return _whisper_cpp_case(tmp_path)
+    if request.param in ("openai", "openai-diarized"):
+        return _openai_case(request.param == "openai-diarized")
     if request.param == "structural":
         return _ProviderContractCase(
             provider=_ContractProvider(),

@@ -20,8 +20,10 @@ from voz.application.asr_device_selection import (
     HardwareCapabilities,
     select_execution,
 )
+from voz.application.assign_speakers import AssignSpeakers
 from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.edit_segment import EditSegmentText
+from voz.application.estimate_cloud_cost import EstimateCloudTranscription
 from voz.application.export.service import ExportTranscript
 from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.import_external_model import ImportExternalModel
@@ -30,11 +32,26 @@ from voz.application.job_runner import JobRunner
 from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.model_tasks import ModelTaskRunner
 from voz.application.normalize_media import NormalizeImportedMedia
-from voz.application.ports.transcription import TranscriptionProvider
+from voz.application.ports.diarization import (
+    DiarizationError,
+    DiarizationFailureCode,
+    DiarizationProvider,
+)
+from voz.application.ports.transcription import (
+    TranscriptionError,
+    TranscriptionFailureCode,
+    TranscriptionProvider,
+)
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.application.prepare_inference_audio import PrepareInferenceAudio
 from voz.application.projects import CreateProject, ListProjects
 from voz.application.recoverable_transcription import RecoverableTranscription
+from voz.application.speakers import (
+    AssignSegmentSpeaker,
+    ListTranscriptSpeakers,
+    MergeSpeakers,
+    UpdateSpeaker,
+)
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
 )
@@ -48,10 +65,38 @@ from voz.infrastructure.asr.options import (
     FasterWhisperRuntimeProbe,
     LocalTranscriptionModelCatalog,
 )
+from voz.infrastructure.asr.whisper_cpp import WhisperCppProvider
+from voz.infrastructure.asr.whisper_cpp_options import (
+    WhisperCppRuntimeProbe,
+    WhisperCppTranscriptionModelCatalog,
+)
 from voz.infrastructure.audio.ffmpeg import FfmpegMediaNormalizer
 from voz.infrastructure.audio.ffprobe import FfprobeMediaProbe
 from voz.infrastructure.audio.waveform_peaks import FfmpegWaveformPeaks
 from voz.infrastructure.buzz_cache import BuzzModelCache
+from voz.infrastructure.cloud.catalog import (
+    CloudRuntimeProbe,
+    CloudTranscriptionCatalog,
+    CompositeCatalog,
+    RoutingRuntimeProbe,
+)
+from voz.infrastructure.cloud.elevenlabs_pricing import (
+    ELEVENLABS_DEFAULT_MODELS,
+    ELEVENLABS_PRICES,
+)
+from voz.infrastructure.cloud.elevenlabs_scribe import (
+    ElevenLabsScribeProvider,
+    elevenlabs_scribe_descriptor,
+)
+from voz.infrastructure.cloud.openai_limits import (
+    DEFAULT_MODEL_ID as OPENAI_DEFAULT_MODEL_ID,
+)
+from voz.infrastructure.cloud.openai_limits import openai_descriptors, openai_prices
+from voz.infrastructure.cloud.openai_transcription import OpenAITranscriptionProvider
+from voz.infrastructure.cloud.openai_transport import urllib_transport
+from voz.infrastructure.diarization.availability import SherpaDiarizationAvailability
+from voz.infrastructure.diarization.models import DiarizationModelStore
+from voz.infrastructure.diarization.sherpa import SherpaOnnxDiarizationProvider
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
@@ -64,6 +109,7 @@ from voz.infrastructure.persistence.repositories import (
     SqliteProjectRepository,
     SqliteSegmentRepository,
     SqliteSpeakerRepository,
+    SqliteSpeakerTurnRepository,
     SqliteTranscriptionJobRepository,
     SqliteTranscriptRepository,
 )
@@ -73,6 +119,7 @@ from voz.infrastructure.persistence.transcription_checkpoints import (
 from voz.infrastructure.persistence.transcription_job_selections import (
     SqliteTranscriptionJobSelectionRepository,
 )
+from voz.infrastructure.secrets import ProviderSecrets
 from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
 from voz.interfaces.api.job_events import create_job_events_router
@@ -83,7 +130,9 @@ from voz.interfaces.api.media_stream import create_media_stream_router
 from voz.interfaces.api.model_tasks import create_model_tasks_router
 from voz.interfaces.api.models import create_models_router
 from voz.interfaces.api.projects import create_projects_router
+from voz.interfaces.api.providers import create_providers_router
 from voz.interfaces.api.segments import create_segments_router
+from voz.interfaces.api.speakers import create_speakers_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
 from voz.interfaces.api.waveform import create_waveform_router
 
@@ -201,17 +250,72 @@ def create_app(
         model_store,
         ImportExternalModel(buzz_cache, model_store, model_catalog.entries()),
     )
+    # Cloud providers exist only as explicit, key-gated options (ADR-0006);
+    # they are never recommended nor used as a fallback.
+    secrets = ProviderSecrets(resolved_paths.config)
+    cloud_descriptors = (*openai_descriptors(), elevenlabs_scribe_descriptor())
+    cloud_probe = CloudRuntimeProbe(secrets, cloud_descriptors)
+    whisper_cpp_probe = WhisperCppRuntimeProbe()
     if transcription_options is None:
-        transcription_options = GetTranscriptionOptions(
+        local_catalogs = (
             LocalTranscriptionModelCatalog(model_store),
-            FasterWhisperRuntimeProbe(),
+            # ponytail: whisper.cpp options appear only when whisper-cli exists;
+            # its model ids overlap faster-whisper's, so the Model Manager keeps
+            # listing faster-whisper only until ids are namespaced.
+            *(
+                (WhisperCppTranscriptionModelCatalog(model_store),)
+                if whisper_cpp_probe.availability().available
+                else ()
+            ),
+        )
+        transcription_options = GetTranscriptionOptions(
+            CompositeCatalog(
+                (*local_catalogs, CloudTranscriptionCatalog(cloud_descriptors))
+            ),
+            RoutingRuntimeProbe(
+                FasterWhisperRuntimeProbe(),
+                {
+                    "whisper-cpp": whisper_cpp_probe,
+                    **{pid: cloud_probe for pid in cloud_probe.provider_ids},
+                },
+            ),
         )
 
     # ponytail: one runtime per descriptor, closed on shutdown; the snapshot's
     # execution decision is informative, hardware is re-probed at load time.
     runtimes: dict[ModelDescriptor, LocalAsrRuntime] = {}
 
+    other_providers: dict[str, TranscriptionProvider] = {}
+
     def provider_for(selection: JobSelection) -> TranscriptionProvider:
+        provider_id = selection.model.provider_id
+        if provider_id in other_providers:
+            return other_providers[provider_id]
+        if provider_id == "openai":
+            provider: TranscriptionProvider = OpenAITranscriptionProvider(
+                secrets=secrets, transport=urllib_transport
+            )
+        elif provider_id == "elevenlabs":
+            provider = ElevenLabsScribeProvider(secrets=secrets)
+        elif provider_id == "whisper-cpp":
+            binary = whisper_cpp_probe.availability().binary
+            if binary is None:
+                raise TranscriptionError(
+                    TranscriptionFailureCode.PROVIDER_FAILED,
+                    "The whisper.cpp executable is not available.",
+                )
+            provider = WhisperCppProvider(
+                binary=binary,
+                model_resolver=model_store,
+                force_cpu=True,
+                temp_root=resolved_paths.cache,
+            )
+        else:
+            return _local_provider(selection)
+        other_providers[provider_id] = provider
+        return provider
+
+    def _local_provider(selection: JobSelection) -> TranscriptionProvider:
         runtime = runtimes.get(selection.model)
         if runtime is None:
             runtime = create_local_asr_runtime(selection.model, paths=resolved_paths)
@@ -225,6 +329,33 @@ def create_app(
             resolved_paths.data, project_id, media_asset_id
         )
 
+    diarization_store = DiarizationModelStore(data_root=resolved_paths.data)
+    diarization_availability = SherpaDiarizationAvailability(diarization_store)
+    # ponytail: one cached sherpa engine (~30 MB of ONNX), released on shutdown.
+    diarization_engines: list[SherpaOnnxDiarizationProvider] = []
+
+    def diarization_provider_for() -> DiarizationProvider:
+        if not diarization_engines:
+            model_paths = diarization_store.paths()
+            if model_paths is None:
+                raise DiarizationError(
+                    DiarizationFailureCode.MODEL_UNAVAILABLE,
+                    "The local diarization models are not installed.",
+                )
+            diarization_engines.append(
+                SherpaOnnxDiarizationProvider(
+                    segmentation_model=model_paths.segmentation,
+                    embedding_model=model_paths.embedding,
+                )
+            )
+        return diarization_engines[0]
+
+    def release_asr(selection: JobSelection) -> None:
+        # S6.15/S14.07: free ASR memory before diarization; recreated lazily.
+        runtime = runtimes.pop(selection.model, None)
+        if runtime is not None:
+            runtime.close()
+
     runner = JobRunner(
         jobs=jobs,
         selections=selections,
@@ -233,6 +364,14 @@ def create_app(
         segments=segments,
         checkpoints=SqliteTranscriptionCheckpointStore(resolved_engine),
         provider_for=provider_for,
+        diarization_provider_for=diarization_provider_for,
+        assign_speakers=AssignSpeakers(
+            transcripts,
+            segments,
+            speakers,
+            SqliteSpeakerTurnRepository(resolved_engine),
+        ),
+        release_asr=release_asr,
         audio_source_for=audio_source_for,
         audio_preparer=PrepareInferenceAudio(
             media_storage=media_storage,
@@ -275,6 +414,9 @@ def create_app(
             for runtime in runtimes.values():
                 runtime.close()
             runtimes.clear()
+            for diarization_engine in diarization_engines:
+                diarization_engine.close()
+            diarization_engines.clear()
             if owns_engine:
                 resolved_engine.dispose()
 
@@ -308,19 +450,33 @@ def create_app(
     application.include_router(
         create_jobs_router(
             CreateTranscriptionJob(
-                transcription_options, projects, media_assets, jobs, selections
+                transcription_options,
+                projects,
+                media_assets,
+                jobs,
+                selections,
+                diarization_availability=diarization_availability,
             ),
             jobs,
             selections,
             transcripts,
             segments,
             runner,
+            SqliteSpeakerTurnRepository(resolved_engine),
         )
     )
     application.include_router(create_job_events_router(jobs, view=view))
     application.include_router(create_media_stream_router(media_assets, media_storage))
     application.include_router(
         create_segments_router(EditSegmentText(segments), segments)
+    )
+    application.include_router(
+        create_speakers_router(
+            ListTranscriptSpeakers(transcripts, segments, speakers),
+            UpdateSpeaker(segments, speakers),
+            MergeSpeakers(segments, speakers),
+            AssignSegmentSpeaker(segments, speakers),
+        )
     )
     application.include_router(
         create_waveform_router(
@@ -346,6 +502,17 @@ def create_app(
         )
     )
     application.include_router(create_model_tasks_router(model_tasks))
+    application.include_router(
+        create_providers_router(
+            secrets,
+            ("elevenlabs", "openai"),
+            EstimateCloudTranscription(
+                media_assets,
+                {**openai_prices(), **ELEVENLABS_PRICES},
+                {"openai": OPENAI_DEFAULT_MODEL_ID, **ELEVENLABS_DEFAULT_MODELS},
+            ),
+        )
+    )
     application.include_router(
         create_export_router(
             ExportTranscript(transcripts, segments, speakers, projects, media_assets)

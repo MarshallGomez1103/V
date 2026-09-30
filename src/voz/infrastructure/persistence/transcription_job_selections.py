@@ -7,13 +7,14 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import Engine, RowMapping, insert, select
+from sqlalchemy import Engine, RowMapping, insert, select, update
 
 from voz.application.asr_device_selection import (
     ComputeDevice,
     ExecutionDecision,
     FallbackReason,
 )
+from voz.application.ports.diarization import DiarizationOptions, SpeakerCountHint
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import (
@@ -141,6 +142,45 @@ def _execution_from_json(value: object) -> ExecutionDecision | None:
     )
 
 
+def _diarization_json(options: DiarizationOptions | None) -> str | None:
+    if options is None:
+        return None
+    hint = options.speakers
+    return _dump(
+        {
+            "speakers": {
+                "exact": hint.exact,
+                "minimum": hint.minimum,
+                "maximum": hint.maximum,
+            }
+        }
+    )
+
+
+def _optional_int(value: object, *, field: str) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int:
+        raise TypeError(f"persisted {field} must be an integer")
+    return value
+
+
+def _diarization_from_json(value: object) -> DiarizationOptions | None:
+    if value is None:
+        return None
+    raw = _object(value, field="diarization_json").get("speakers")
+    if not isinstance(raw, dict):
+        raise TypeError("persisted speakers must be an object")
+    hint = cast(dict[str, object], raw)
+    return DiarizationOptions(
+        SpeakerCountHint(
+            exact=_optional_int(hint.get("exact"), field="exact"),
+            minimum=_optional_int(hint.get("minimum"), field="minimum"),
+            maximum=_optional_int(hint.get("maximum"), field="maximum"),
+        )
+    )
+
+
 def _selection_values(selection: JobSelection) -> dict[str, object]:
     return {
         "job_id": str(selection.job_id),
@@ -153,6 +193,8 @@ def _selection_values(selection: JobSelection) -> dict[str, object]:
         "model_json": _model_json(selection.model),
         "execution_json": _execution_json(selection.execution),
         "created_at": selection.created_at.astimezone(UTC).isoformat(),
+        "diarization_json": _diarization_json(selection.diarization),
+        "diarization_error_code": selection.diarization_error_code,
     }
 
 
@@ -164,11 +206,18 @@ def _selection_from_row(row: RowMapping) -> JobSelection:
         execution=_execution_from_json(row["execution_json"]),
         language=_optional_text(row["language"], field="language"),
         created_at=datetime.fromisoformat(_text(row["created_at"], field="created_at")),
+        diarization=_diarization_from_json(row["diarization_json"]),
+        diarization_error_code=_optional_text(
+            row["diarization_error_code"], field="diarization_error_code"
+        ),
     )
 
 
 class SqliteTranscriptionJobSelectionRepository:
-    """One immutable selection row per job, keyed by the job identity."""
+    """One selection row per job, keyed by the job identity.
+
+    Immutable except for ``diarization_error_code``, recorded once by the runner.
+    """
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
@@ -193,6 +242,14 @@ class SqliteTranscriptionJobSelectionRepository:
                 .one_or_none()
             )
         return None if row is None else _selection_from_row(row)
+
+    def record_diarization_error(self, job_id: UUID, code: str) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                update(transcription_job_selections)
+                .where(transcription_job_selections.c.job_id == str(job_id))
+                .values(diarization_error_code=code)
+            )
 
 
 __all__ = ["SqliteTranscriptionJobSelectionRepository"]

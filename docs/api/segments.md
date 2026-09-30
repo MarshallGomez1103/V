@@ -12,7 +12,7 @@ Es el mismo shape en `GET /api/transcripts/{transcript_id}/segments`
 {
   "id": "uuid", "start_ms": 0, "end_ms": 250, "text": "Hola, mundo.",
   "edited": true, "revision": 1, "speaker_id": "uuid | null",
-  "words": [{"start_ms": 0, "end_ms": 120, "text": "Hola,"}]
+  "words": [{"start_ms": 0, "end_ms": 120, "text": "Hola,", "speaker_id": "uuid | null"}]
 }
 ```
 
@@ -28,6 +28,15 @@ timing de palabra) y **siempre `[]` si el segmento está editado (`edited: true`
 los timings describen el texto ASR original, no el corregido, así que no se
 exponen (siguen guardados). La probabilidad de cada palabra se conserva en los
 checkpoints pero no se expone.
+
+`words[].speaker_id` (S7.05) es el hablante de la palabra: el del turno acústico
+que contiene su punto medio (`start <= (start_ms+end_ms)/2 < end`; con turnos
+solapados gana el que empieza antes); si ningún turno la cubre, hereda el
+`speaker_id` del segmento (puede ser `null`). Se calcula al vuelo en la vista
+(`application/word_speakers.py`), sin columna nueva en `words`: no hay
+persistencia que migrar ni que mantener idempotente. Mientras el endpoint de
+listado no entregue los turnos a `segment_view`, todas las palabras heredan el
+hablante del segmento.
 
 ## `PUT /api/segments/{segment_id}`
 

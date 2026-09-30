@@ -306,8 +306,8 @@ def test_create_then_complete_and_read_segments(tmp_path: Path) -> None:
             (0, 250, "hola")
         ]
         assert items[0]["words"] == [
-            {"start_ms": 0, "end_ms": 100, "text": "ho"},
-            {"start_ms": 100, "end_ms": 250, "text": "la"},
+            {"start_ms": 0, "end_ms": 100, "text": "ho", "speaker_id": None},
+            {"start_ms": 100, "end_ms": 250, "text": "la", "speaker_id": None},
         ]
 
         status, conflict = harness.request("POST", f"/api/jobs/{job_id}/cancel")

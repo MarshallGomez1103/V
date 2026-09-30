@@ -28,6 +28,8 @@ def _segment_json(segment: TranscriptionSegment) -> dict[str, object]:
         "end_ms": segment.end_ms,
         "text": segment.text,
     }
+    if segment.speaker is not None:  # provider-side diarization label
+        item["speaker"] = segment.speaker
     if segment.words:  # checkpoints without words keep their original shape
         item["words"] = [
             {
@@ -39,6 +41,10 @@ def _segment_json(segment: TranscriptionSegment) -> dict[str, object]:
             for word in segment.words
         ]
     return item
+
+
+def _speaker_from_json(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 def _words_from_json(value: object) -> tuple[TranscriptionWord, ...]:
@@ -87,6 +93,7 @@ def _segments_from_json(value: object) -> tuple[TranscriptionSegment, ...]:
                 end_ms=cast(int, values.get("end_ms")),
                 text=cast(str, values.get("text")),
                 words=_words_from_json(values.get("words")),
+                speaker=_speaker_from_json(values.get("speaker")),
             )
         )
     return tuple(segments)

@@ -1,9 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { cancelJob, createJob, JobApiError } from './api/jobs'
 import type { TranscriptSegment } from './api/jobs'
+import { listSpeakers, type Speaker } from './api/speakers'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AutosaveStatus } from './components/AutosaveStatus'
+import {
+  DiarizationOptions,
+  type DiarizationRequest,
+} from './components/DiarizationOptions'
 import { ExportMenu } from './components/ExportMenu'
 import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
@@ -11,11 +16,15 @@ import { ModelManager } from './components/ModelManager'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
 import { SegmentEditor } from './components/SegmentEditor'
 import { SegmentList } from './components/SegmentList'
+import { SegmentSpeakerSelect } from './components/SegmentSpeakerSelect'
+import { SpeakersPanel } from './components/SpeakersPanel'
 import { TranscriptionOptionsSelector } from './components/TranscriptionOptionsSelector'
 import { Waveform } from './components/Waveform'
+import { WordText } from './components/WordText'
 import { useJobEvents } from './hooks/useJobEvents'
 import { useSegmentDrafts } from './hooks/useSegmentDrafts'
 import { useSeek } from './hooks/useSeek'
+import { createPlayhead } from './lib/playhead'
 
 function BrandMark() {
   return (
@@ -68,11 +77,50 @@ export function App() {
   const refreshModels = useCallback(() => {
     setModelsVersion((version) => version + 1)
   }, [])
+  const [diarization, setDiarization] = useState<DiarizationRequest>({
+    enabled: false,
+    speakers: {},
+  })
+  const [mode, setMode] = useState<'read' | 'edit'>('read')
+  const [speakers, setSpeakers] = useState<Speaker[]>([])
+  const [speakersVersion, setSpeakersVersion] = useState(0)
+  const reloadSpeakers = useCallback(() => {
+    setSpeakersVersion((version) => version + 1)
+  }, [])
+  // S7.07: la palabra actual se sigue con un store externo; solo re-renderiza
+  // la palabra que entra y la que sale, no todas las filas.
+  const playhead = useMemo(() => createPlayhead(), [])
+  const handleTimeUpdate = useCallback(
+    (ms: number) => {
+      setCurrentMs(ms)
+      playhead.set(ms)
+    },
+    [playhead],
+  )
   const renderSegmentText = useCallback(
     (segment: TranscriptSegment, query: string) => (
-      <SegmentEditor segment={segment} drafts={drafts} query={query} />
+      <>
+        {speakers.length > 0 ? (
+          <SegmentSpeakerSelect
+            segmentId={segment.id}
+            speakerId={segment.speaker_id}
+            speakers={speakers}
+            onChanged={reloadSpeakers}
+          />
+        ) : null}
+        {mode === 'edit' ? (
+          <SegmentEditor segment={segment} drafts={drafts} query={query} />
+        ) : (
+          <WordText
+            segment={segment}
+            query={query}
+            onSeek={seek}
+            playhead={playhead}
+          />
+        )}
+      </>
     ),
-    [drafts],
+    [drafts, mode, playhead, reloadSpeakers, seek, speakers],
   )
 
   const startJob = useCallback(async () => {
@@ -87,6 +135,7 @@ export function App() {
         media_asset_id: imported.media.media_asset_id,
         option_id: optionId,
         language: null, // ponytail: idioma autodetectado; selector de idioma en un corte posterior
+        diarization,
       })
       setJobId(job.id)
     } catch (error: unknown) {
@@ -94,10 +143,23 @@ export function App() {
     } finally {
       setCreating(false)
     }
-  }, [imported, optionId])
+  }, [diarization, imported, optionId])
 
   const job = events.job
   const transcriptId = job?.state === 'COMPLETED' ? job.transcript_id : null
+
+  useEffect(() => {
+    if (!transcriptId) {
+      return
+    }
+    const controller = new AbortController()
+    void listSpeakers(transcriptId, controller.signal)
+      .then(setSpeakers)
+      .catch(() => undefined)
+    return () => {
+      controller.abort()
+    }
+  }, [transcriptId, speakersVersion])
 
   return (
     <div className="app-shell">
@@ -151,6 +213,11 @@ export function App() {
                   onChange={setOptionId}
                   disabled={creating || jobId !== null}
                 />
+                <DiarizationOptions
+                  value={diarization}
+                  onChange={setDiarization}
+                  disabled={creating || jobId !== null}
+                />
                 {jobError ? (
                   <p className="options-error" role="alert">
                     {jobError}
@@ -181,7 +248,7 @@ export function App() {
                   mediaAssetId={imported.media.media_asset_id}
                   seekToMs={seekToMs}
                   seekNonce={seekNonce}
-                  onTimeUpdate={setCurrentMs}
+                  onTimeUpdate={handleTimeUpdate}
                 />
                 <Waveform
                   mediaAssetId={imported.media.media_asset_id}
@@ -203,15 +270,52 @@ export function App() {
                 />
                 {transcriptId ? (
                   <div className="transcript-tools">
+                    <div
+                      className="mode-toggle"
+                      role="group"
+                      aria-label="Modo de la transcripción"
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={mode === 'read'}
+                        onClick={() => {
+                          setMode('read')
+                        }}
+                      >
+                        Leer
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={mode === 'edit'}
+                        onClick={() => {
+                          setMode('edit')
+                        }}
+                      >
+                        Editar
+                      </button>
+                    </div>
                     <AutosaveStatus drafts={drafts} />
                     <ExportMenu transcriptId={transcriptId} />
                   </div>
+                ) : null}
+                {transcriptId && job?.diarization_error_code ? (
+                  <p className="options-error" role="status">
+                    No se pudo separar a los hablantes (
+                    {job.diarization_error_code}); la transcripción está completa.
+                  </p>
+                ) : null}
+                {transcriptId ? (
+                  <SpeakersPanel
+                    transcriptId={transcriptId}
+                    onChanged={reloadSpeakers}
+                  />
                 ) : null}
                 <SegmentList
                   transcriptId={transcriptId}
                   onSeek={seek}
                   currentMs={currentMs}
                   renderText={renderSegmentText}
+                  reloadKey={speakersVersion}
                 />
               </>
             ) : null}

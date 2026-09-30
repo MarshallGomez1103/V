@@ -259,6 +259,8 @@ transcription_job_selections = Table(
     Column("model_json", Text, nullable=False),
     Column("execution_json", Text, nullable=True),
     Column("created_at", String(40), nullable=False),
+    Column("diarization_json", Text, nullable=True),
+    Column("diarization_error_code", Text, nullable=True),
 )
 
 __all__ = [
