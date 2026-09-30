@@ -129,6 +129,15 @@ alterar los IDs.
 | PKG-002 | S15.04, S15.05 | `packaging` | verificado | Wheel con static y migraciones 0001–0004 (test); instalado fuera del checkout sirve / y /api/health. |
 | PKG-003 | S15.07-S15.09, S15.11 | `packaging` | verificado | scripts/checksums.sh, CHANGELOG Keep a Changelog, docs/release.md con semver/API pública, docs/install/linux.md. |
 | DIAG-001 | S14.10, S14.11, S8.14 | `diagnostics` | verificado | Backup sqlite antes de migrar (5 retenidos, aborta si falla), voz doctor --bundle redactado, checks de disco/modelos/keys set|unset. |
+| MODELS-TASKS-001 | S8.04 (UI), S8.05 (UI) | `model_tasks_api` | en curso | Oleada 4b: tareas de descarga/importación en segundo plano con progreso y cancelación por HTTP. |
+| MODELS-UI-001 | S8.02 (UI), S8.03 (UI), S8.07 (UI) | `model_manager_ui` | en curso | Oleada 4b: pantalla Modelos con tamaño, instalar/importar desde Buzz, progreso y borrado confirmado. |
+| HW-RECOMMEND-001 | S8.11, S14.05, S14.06 | `hardware_recommend` | en curso | Oleada 4b: recomendación por hardware medido (VRAM/RAM) y guards antes de cargar modelos. |
+| DIAR-CORE-001 | S6.01, S6.02, S6.08 | `diarization_core` | en curso | Oleada 5a: port, clusters/assignments y reconciliación turns↔segmentos. |
+| DIAR-CORE-002 | S6.14 | `diarization_core` | en curso | Oleada 5a: overlap y segmentos sin speaker. |
+| DIAR-SHERPA-001 | S6.16, S6.04 | `diarization_sherpa` | en curso | Oleada 5a: adapter sherpa-onnx (sin torch/token) y descarga explícita de modelos ONNX fijados. |
+| DIAR-SHERPA-002 | S6.05-S6.07 | `diarization_sherpa` | en curso | Oleada 5a: speakers automático, rango mín/máx y número exacto. |
+| WORDS-001 | S7.01, S7.03, S7.04 | `word_timestamps` | en curso | Oleada 5a: port de alignment, decisión (timestamps nativos de faster-whisper) y persistencia de palabras. |
+| WORDS-002 | S7.08, S7.09 | `word_timestamps` | en curso | Oleada 5a: fallback sin palabras y pruebas de monotonicidad/límites. |
 
 ### Retomar en una sesión nueva
 
@@ -296,6 +305,7 @@ edición es usable con una grabación larga.
 - [ ] **S6.13** Probar diarización con dos speakers.
 - [ ] **S6.14** Probar overlap y segmentos sin speaker.
 - [ ] **S6.15** Verificar liberación secuencial de VRAM entre ASR y diarización.
+- [ ] **S6.16** Implementar adapter sherpa-onnx local sin torch ni token (ADR-0007).
 
 **Criterio de salida:** “quién dijo qué” se puede revisar y corregir sin volver a
 transcribir.
