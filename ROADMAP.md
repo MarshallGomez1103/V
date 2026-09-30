@@ -158,6 +158,15 @@ alterar los IDs.
 | ROBUST-002 | S14.02, S14.13 | `robustness2` | verificado | 18 escrituras críticas auditadas (synchronous=FULL, fsync antes de replace) y cierre/reapertura a mitad de job sin repetir chunks. |
 | PKG-004 | S15.10 | `robustness2` | verificado | Clone limpio en Bazzite: uv tool install, extra asr-local con CUDA float16 y servidor verificados; docs corregidas. |
 | OSS-AUDIT-001 | S16.19 | `robustness2` | verificado | scripts/audit-secrets.sh sobre árbol e historial: 0 HIGH; decisión de correo de autor pendiente antes de publicar. |
+| QUALITY-FLAGS-001 | S13.04, S13.05, S13.12 | `quality_flags` | en curso | Oleada 5c-1: flags no destructivos de alucinación/baja confianza, separados del texto literal. |
+| QUALITY-REVIEW-001 | S13.06 | `quality_flags` | en curso | Oleada 5c-1: cola de revisión de segmentos marcados. |
+| BENCH-001 | S13.08-S13.10 | `benchmark` | en curso | Oleada 5c-1: voz bench: tiempo, RTF, RAM/VRAM, dataset fuera de Git y WER/CER. |
+| BENCH-002 | S13.07 | `benchmark` | en curso | Oleada 5c-1: A/B turbo vs large-v3 medido sobre el mismo fixture. |
+| WCPP-004 | S9.10 | `benchmark` | en curso | Oleada 5c-1: stretch: whisper.cpp compilado y comparado CPU/GPU. |
+| CLOUD-UI-001 | S11.09 | `cloud_ui` | en curso | Oleada 5c-1: badge CLOUD, consentimiento, costo previo y claves desde la UI. |
+| MODELS-UI-002 | (completa S8) | `models_ui2` | en curso | Oleada 5c-1: ids con namespace, whisper.cpp y modelos de diarización en el Model Manager. |
+| PKG-005 | S15.06 | `packaging2` | en curso | Oleada 5c-1: workflow de release de prueba sin publicar. |
+| PKG-006 | S15.12, S15.13 | `packaging2` | en curso | Oleada 5c-1: prototipos AppImage/Flatpak medidos. |
 
 ### Retomar en una sesión nueva
 
@@ -315,7 +324,7 @@ edición es usable con una grabación larga.
 
 - [x] **S6.01** Definir el port `DiarizationProvider`.
 - [x] **S6.02** Modelar clusters, speakers y assignments por separado.
-- [ ] **S6.03** Implementar adapter pyannote Community-1.
+- [ ] **S6.03** Implementar adapter pyannote Community-1. _(bloqueado: reemplazado por S6.16/ADR-0007; requiere torch y token HF; solo si Marshall lo pide)_
 - [x] **S6.04** Implementar descarga/configuración explícita del modelo.
 - [x] **S6.05** Ejecutar detección automática del número de speakers.
 - [x] **S6.06** Permitir mínimo y máximo de speakers.
@@ -336,7 +345,7 @@ transcribir.
 ## Sección 7 — Word timestamps y alignment
 
 - [x] **S7.01** Definir el port `AlignmentProvider`.
-- [ ] **S7.02** Evaluar WhisperX contra fixtures e idiomas objetivo.
+- [ ] **S7.02** Evaluar WhisperX contra fixtures e idiomas objetivo. _(bloqueado: requiere torch ~3 GB; ADR-0008 eligió timestamps nativos)_
 - [x] **S7.03** Documentar la decisión de adapter de alignment.
 - [x] **S7.04** Persistir timestamps a nivel de palabra.
 - [x] **S7.05** Reconciliar palabra con speaker.
