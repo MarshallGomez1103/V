@@ -64,8 +64,8 @@ export function App() {
   const [currentMs, setCurrentMs] = useState<number | undefined>(undefined)
   const drafts = useSegmentDrafts()
   const renderSegmentText = useCallback(
-    (segment: TranscriptSegment) => (
-      <SegmentEditor segment={segment} drafts={drafts} />
+    (segment: TranscriptSegment, query: string) => (
+      <SegmentEditor segment={segment} drafts={drafts} query={query} />
     ),
     [drafts],
   )

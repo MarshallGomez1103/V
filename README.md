@@ -16,8 +16,9 @@ proveedor cloud en requisito.
 > y JSON por HTTP. Los jobs interrumpidos se reanudan al arrancar y la subida
 > comprueba el espacio en disco. `voz doctor` diagnostica FFmpeg, puerto,
 > rutas, runtime y GPU. El flujo completo se ha ejercitado con un motor
-> determinista de pruebas: con Faster Whisper real sigue siendo experimental
-> hasta ejecutar el smoke con un modelo elegido explícitamente. Consulta el
+> determinista de pruebas y con Faster Whisper real (turbo y large-v3) en una
+> RTX 4060 bajo Bazzite; en otras GPUs/distribuciones sigue siendo
+> experimental. Consulta el
 > [roadmap](ROADMAP.md) para ver qué fue verificado.
 
 ## Visión
@@ -119,8 +120,13 @@ Para retomar el desarrollo en otra sesión, lee `AGENTS.md`, el apartado
 cuando exista. Los próximos cortes propuestos están al final del tablero de
 Sección 5 en el roadmap.
 
-No hay release pública todavía. Para instalar el checkout y ejecutar la Home
-local integrada:
+No hay release pública todavía. Instalación en Linux desde un wheel (`uv tool
+install`), extra `asr-local` (Faster Whisper con GPU NVIDIA) y rutas XDG:
+[docs/install/linux.md](docs/install/linux.md). Historial en
+[CHANGELOG.md](CHANGELOG.md), versionado y API pública en
+[docs/release.md](docs/release.md). Modelos y reutilización del cache de Buzz:
+[docs/models.md](docs/models.md), [docs/buzz.md](docs/buzz.md). Para instalar
+el checkout y ejecutar la Home local integrada:
 
 ```bash
 uv sync --all-groups

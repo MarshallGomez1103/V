@@ -21,6 +21,10 @@ dependencies = [
 [project.optional-dependencies]
 asr-local = [
   "faster-whisper>=1.2.1,<2",
+  # CTranslate2 loads CUDA 12 cuBLAS/cuDNN 9 at runtime; the pip wheels avoid
+  # touching the host (immutable on Bazzite). VOZ preloads them explicitly.
+  "nvidia-cublas-cu12>=12.4,<13; sys_platform == 'linux'",
+  "nvidia-cudnn-cu12>=9.1,<10; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -33,8 +37,40 @@ dev = [
   "ruff>=0.9,<1",
 ]
 
+# .gitignore is deliberately broad (`transcript.*`, `models/`, ...). Hatch would
+# apply it and silently drop tracked sources such as domain/entities/transcript.py,
+# so VCS ignores are off and every artifact lists what it ships explicitly.
+[tool.hatch.build]
+ignore-vcs = true
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/migrations",
+  "/docs",
+  "/scripts",
+  "/apps/web/index.html",
+  "/apps/web/public",
+  "/apps/web/src",
+  "/apps/web/*.json",
+  "/apps/web/*.ts",
+  "/apps/web/*.js",
+  "/alembic.ini",
+  "/uv.lock",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/LICENSE",
+  "/NOTICE",
+  "/SECURITY.md",
+  "/CONTRIBUTING.md",
+  "/CODE_OF_CONDUCT.md",
+]
+exclude = ["__pycache__", "*.py[cod]"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/voz"]
+exclude = ["__pycache__", "*.py[cod]"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "alembic.ini" = "voz/infrastructure/persistence/alembic.ini"

@@ -418,13 +418,16 @@ class JobRunner:
         stored = {s.id for s in self.segments.list_by_transcript(transcript_id)}
         for index, item in enumerate(result.segments):
             segment_id = uuid5(transcript_id, f"segment:{index}")
-            if segment_id not in stored:
+            # Whisper prefixes a word-boundary space; it is not content. A
+            # whitespace-only span has no literal text to keep.
+            text = item.text.strip()
+            if text and segment_id not in stored:
                 self.segments.add(
                     Segment(
                         transcript_id,
                         item.start_ms,
                         item.end_ms,
-                        item.text,
+                        text,
                         id=segment_id,
                     )
                 )

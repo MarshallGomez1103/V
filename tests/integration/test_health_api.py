@@ -80,6 +80,13 @@ def test_health_endpoint_reports_readiness_without_sensitive_paths(
     assert '<div id="root"></div>' in home
     assert "VOZ" in home
     choices = cast(list[dict[str, object]], options["options"])
-    assert {item["model_id"] for item in choices} == {"turbo", "large-v3"}
+    assert {item["model_id"] for item in choices} == {
+        "tiny",
+        "base",
+        "small",
+        "medium",
+        "large-v3",
+        "turbo",
+    }
     assert all(item["can_start"] is False for item in choices)
     assert str(tmp_path) not in json.dumps(options)

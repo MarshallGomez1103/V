@@ -689,3 +689,24 @@ def test_recover_twice_does_not_duplicate_queued_jobs(tmp_path: Path) -> None:
     assert fixture.persisted().state is TranscriptionJobState.COMPLETED
     assert fixture.provider.calls == 3
     fixture.engine.dispose()
+
+
+class _SpacedProvider(Provider):
+    """Whisper-style output: a leading word-boundary space and a blank span."""
+
+    def _text(self, frames: bytes) -> str:
+        return "   " if self.calls == 2 else f" chunk-{self.calls} "
+
+
+def test_persisted_segments_drop_boundary_spaces_and_blank_spans(
+    tmp_path: Path,
+) -> None:
+    fixture = harness(tmp_path, provider=_SpacedProvider())
+
+    fixture.runner.run_job(fixture.job.id)
+
+    segments = SqliteSegmentRepository(fixture.engine).list_by_transcript(
+        transcript_id_for(fixture.job.id)
+    )
+    assert [s.text for s in segments] == ["chunk-1", "chunk-3"]
+    fixture.engine.dispose()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import importlib
 import math
 from collections.abc import Generator, Iterable
@@ -75,6 +76,40 @@ def _default_invalid_audio_errors() -> tuple[type[Exception], ...]:
     return tuple(error_types)
 
 
+_NVIDIA_RUNTIME_PACKAGES = ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_nvrtc")
+
+
+def _preload_cuda_libraries() -> None:
+    """Make the optional pip CUDA 12 wheels visible to CTranslate2.
+
+    CTranslate2 dlopens ``libcublas.so.12``/``libcudnn*.so.9`` by soname. The
+    ``asr-local`` extra ships them as ``nvidia-*`` wheels instead of touching
+    the host; loading them RTLD_GLOBAL first lets those sonames resolve.
+    Missing packages are fine: a system CUDA install or the CPU path remains.
+    """
+    libraries: list[Path] = []
+    for package in _NVIDIA_RUNTIME_PACKAGES:
+        try:
+            module = importlib.import_module(package)
+        except ImportError:
+            continue
+        for root in getattr(module, "__path__", ()):
+            libraries.extend(sorted((Path(root) / "lib").glob("lib*.so.*")))
+    # ponytail: retry passes resolve inter-library order without a dependency
+    # graph; each pass loads at least one library or stops.
+    pending = libraries
+    while pending:
+        failed: list[Path] = []
+        for library in pending:
+            try:
+                ctypes.CDLL(str(library), mode=ctypes.RTLD_GLOBAL)
+            except OSError:
+                failed.append(library)
+        if len(failed) == len(pending):
+            return
+        pending = failed
+
+
 def _default_engine_factory(
     model_path: str,
     *,
@@ -90,6 +125,8 @@ def _default_engine_factory(
             TranscriptionFailureCode.PROVIDER_FAILED,
             "The Faster Whisper runtime is not installed.",
         ) from error
+    if device == "cuda":
+        _preload_cuda_libraries()
     return cast(
         _Engine,
         model_type(

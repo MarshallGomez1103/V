@@ -10,12 +10,15 @@ import urllib.request
 import webbrowser
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import Protocol, cast
 
 import typer
 import uvicorn
 
 from voz.bootstrap import create_app
+from voz.infrastructure.paths import resolve_voz_paths
+from voz.interfaces.cli.diagnostics_bundle import build_bundle, write_bundle
 from voz.interfaces.cli.doctor import exit_code, render, run_doctor
 
 DEFAULT_HOST = "127.0.0.1"
@@ -154,6 +157,14 @@ NO_BROWSER_OPTION = typer.Option(
 )
 
 
+BUNDLE_OPTION = typer.Option(
+    None,
+    "--bundle",
+    dir_okay=False,
+    help="Write a redacted diagnostics zip (no media, names or transcripts).",
+)
+
+
 @app.callback(invoke_without_command=True)
 def root(
     ctx: typer.Context,
@@ -186,13 +197,29 @@ def doctor(
     redact: bool = typer.Option(
         False, "--redact", help="Hide absolute local paths from the report."
     ),
+    bundle: Path | None = BUNDLE_OPTION,
 ) -> None:
-    """Check FFmpeg, port, XDG paths, disk, ASR runtime and GPU; no model loads."""
-    report = run_doctor(host=host, port=port, redact=redact)
+    """Check FFmpeg, port, XDG paths, disk, models, ASR, GPU and optional API keys.
+
+    Never loads a model or calls a provider.
+    """
+    paths = resolve_voz_paths()
+    report = run_doctor(
+        host=host, port=port, paths=paths, redact=redact or bool(bundle)
+    )
     if json_output:
         typer.echo(json.dumps(dataclasses.asdict(report), ensure_ascii=False, indent=2))
     else:
         typer.echo(render(report))
+    if bundle is not None:
+        try:
+            write_bundle(bundle, build_bundle(report, paths=paths))
+        except OSError as error:
+            typer.echo(
+                f"No se pudo escribir el bundle: {type(error).__name__}", err=True
+            )
+            raise typer.Exit(code=2) from error
+        typer.echo(f"Bundle de diagnóstico escrito en {bundle}", err=json_output)
     raise typer.Exit(code=exit_code(report))
 
 

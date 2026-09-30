@@ -119,14 +119,25 @@ alterar los IDs.
 | ARCH-DOCS-001 | S16.09-S16.11 | `docs_arch` | verificado | docs/architecture C4 (contexto, contenedores, componentes) en Mermaid; 83 enlaces y 124 rutas comprobados. |
 | ARCH-ADR-001 | S16.12-S16.16 | `docs_arch` | verificado | ADR-0001–0004 completados con evidencia; ADR-0005 providers y ADR-0006 local-first nuevos. |
 | ROBUST-001 | S14.03, S14.12, S14.14 | `robustness` | verificado | 507 disk_space_insufficient en upload/normalización, fuzz ffprobe (2 bugs corregidos), resume idempotente (2 bugs del runner corregidos); 739 tests. |
+| MODELS-CATALOG-001 | S8.01-S8.03 | `model_catalog` | verificado | Catálogo de 6 modelos con revisión, tamaños y SHA-256 verificados contra HuggingFace; GET /api/models con instalado/tamaño; turbo recomendado. |
+| MODELS-ADMIN-001 | S8.07, S8.08 | `model_catalog` | verificado | DELETE /api/models/{id}?confirm= con 409 model_in_use; uso de disco por modelo y libre; tests HTTP. |
+| MODELS-STORE-001 | S8.04-S8.06 | `model_store` | verificado | Descarga stdlib con progreso, cancelación y SHA-256/tamaño por archivo contra servidor HTTP local; 37 tests. |
+| MODELS-STORE-002 | S8.15, S14.04, S14.09 | `model_store` | verificado | Reanudación Range, .part corrupto descartado, instalado incoherente se reemplaza, espacio previo con disk_space_insufficient. |
+| MODELS-BUZZ-001 | S8.09, S8.10 | `buzz_cache` | verificado | Detección solo-lectura del Flatpak real de Buzz (turbo y large-v3) e importación por hardlink en 1,4 s con SHA-256; árbol de Buzz intacto. |
+| E2E-001 | S5.17 | `e2e` | verificado | Flujo HTTP completo con runner real (import→job→SSE→Range→peaks→edición 409→export→reinicio) + App con fetch/XHR/SSE simulados; bug de resaltado corregido. |
+| PKG-001 | S15.01-S15.03 | `packaging` | verificado | 3 builds idénticos con SOURCE_DATE_EPOCH; wheel roto por .gitignore (transcript.py) corregido; uv tool install ejecuta voz y doctor. |
+| PKG-002 | S15.04, S15.05 | `packaging` | verificado | Wheel con static y migraciones 0001–0004 (test); instalado fuera del checkout sirve / y /api/health. |
+| PKG-003 | S15.07-S15.09, S15.11 | `packaging` | verificado | scripts/checksums.sh, CHANGELOG Keep a Changelog, docs/release.md con semver/API pública, docs/install/linux.md. |
+| DIAG-001 | S14.10, S14.11, S8.14 | `diagnostics` | verificado | Backup sqlite antes de migrar (5 retenidos, aborta si falla), voz doctor --bundle redactado, checks de disco/modelos/keys set|unset. |
 
 ### Retomar en una sesión nueva
 
 Leer `AGENTS.md`, este tablero, `.ai/HANDOFF.md` y `.ai/CHECKLIST.md` si
 existen, y los contratos en `docs/api/`; comprobar Git y las validaciones antes
 de editar. Oleada 3 (2026-09-30) cerró S5 salvo S5.17 (E2E), S10 completa,
-S14.03/12/14 y S16.09–S16.16. Siguiente: S5.17 y Model Manager (S8), con
-reutilización del cache de Buzz (S8.09/S8.10) para el primer smoke real.
+S14.03/12/14 y S16.09–S16.16. Oleada 4a cerró S5.17, S8 casi completa (falta
+S8.11), S14.04/09/10/11 y packaging. Siguiente: oleada 4b (endpoints de tareas
+de modelo + UI Model Manager) y oleada 5 (S6/S7/S13 con motores reales ligeros).
 
 ## Sección 1 — Bootstrap del repositorio
 
@@ -225,6 +236,9 @@ y genera audio normalizado reproducible sin modificar el original.
 **Criterio de salida:** un archivo largo puede transcribirse localmente y
 reanudarse bajo el contrato común.
 
+Smoke real 2026-09-30 (RTX 4060 Laptop, CUDA float16 vía wheels nvidia del
+extra `asr-local`): turbo y large-v3 importados del cache de Buzz pasan el
+smoke opt-in, y el flujo HTTP completo transcribe 25 s de español en ~3 s.
 El flujo local, el recorte físico por chunks y la recuperación están verificados
 con el adapter real y un engine determinista. El runtime/modelo Faster Whisper
 real permanece experimental hasta ejecutar el smoke opt-in con un modelo que el
@@ -254,7 +268,7 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [x] **S5.14** Controlar zoom del waveform.
 - [x] **S5.15** Virtualizar transcripts largos.
 - [x] **S5.16** Añadir autosave con estado visible.
-- [ ] **S5.17** Probar importación, reproducción y edición E2E.
+- [x] **S5.17** Probar importación, reproducción y edición E2E.
 - [x] **S5.18** Exponer opciones canónicas de transcripción mediante consulta backend.
 - [x] **S5.19** Implementar selector básico frontend, sin Model Manager.
 - [x] **S5.20** Persistir selección reproducible para creación de job.
@@ -303,21 +317,21 @@ soporte, con degradación explícita donde no lo haya.
 
 ## Sección 8 — Model Manager
 
-- [ ] **S8.01** Definir catálogo canónico de modelos.
-- [ ] **S8.02** Mostrar estado installed/not installed.
-- [ ] **S8.03** Mostrar tamaño antes de descargar.
-- [ ] **S8.04** Descargar con progreso visible.
-- [ ] **S8.05** Permitir cancelación segura de descarga.
-- [ ] **S8.06** Verificar checksum o revisión disponible.
-- [ ] **S8.07** Eliminar un modelo con confirmación.
-- [ ] **S8.08** Mostrar uso de disco por modelo/proveedor.
-- [ ] **S8.09** Detectar cache de Buzz sin modificarlo.
-- [ ] **S8.10** Reutilizar/importar un modelo compatible sin mover el original.
+- [x] **S8.01** Definir catálogo canónico de modelos.
+- [x] **S8.02** Mostrar estado installed/not installed.
+- [x] **S8.03** Mostrar tamaño antes de descargar.
+- [x] **S8.04** Descargar con progreso visible.
+- [x] **S8.05** Permitir cancelación segura de descarga.
+- [x] **S8.06** Verificar checksum o revisión disponible.
+- [x] **S8.07** Eliminar un modelo con confirmación.
+- [x] **S8.08** Mostrar uso de disco por modelo/proveedor.
+- [x] **S8.09** Detectar cache de Buzz sin modificarlo.
+- [x] **S8.10** Reutilizar/importar un modelo compatible sin mover el original.
 - [ ] **S8.11** Recomendar perfiles según hardware detectado.
 - [x] **S8.12** Implementar `voz doctor` para FFmpeg y puertos.
 - [x] **S8.13** Extender `voz doctor` para GPU/CUDA y runtime ASR.
-- [ ] **S8.14** Extender `voz doctor` para disco, modelos y API keys opcionales.
-- [ ] **S8.15** Probar descarga incompleta y recuperación.
+- [x] **S8.14** Extender `voz doctor` para disco, modelos y API keys opcionales.
+- [x] **S8.15** Probar descarga incompleta y recuperación.
 
 **Criterio de salida:** el usuario administra modelos sin tocar carpetas
 manualmente.
@@ -417,14 +431,14 @@ con sus grabaciones sin presentar intuiciones como resultados.
 - [x] **S14.01** Recuperar jobs interrumpidos al iniciar.
 - [ ] **S14.02** Escribir checkpoints y metadatos críticos atómicamente.
 - [x] **S14.03** Comprobar espacio antes de import/normalización.
-- [ ] **S14.04** Comprobar espacio antes de descargar modelos.
+- [x] **S14.04** Comprobar espacio antes de descargar modelos.
 - [ ] **S14.05** Añadir guard de RAM.
 - [ ] **S14.06** Añadir guard de VRAM.
 - [ ] **S14.07** Liberar modelos entre ASR y diarización por defecto.
 - [x] **S14.08** Implementar cancelación real por cada etapa procesable.
-- [ ] **S14.09** Recuperar descargas corruptas/incompletas.
-- [ ] **S14.10** Crear backup antes de una migración destructiva.
-- [ ] **S14.11** Generar bundle diagnóstico redactado.
+- [x] **S14.09** Recuperar descargas corruptas/incompletas.
+- [x] **S14.10** Crear backup antes de una migración destructiva.
+- [x] **S14.11** Generar bundle diagnóstico redactado.
 - [x] **S14.12** Añadir fuzz tests de metadata de importación.
 - [ ] **S14.13** Probar cierre/reapertura durante un job largo.
 - [x] **S14.14** Probar idempotencia de resume.
@@ -434,17 +448,17 @@ los fallos dan acciones recuperables.
 
 ## Sección 15 — Packaging y release
 
-- [ ] **S15.01** Construir wheel reproducible.
-- [ ] **S15.02** Construir sdist reproducible.
-- [ ] **S15.03** Verificar instalación con `uv tool install`.
-- [ ] **S15.04** Incluir el bundle frontend en el paquete.
-- [ ] **S15.05** Verificar ejecución sin checkout de desarrollo.
+- [x] **S15.01** Construir wheel reproducible.
+- [x] **S15.02** Construir sdist reproducible.
+- [x] **S15.03** Verificar instalación con `uv tool install`.
+- [x] **S15.04** Incluir el bundle frontend en el paquete.
+- [x] **S15.05** Verificar ejecución sin checkout de desarrollo.
 - [ ] **S15.06** Crear workflow de release privado/de prueba.
-- [ ] **S15.07** Generar checksums de artefactos.
-- [ ] **S15.08** Mantener changelog.
-- [ ] **S15.09** Adoptar versionado semántico.
+- [x] **S15.07** Generar checksums de artefactos.
+- [x] **S15.08** Mantener changelog.
+- [x] **S15.09** Adoptar versionado semántico.
 - [ ] **S15.10** Verificar instalación documentada en Bazzite.
-- [ ] **S15.11** Documentar instalación Linux genérica.
+- [x] **S15.11** Documentar instalación Linux genérica.
 - [ ] **S15.12** Evaluar AppImage con prototipo medido.
 - [ ] **S15.13** Evaluar Flatpak con prototipo medido.
 - [ ] **S15.14** Publicar una release solo con autorización explícita.

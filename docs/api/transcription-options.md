@@ -12,7 +12,7 @@ proyecciones de application. No requiere parámetros ni cambia estado.
 | `model_id`, `source`, `revision` | Modelo y procedencia fijada. `source` y `revision` son null para la entrada conocida todavía sin revisión local. Nunca se inventa un SHA. |
 | `profile` | `ProcessingProfile` completo: nombre, preferencia de dispositivo, precisiones GPU ordenadas y precisión CPU. No es el modelo ni la ejecución elegida. |
 | `installation_status` | `registered` si un manifest VOZ válido coincide con identidad, ubicación canónica y timestamp con zona. `not_registered` si no se encuentra un registro válido para esa opción conocida. Un manifest inválido no equivale a ausencia física de pesos. |
-| `files_available` | Comprobación superficial de `model.bin`, `config.json` y `tokenizer.json`: archivos regulares no vacíos y sin symlinks. No valida contenido, checksums ni integridad. |
+| `files_available` | Comprobación superficial de `model.bin`, `config.json`, `tokenizer.json` y el vocabulario que corresponde al modelo (`vocabulary.txt` en tiny/base/small/medium, `vocabulary.json` en large-v3/turbo): archivos regulares no vacíos y sin symlinks. No valida contenido, checksums ni integridad. |
 | `runtime_available` | La clase de engine se puede importar y el probe del runtime responde. No se construye un engine ni se ejecuta inferencia. |
 | `execution` | `ExecutionDecision`: device, precision y fallback_reason, conservando la política existente. Null si no se puede seleccionar. |
 | `device_name` | Null actualmente: el probe no ofrece un nombre fiable. No se infiere VRAM por nombre comercial. |
@@ -32,14 +32,23 @@ seguro. No se devuelven paths, contenido de manifests ni tracebacks.
 
 ## Catálogo actual
 
-- Faster Whisper `turbo` (large-v3-turbo), perfil `fast`.
-- Faster Whisper `large-v3`, perfil `quality`.
+Viene de `faster_whisper_catalog()` (S8.01): seis modelos Faster Whisper con
+fuente y revisión fijadas, licencia MIT, multilingües.
 
-Se reutilizan los dos constructores existentes. Admiten ahora revisión ausente
-para describir una opción conocida pero no instalable/ejecutable todavía.
-Por cada modelo se exponen las revisiones registradas que coinciden con su
-procedencia conocida. Sin registros se expone una entrada con revisión null.
-No se consulta catálogo remoto ni caches externos; no hay `medium` añadido.
+| `model_id` | Perfil |
+| --- | --- |
+| `tiny`, `base`, `small` | `fast` |
+| `medium` | `quality` |
+| `large-v3` | `quality` |
+| `turbo` (large-v3-turbo) | `fast`, la recomendación por defecto |
+
+`/api/transcription-options` expone una opción por cada entrada, instalada o no.
+Con registro local válido se exponen las revisiones registradas que coinciden con
+la fuente conocida (puede haber una revisión distinta de la fijada). Sin registro
+se expone la entrada con su revisión fijada y `not_registered`; ya no aparece
+`revision_unpinned` para el catálogo actual, y `option_id` es estable porque
+depende de la revisión fijada. No se consulta catálogo remoto ni caches externos.
+Instalar, importar y borrar se documenta en [models.md](models.md).
 
 Las capabilities actuales son `cpu`, `gpu`, `language_detection` y
 `transcription`. Aunque el descriptor upstream menciona translation, el port
@@ -54,8 +63,8 @@ ordenadas y separadores compactos. No depende de display_name, orden de listado,
 registro ni hardware observado. Este hash identifica configuración; **no es un
 checksum de los pesos**.
 
-Al registrar una revisión cambia la identidad de la entrada antes no fijada.
-Una entrada sin revisión no puede enviarse como selección ejecutable. B2 deberá
+Una entrada sin revisión no puede enviarse como selección ejecutable (el catálogo
+actual ya no produce ninguna). B2 deberá
 resolver y revalidar el ID contra el catálogo actual y fijar en el job el
 descriptor/perfil completo, la decisión de ejecución y opciones que afecten el
 resultado (por ejemplo idioma). El ID solo no sustituye ese snapshot. B1 no

@@ -26,6 +26,7 @@ from voz.application.export.service import ExportTranscript
 from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
+from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.normalize_media import NormalizeImportedMedia
 from voz.application.ports.transcription import TranscriptionProvider
 from voz.application.ports.transcription_job_selection import JobSelection
@@ -38,6 +39,7 @@ from voz.application.transcription_provider_registry import (
 from voz.application.waveform_peaks import GetWaveformPeaks
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
+from voz.infrastructure.asr.catalog import FasterWhisperModelCatalog
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
 from voz.infrastructure.asr.hardware import CTranslate2HardwareProbe
 from voz.infrastructure.asr.options import (
@@ -47,13 +49,14 @@ from voz.infrastructure.asr.options import (
 from voz.infrastructure.audio.ffmpeg import FfmpegMediaNormalizer
 from voz.infrastructure.audio.ffprobe import FfprobeMediaProbe
 from voz.infrastructure.audio.waveform_peaks import FfmpegWaveformPeaks
+from voz.infrastructure.buzz_cache import BuzzModelCache
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
-from voz.infrastructure.persistence.migrate import upgrade_to_head
+from voz.infrastructure.persistence.migrate import BACKUPS_DIRECTORY, upgrade_to_head
 from voz.infrastructure.persistence.repositories import (
     SqliteMediaAssetRepository,
     SqliteProjectRepository,
@@ -75,6 +78,7 @@ from voz.interfaces.api.job_views import job_view as job_view_without_selection
 from voz.interfaces.api.jobs import create_jobs_router, job_view
 from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
+from voz.interfaces.api.models import create_models_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.segments import create_segments_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
@@ -182,13 +186,15 @@ def create_app(
     media_storage = FileSystemMediaStorage(resolved_paths.data)
     media_probe = FfprobeMediaProbe()
     disk_space = ShutilDiskSpace(resolved_paths.data)
+    model_store = FileSystemModelStore(
+        data_root=resolved_paths.data,
+        cache_root=resolved_paths.cache,
+        disk_space=disk_space,
+    )
+    model_catalog = FasterWhisperModelCatalog()
     if transcription_options is None:
         transcription_options = GetTranscriptionOptions(
-            LocalTranscriptionModelCatalog(
-                FileSystemModelStore(
-                    data_root=resolved_paths.data, cache_root=resolved_paths.cache
-                )
-            ),
+            LocalTranscriptionModelCatalog(model_store),
             FasterWhisperRuntimeProbe(),
         )
 
@@ -244,7 +250,7 @@ def create_app(
             return self
 
         async def __aenter__(self) -> None:
-            upgrade_to_head(resolved_engine)
+            upgrade_to_head(resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY)
             runner.recover()
             runner.start()
 
@@ -315,6 +321,17 @@ def create_app(
                     media_storage=media_storage,
                 ),
             )
+        )
+    )
+    application.include_router(
+        create_models_router(
+            ListModels(
+                model_catalog,
+                model_store,
+                disk_space=disk_space,
+                external=BuzzModelCache(),
+            ),
+            RemoveModel(model_catalog, model_store, jobs, selections),
         )
     )
     application.include_router(

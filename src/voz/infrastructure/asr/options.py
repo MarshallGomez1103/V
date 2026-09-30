@@ -1,7 +1,7 @@
 """Local-only observations for the transcription options query; no model loads."""
 
 import importlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from voz.application.ports.transcription import TranscriptionError
 from voz.application.ports.transcription_options import (
@@ -11,10 +11,7 @@ from voz.application.ports.transcription_options import (
     TranscriptionOptionsUnavailable,
 )
 from voz.domain.entities.model_descriptor import ModelCapability
-from voz.infrastructure.asr.catalog import (
-    faster_whisper_fast_descriptor,
-    faster_whisper_quality_descriptor,
-)
+from voz.infrastructure.asr.catalog import faster_whisper_catalog
 from voz.infrastructure.asr.hardware import CTranslate2HardwareProbe
 from voz.infrastructure.model_storage import FileSystemModelStore
 
@@ -37,24 +34,28 @@ class LocalTranscriptionModelCatalog:
         try:
             registered = self.store.registered_descriptors()
             options: list[ModelRegistration] = []
-            for builder in (
-                faster_whisper_fast_descriptor,
-                faster_whisper_quality_descriptor,
-            ):
+            for entry in faster_whisper_catalog():
+                # Vocabulary is vocabulary.txt or vocabulary.json depending on model.
+                required = (
+                    "model.bin",
+                    "config.json",
+                    "tokenizer.json",
+                    *(f.name for f in entry.files if f.name.startswith("vocabulary.")),
+                )
                 matches: list[ModelRegistration] = []
                 for local in registered:
-                    candidate = builder(revision=local.revision)
                     if (
-                        candidate.identity != local.identity
-                        or candidate.provenance != local.provenance
+                        local.identity != entry.descriptor.identity
+                        or local.source != entry.descriptor.source
                     ):
                         continue
+                    candidate = replace(entry.descriptor, revision=local.revision)
                     directory = self.store.resolve_path(candidate)
                     files_available = all(
                         not (directory / name).is_symlink()
                         and (directory / name).is_file()
                         and (directory / name).stat().st_size > 0
-                        for name in ("model.bin", "config.json", "tokenizer.json")
+                        for name in required
                     )
                     matches.append(
                         ModelRegistration(
@@ -65,7 +66,11 @@ class LocalTranscriptionModelCatalog:
                     )
                 options.extend(
                     matches
-                    or [ModelRegistration(builder(), InstallationStatus.NOT_REGISTERED)]
+                    or [
+                        ModelRegistration(
+                            entry.descriptor, InstallationStatus.NOT_REGISTERED
+                        )
+                    ]
                 )
             return tuple(options)
         except (OSError, TranscriptionError) as error:

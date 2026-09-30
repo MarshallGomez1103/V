@@ -9,7 +9,10 @@ from voz.application.ports.transcription_options import (
     InstallationStatus,
     TranscriptionOptionsUnavailable,
 )
-from voz.infrastructure.asr.catalog import faster_whisper_fast_descriptor
+from voz.infrastructure.asr.catalog import (
+    faster_whisper_catalog,
+    faster_whisper_fast_descriptor,
+)
 from voz.infrastructure.asr.options import (
     FasterWhisperRuntimeProbe,
     LocalTranscriptionModelCatalog,
@@ -69,7 +72,7 @@ def test_registered_model_is_not_automatically_file_ready(
     snapshot = tmp_path / "synthetic"
     snapshot.mkdir()
     if files_present:
-        for name in ("model.bin", "config.json", "tokenizer.json"):
+        for name in ("model.bin", "config.json", "tokenizer.json", "vocabulary.json"):
             (snapshot / name).write_text("synthetic", encoding="utf-8")
 
     def download(
@@ -85,7 +88,7 @@ def test_registered_model_is_not_automatically_file_ready(
     descriptor = faster_whisper_fast_descriptor(revision="a" * 40)
     store.install(descriptor, confirmed=True)
     options = LocalTranscriptionModelCatalog(store).list_models()
-    assert len(options) == 2
+    assert len(options) == 6
     fast = next(item for item in options if item.descriptor.model_id == "turbo")
     assert fast.installation_status is InstallationStatus.REGISTERED
     assert fast.descriptor == descriptor
@@ -94,15 +97,50 @@ def test_registered_model_is_not_automatically_file_ready(
     assert LocalTranscriptionModelCatalog(store).list_models() == options
 
 
-def test_empty_catalog_exposes_only_known_unpinned_options_without_writes(
+@pytest.mark.parametrize(
+    ("vocabulary", "present"),
+    [("vocabulary.txt", True), ("vocabulary.json", False)],
+)
+def test_vocabulary_file_depends_on_the_model(
+    tmp_path: Path, vocabulary: str, present: bool
+) -> None:
+    snapshot = tmp_path / "synthetic"
+    snapshot.mkdir()
+    for name in ("model.bin", "config.json", "tokenizer.json", vocabulary):
+        (snapshot / name).write_text("synthetic", encoding="utf-8")
+
+    def download(
+        *, repo_id: str, revision: str, cache_dir: str, local_files_only: bool
+    ) -> str:
+        return str(snapshot)
+
+    store = FileSystemModelStore(
+        data_root=tmp_path / "data",
+        cache_root=tmp_path / "cache",
+        downloader_factory=lambda: download,
+    )
+    tiny = next(e for e in faster_whisper_catalog() if e.descriptor.model_id == "tiny")
+    store.install(tiny.descriptor, confirmed=True)
+    registration = next(
+        item
+        for item in LocalTranscriptionModelCatalog(store).list_models()
+        if item.descriptor.model_id == "tiny"
+    )
+    assert registration.installation_status is InstallationStatus.REGISTERED
+    assert registration.files_available is present
+
+
+def test_empty_catalog_exposes_every_pinned_model_without_writes(
     tmp_path: Path,
 ) -> None:
     store = FileSystemModelStore(
         data_root=tmp_path / "data", cache_root=tmp_path / "cache"
     )
     options = LocalTranscriptionModelCatalog(store).list_models()
-    assert [item.descriptor.model_id for item in options] == ["turbo", "large-v3"]
-    assert all(item.descriptor.revision is None for item in options)
+    assert [item.descriptor.model_id for item in options] == [
+        entry.descriptor.model_id for entry in faster_whisper_catalog()
+    ]
+    assert all(item.descriptor.provenance is not None for item in options)
     assert all(
         item.installation_status is InstallationStatus.NOT_REGISTERED
         for item in options

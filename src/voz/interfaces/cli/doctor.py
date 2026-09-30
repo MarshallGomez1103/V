@@ -6,15 +6,17 @@ import os
 import shutil
 import socket
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
 from voz.application.asr_device_selection import HardwareCapabilities
 from voz.application.ports.transcription_options import TranscriptionRuntimeProbe
+from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.infrastructure.asr.hardware import CTranslate2HardwareProbe
 from voz.infrastructure.asr.options import FasterWhisperRuntimeProbe
+from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 
 Status = Literal["ok", "warn", "fail"]
@@ -22,12 +24,21 @@ Which = Callable[[str], str | None]
 Run = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
 VERSION_TIMEOUT_SECONDS = 5.0
-MIN_FREE_BYTES = 2 * 1024**3
+MIN_FREE_BYTES = 5 * 1024**3
+OPTIONAL_API_KEYS = ("OPENAI_API_KEY", "ELEVENLABS_API_KEY")
 _STATUS_LABEL: dict[Status, str] = {"ok": "OK", "warn": "AVISO", "fail": "FALLO"}
 
 
 class HardwareProbe(Protocol):
     def probe(self) -> HardwareCapabilities: ...
+
+
+class ModelStoreView(Protocol):
+    """Read-only slice of ``FileSystemModelStore`` used by the diagnostics."""
+
+    def registered_descriptors(self) -> tuple[ModelDescriptor, ...]: ...
+
+    def resolve_path(self, descriptor: ModelDescriptor) -> Path: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,23 +143,69 @@ def _check_paths(paths: VozPaths, *, redact: bool) -> DoctorCheck:
     return DoctorCheck("rutas", "ok", "escribibles: " + ", ".join(writable) + suffix)
 
 
-def _check_disk(data: Path, free_bytes: Callable[[Path], int]) -> DoctorCheck:
+def _check_disk(
+    data: Path, cache: Path, free_bytes: Callable[[Path], int]
+) -> DoctorCheck:
+    measured: list[tuple[str, int]] = []
     try:
-        free = free_bytes(data)
+        for label, path in (("data", data), ("cache", cache)):
+            measured.append((label, free_bytes(path)))
     except OSError as error:
         return DoctorCheck(
             "disco",
             "warn",
             f"no se pudo medir el espacio libre ({type(error).__name__})",
         )
-    free_gib = free / 1024**3
-    if free < MIN_FREE_BYTES:
+    detail = "; ".join(
+        f"{free / 1024**3:.1f} GiB libres en {n}" for n, free in measured
+    )
+    if any(free < MIN_FREE_BYTES for _, free in measured):
+        minimum = MIN_FREE_BYTES // 1024**3
         return DoctorCheck(
-            "disco",
-            "warn",
-            f"{free_gib:.1f} GiB libres en data; se recomiendan >= 2 GiB",
+            "disco", "warn", f"{detail}; se recomiendan >= {minimum} GiB"
         )
-    return DoctorCheck("disco", "ok", f"{free_gib:.1f} GiB libres en data")
+    return DoctorCheck("disco", "ok", detail)
+
+
+def _tree_size(directory: Path) -> int:
+    # ponytail: symlinks are skipped so a hostile link cannot inflate or escape.
+    return sum(
+        entry.stat().st_size
+        for entry in directory.rglob("*")
+        if entry.is_file() and not entry.is_symlink()
+    )
+
+
+def _check_models(store: ModelStoreView) -> DoctorCheck:
+    try:
+        descriptors = store.registered_descriptors()
+        shown = [
+            f"{item.provider_id}/{item.model_id} rev "
+            f"{(item.revision or 'sin revisión')[:12]} "
+            f"({_tree_size(store.resolve_path(item)) / 1024**3:.2f} GiB)"
+            for item in descriptors
+        ]
+    except Exception as error:  # diagnostics must never crash
+        return DoctorCheck(
+            "modelos",
+            "warn",
+            f"no se pudieron leer los modelos ({type(error).__name__})",
+        )
+    if not shown:
+        return DoctorCheck(
+            "modelos",
+            "warn",
+            "ninguno registrado; VOZ los instala solo con confirmación explícita",
+        )
+    return DoctorCheck("modelos", "ok", "; ".join(shown))
+
+
+def _check_api_key(name: str, environ: Mapping[str, str]) -> DoctorCheck:
+    # Only presence is reported: never the value, a prefix or a length.
+    state = "set" if environ.get(name, "").strip() else "unset"
+    return DoctorCheck(
+        name, "ok", f"{state} (opcional; no se usa salvo selección explícita)"
+    )
 
 
 def _check_runtime(runtime_probe: TranscriptionRuntimeProbe) -> DoctorCheck:
@@ -193,18 +250,26 @@ def run_doctor(
     free_bytes: Callable[[Path], int] = _free_bytes,
     runtime_probe: TranscriptionRuntimeProbe | None = None,
     hardware_probe: HardwareProbe | None = None,
+    model_store: ModelStoreView | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> DoctorReport:
     """Run every local prerequisite check; dependencies are injectable for tests."""
     resolved = resolve_voz_paths() if paths is None else paths
+    variables = os.environ if environ is None else environ
+    models = model_store or FileSystemModelStore(
+        data_root=resolved.data, cache_root=resolved.cache
+    )
     return DoctorReport(
         (
             _check_tool("ffmpeg", which, run),
             _check_tool("ffprobe", which, run),
             _check_port(host, port, port_in_use),
             _check_paths(resolved, redact=redact),
-            _check_disk(resolved.data, free_bytes),
+            _check_disk(resolved.data, resolved.cache, free_bytes),
+            _check_models(models),
             _check_runtime(runtime_probe or FasterWhisperRuntimeProbe()),
             _check_gpu(hardware_probe or CTranslate2HardwareProbe()),
+            *(_check_api_key(name, variables) for name in OPTIONAL_API_KEYS),
         )
     )
 
@@ -234,6 +299,7 @@ __all__ = [
     "DoctorCheck",
     "DoctorReport",
     "HardwareProbe",
+    "ModelStoreView",
     "Run",
     "Which",
     "exit_code",

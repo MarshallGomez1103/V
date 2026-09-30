@@ -12,7 +12,35 @@
   white-space: nowrap;
 }
 
+.segment-editor-field {
+  display: grid;
+}
+
+/* La capa de resaltado y el textarea comparten celda, fuente y padding. */
+.segment-editor-field > * {
+  grid-area: 1 / 1;
+}
+
+.segment-editor-backdrop {
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  color: transparent;
+  font: inherit;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.segment-editor-backdrop .segment-match {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--lime) 35%, transparent);
+  color: transparent;
+}
+
 .segment-editor-input {
+  position: relative;
   box-sizing: border-box;
   width: 100%;
   min-height: 2.4em;

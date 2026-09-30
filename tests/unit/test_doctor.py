@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Callable
+import zipfile
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
@@ -15,11 +16,14 @@ from voz.application.ports.transcription_options import (
     RuntimeAvailability,
     TranscriptionRuntimeProbe,
 )
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import ComputePrecision
+from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths
 from voz.interfaces.cli.doctor import (
     DoctorReport,
     HardwareProbe,
+    ModelStoreView,
     Run,
     Which,
     exit_code,
@@ -29,6 +33,7 @@ from voz.interfaces.cli.doctor import (
 from voz.interfaces.cli.main import app as cli_app
 
 GIB = 1024**3
+REVISION = "0123456789abcdef0123456789abcdef01234567"
 
 
 class FakeRuntimeProbe:
@@ -54,6 +59,34 @@ class FakeHardwareProbe:
 class ExplodingHardwareProbe:
     def probe(self) -> HardwareCapabilities:
         raise RuntimeError("libcuda.so not found")
+
+
+def installed_store(root: Path, *, payload: bytes = b"weights") -> FileSystemModelStore:
+    """A real store holding one model registered through a fake downloader."""
+    snapshot = root / "remote-snapshot"
+    snapshot.mkdir(exist_ok=True)
+    (snapshot / "model.bin").write_bytes(payload)
+
+    def download(**_kwargs: object) -> str:
+        return str(snapshot)
+
+    store = FileSystemModelStore(
+        data_root=root / "data" / "voz",
+        cache_root=root / "cache" / "voz",
+        downloader_factory=lambda: download,
+    )
+    store.install(
+        ModelDescriptor(
+            provider_id="faster-whisper",
+            model_id="turbo",
+            display_name="Turbo",
+            capabilities=frozenset({ModelCapability.TRANSCRIPTION}),
+            source="example/fixture",
+            revision=REVISION,
+        ),
+        confirmed=True,
+    )
+    return store
 
 
 def fake_which(name: str) -> str | None:
@@ -90,6 +123,8 @@ def healthy_report(
     free_bytes: Callable[[Path], int] = lambda _path: 10 * GIB,
     runtime_probe: TranscriptionRuntimeProbe | None = None,
     hardware_probe: HardwareProbe | None = None,
+    model_store: ModelStoreView | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> DoctorReport:
     """Every dependency faked as healthy; override one to exercise a path."""
     return run_doctor(
@@ -102,6 +137,8 @@ def healthy_report(
         runtime_probe=runtime_probe or FakeRuntimeProbe(True),
         hardware_probe=hardware_probe
         or FakeHardwareProbe(frozenset({ComputePrecision.FLOAT16})),
+        model_store=model_store or installed_store(tmp_path),
+        environ={} if environ is None else environ,
     )
 
 
@@ -118,7 +155,7 @@ def test_all_ok_exits_zero(tmp_path: Path) -> None:
     rendered = render(report)
     assert "ffmpeg version 6.1.1" in rendered
     assert "Copyright" not in rendered
-    assert "Resumen: 7 ok, 0 avisos, 0 fallos." in rendered
+    assert "Resumen: 10 ok, 0 avisos, 0 fallos." in rendered
 
 
 def test_missing_ffmpeg_fails_and_exits_one(tmp_path: Path) -> None:
@@ -157,6 +194,78 @@ def test_low_disk_space_warns(tmp_path: Path) -> None:
     report = healthy_report(tmp_path, free_bytes=lambda _path: GIB)
 
     assert statuses(report)["disco"] == "warn"
+
+
+def test_low_cache_space_warns_even_when_data_is_roomy(tmp_path: Path) -> None:
+    paths = tmp_paths(tmp_path)
+
+    report = healthy_report(
+        tmp_path,
+        paths=paths,
+        free_bytes=lambda path: GIB if path == paths.cache else 10 * GIB,
+    )
+
+    disk = next(c for c in report.checks if c.name == "disco")
+    assert disk.status == "warn"
+    assert "1.0 GiB libres en cache" in disk.detail
+    assert "10.0 GiB libres en data" in disk.detail
+    assert ">= 5 GiB" in disk.detail
+
+
+def test_models_lists_id_revision_and_size_without_paths(tmp_path: Path) -> None:
+    report = healthy_report(
+        tmp_path, model_store=installed_store(tmp_path, payload=b"x" * 2048)
+    )
+
+    models = next(c for c in report.checks if c.name == "modelos")
+    assert models.status == "ok"
+    assert models.detail.startswith("faster-whisper/turbo rev 0123456789ab (")
+    assert "GiB)" in models.detail
+    assert str(tmp_path) not in models.detail
+
+
+def test_no_registered_models_warns(tmp_path: Path) -> None:
+    empty = FileSystemModelStore(
+        data_root=tmp_path / "data" / "voz", cache_root=tmp_path / "cache" / "voz"
+    )
+
+    report = healthy_report(tmp_path, model_store=empty)
+
+    models = next(c for c in report.checks if c.name == "modelos")
+    assert models.status == "warn"
+    assert "confirmación explícita" in models.detail
+    assert exit_code(report) == 0
+
+
+def test_model_store_failure_warns_with_type_only(tmp_path: Path) -> None:
+    class Broken:
+        def registered_descriptors(self) -> tuple[ModelDescriptor, ...]:
+            raise OSError("/home/secret/models is unreadable")
+
+        def resolve_path(self, descriptor: ModelDescriptor) -> Path:
+            raise AssertionError
+
+    report = healthy_report(tmp_path, model_store=Broken())
+
+    models = next(c for c in report.checks if c.name == "modelos")
+    assert models.status == "warn"
+    assert "OSError" in models.detail
+    assert "secret" not in models.detail
+
+
+def test_optional_api_keys_report_presence_never_values(tmp_path: Path) -> None:
+    secret = "sk-super-secret-value-123"
+    report = healthy_report(
+        tmp_path, environ={"OPENAI_API_KEY": secret, "ELEVENLABS_API_KEY": ""}
+    )
+
+    by_name = {c.name: c for c in report.checks}
+    assert by_name["OPENAI_API_KEY"].detail.startswith("set (opcional")
+    assert by_name["ELEVENLABS_API_KEY"].detail.startswith("unset (opcional")
+    assert "no se usa salvo selección explícita" in by_name["OPENAI_API_KEY"].detail
+    assert {c.status for c in report.checks} == {"ok"}
+    assert secret not in render(report)
+    assert "sk-" not in json.dumps([c.detail for c in report.checks])
 
 
 def test_unwritable_path_fails(tmp_path: Path) -> None:
@@ -226,10 +335,41 @@ def test_cli_doctor_json_is_parseable(
         "puerto",
         "rutas",
         "disco",
+        "modelos",
         "runtime ASR",
         "GPU/CUDA",
+        "OPENAI_API_KEY",
+        "ELEVENLABS_API_KEY",
     ]
     assert all(check["status"] in {"ok", "warn", "fail"} for check in payload["checks"])
     assert (result.exit_code == 1) == any(
         check["status"] == "fail" for check in payload["checks"]
     )
+
+
+def test_cli_doctor_bundle_writes_redacted_zip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for variable in ("CONFIG", "DATA", "CACHE", "STATE"):
+        monkeypatch.setenv(f"XDG_{variable}_HOME", str(tmp_path / variable.lower()))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-must-not-leak")
+    target = tmp_path / "bundle.zip"
+
+    result = CliRunner().invoke(
+        cli_app, ["doctor", "--bundle", str(target), "--port", "1"]
+    )
+
+    assert result.exit_code in {0, 1}
+    with zipfile.ZipFile(target) as archive:
+        assert sorted(archive.namelist()) == [
+            "README.txt",
+            "database.json",
+            "doctor.json",
+            "versions.json",
+        ]
+        text = "".join(archive.read(name).decode() for name in archive.namelist())
+    assert str(tmp_path) not in text
+    assert "sk-must-not-leak" not in text
+    assert "OPENAI_API_KEY" in text
+    again = CliRunner().invoke(cli_app, ["doctor", "--bundle", str(target)])
+    assert again.exit_code == 2  # never overwrites an existing file

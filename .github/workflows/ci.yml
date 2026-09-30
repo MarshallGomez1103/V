@@ -62,3 +62,23 @@ jobs:
         run: npm run test -- --run
       - name: Build
         run: npm run build
+
+  package:
+    name: Package / wheel + sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Reproducible build (wheel + sdist)
+        run: scripts/check-reproducible-build.sh
+      - name: Build artifacts
+        run: SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" uv build --out-dir dist
+      - name: Checksums
+        run: scripts/checksums.sh dist
+      - name: Install with uv tool and run outside the checkout
+        run: scripts/check-install.sh dist/*.whl
