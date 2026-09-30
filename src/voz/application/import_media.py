@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from voz.application.ports.disk_space import (
+    DiskLocation,
+    DiskSpacePort,
+    require_free_space,
+)
 from voz.application.ports.media_probe import (
     MediaProbePort,
     MediaProbeResult,
@@ -59,11 +65,17 @@ class ImportMedia:
     media_storage: MediaStoragePort
     media_assets: MediaAssetRepository
     id_factory: Callable[[], UUID] = uuid4
+    disk_space: DiskSpacePort | None = None
 
     def execute(self, *, source: Path, project_id: UUID) -> ImportedMedia:
         """Preserve bytes, probe that exact original, then persist metadata."""
         project_id = _require_uuid(project_id, field="project_id")
         media_asset_id = _require_uuid(self.id_factory(), field="id_factory result")
+
+        # A missing/unreadable source is reported by the storage adapter instead.
+        with suppress(OSError):
+            source_size = Path(source).stat().st_size
+            require_free_space(self.disk_space, DiskLocation.ORIGINALS, source_size)
 
         imported = self.media_storage.import_original(
             source=Path(source),

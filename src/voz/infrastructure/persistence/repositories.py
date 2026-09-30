@@ -200,6 +200,10 @@ def _segment_values(segment: Segment) -> dict[str, object]:
         "start_ms": segment.start_ms,
         "end_ms": segment.end_ms,
         "text": segment.text,
+        "speaker_id": None if segment.speaker_id is None else str(segment.speaker_id),
+        "edited": segment.edited,
+        "revision": segment.revision,
+        "original_text": segment.original_text,
     }
 
 
@@ -211,6 +215,10 @@ def _segment_from_row(row: RowMapping, segment_words: Sequence[Word]) -> Segment
         end_ms=_integer(row, "end_ms"),
         text=_text(row, "text"),
         words=tuple(segment_words),
+        speaker_id=_optional_uuid(row, "speaker_id"),
+        edited=bool(row["edited"]),
+        revision=_integer(row, "revision"),
+        original_text=_optional_text(row, "original_text"),
     )
 
 
@@ -485,6 +493,23 @@ class SqliteSegmentRepository:
                     insert(words),
                     [_word_values(word) for word in segment.words],
                 )
+
+    def update_text_if_revision(self, segment: Segment, expected_revision: int) -> bool:
+        with self._engine.begin() as connection:
+            result = connection.execute(
+                update(segments)
+                .where(
+                    segments.c.id == str(segment.id),
+                    segments.c.revision == expected_revision,
+                )
+                .values(
+                    text=segment.text,
+                    edited=segment.edited,
+                    revision=segment.revision,
+                    original_text=segment.original_text,
+                )
+            )
+            return result.rowcount == 1
 
     def get(self, segment_id: UUID) -> Segment | None:
         with self._engine.connect() as connection:

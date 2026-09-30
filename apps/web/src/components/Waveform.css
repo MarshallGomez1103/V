@@ -1,0 +1,92 @@
+.waveform {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.waveform--status {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.waveform--status[role="alert"] {
+  color: var(--warning);
+}
+
+.waveform__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.waveform__toolbar button {
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+}
+
+.waveform__toolbar button:disabled {
+  color: var(--muted-dark);
+  cursor: not-allowed;
+}
+
+.waveform__toolbar input[type="range"] {
+  flex: 1 1 96px;
+  min-width: 80px;
+  max-width: 220px;
+  accent-color: var(--lime);
+}
+
+.waveform__zoom,
+.waveform__clock {
+  font-family: var(--font-mono);
+}
+
+.waveform__clock {
+  margin-left: auto;
+}
+
+.waveform__scroller {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--ink);
+}
+
+.waveform__scroller:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+.waveform__content {
+  position: relative;
+  height: 96px;
+  cursor: pointer;
+}
+
+/* Solo mide la vista; se queda pegado a la izquierda mientras se hace scroll. */
+.waveform__canvas {
+  position: sticky;
+  left: 0;
+  display: block;
+  color: var(--lime);
+}
+
+.waveform__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--paper);
+  pointer-events: none;
+}

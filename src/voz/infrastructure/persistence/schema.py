@@ -2,15 +2,18 @@
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     Float,
     ForeignKey,
+    Integer,
     MetaData,
     String,
     Table,
     Text,
     UniqueConstraint,
+    false,
 )
 
 NAMING_CONVENTION = {
@@ -91,6 +94,15 @@ segments = Table(
     Column("start_ms", BigInteger, nullable=False),
     Column("end_ms", BigInteger, nullable=False),
     Column("text", Text, nullable=False),
+    Column(
+        "speaker_id",
+        String(36),
+        ForeignKey("speakers.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("edited", Boolean, nullable=False, server_default=false()),
+    Column("revision", Integer, nullable=False, server_default="0"),
+    Column("original_text", Text, nullable=True),
     CheckConstraint("start_ms >= 0", name="start_ms_non_negative"),
     CheckConstraint("end_ms > start_ms", name="offsets_increasing"),
 )

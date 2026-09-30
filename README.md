@@ -5,20 +5,19 @@ largas de clases, entrevistas y reuniones. La meta es ofrecer un workspace web
 local con waveform, timeline, segmentos editables y hablantes, sin convertir un
 proveedor cloud en requisito.
 
-> **Estado actual: importación desde la UI y selector de motor.** La CLI, la
-> API y la Home local funcionan como una sola aplicación instalable. Desde el
-> navegador ya se crea un proyecto, se sube un archivo (copia inmutable con
-> SHA-256 y ffprobe) y se elige el motor entre las opciones que expone el
-> backend, y se crea un job que un ejecutor en segundo plano normaliza,
-> transcribe por chunks con checkpoints SQLite y publica por SSE hasta la lista
-> de segmentos. Los jobs interrumpidos se reanudan al arrancar. Existen
-> exportadores TXT, Markdown, SRT, VTT y JSON canónico (sin endpoint HTTP
-> todavía) y `voz doctor` diagnostica FFmpeg, puerto, rutas, runtime y GPU.
-> El flujo completo solo se ha ejercitado con un motor determinista de
-> pruebas: con Faster Whisper real sigue siendo experimental. No se incluye
-> ni descarga ningún
-> modelo: el runtime real permanece experimental hasta instalar un modelo
-> elegido explícitamente y ejecutar el smoke opt-in. Consulta el
+> **Estado actual: workspace de transcripción editable.** La CLI, la API y la
+> interfaz local funcionan como una sola aplicación instalable. Desde el
+> navegador se crea un proyecto, se sube un archivo (copia inmutable con
+> SHA-256 y ffprobe), se elige el motor y se crea un job que un ejecutor en
+> segundo plano normaliza, transcribe por chunks con checkpoints SQLite y
+> publica por SSE. El workspace muestra waveform con zoom, reproductor del
+> original sincronizado con el segmento activo, búsqueda, edición con
+> autoguardado y control de conflictos, y exportación TXT, Markdown, SRT, VTT
+> y JSON por HTTP. Los jobs interrumpidos se reanudan al arrancar y la subida
+> comprueba el espacio en disco. `voz doctor` diagnostica FFmpeg, puerto,
+> rutas, runtime y GPU. El flujo completo se ha ejercitado con un motor
+> determinista de pruebas: con Faster Whisper real sigue siendo experimental
+> hasta ejecutar el smoke con un modelo elegido explícitamente. Consulta el
 > [roadmap](ROADMAP.md) para ver qué fue verificado.
 
 ## Visión
@@ -215,4 +214,7 @@ corresponda.
 - [ADR-0002: persistencia SQLite](docs/adr/0002-sqlite-persistence.md)
 - [ADR-0003: ingestión FFmpeg](docs/adr/0003-ffmpeg-ingestion.md)
 - [ADR-0004: ASR local recuperable](docs/adr/0004-local-asr-and-recoverable-chunks.md)
+- [ADR-0005: providers de transcripción](docs/adr/0005-transcription-providers.md)
+- [ADR-0006: local-first y privacidad](docs/adr/0006-local-first-privacy.md)
+- [Arquitectura C4: contexto, contenedores y componentes](docs/architecture/README.md)
 - [Setup de desarrollo en Bazzite](docs/development/setup-bazzite.md)

@@ -4,6 +4,10 @@
 - Fecha: 2026-09-05
 - Responsables: mantenedores de VOZ
 - Alcance: primer provider ASR local y recuperación de trabajos largos
+- Última revisión: 2026-09-30 (S16.15/S16.16: nota de cableado y evidencia; la
+  decisión no cambia)
+- Relacionadas: [ADR-0005](0005-transcription-providers.md) (port y registry),
+  [ADR-0006](0006-local-first-privacy.md) (offline y sin cloud implícito)
 
 ## Contexto
 
@@ -107,6 +111,26 @@ parcial) y éxito vacío. La suite existente conserva
 reutilización del engine, serialización y resultados canónicos; el test de
 bootstrap verifica que el cierre del runtime alcanza al provider registrado.
 
+## Actualización de cableado — 2026-09-30
+
+La nota del Corte A según la cual la aplicación HTTP no crea un runtime ASR
+quedó desactualizada por la Sección 5 y no altera la decisión:
+
+- `create_app()` (`src/voz/bootstrap.py`) construye un `LocalAsrRuntime` por
+  descriptor bajo demanda mediante `provider_for(selection)`, usando el
+  `ModelDescriptor` guardado en el snapshot del job. El `lifespan` llama a
+  `runtime.close()` para cada uno al apagar y antes cierra el `JobRunner`.
+- El `JobRunner` ejecuta `RecoverableTranscription` en un hilo; al arrancar,
+  `runner.recover()` reencola los jobs no terminales y los checkpoints
+  confirmados evitan repetir chunks (`tests/integration/application/test_job_runner.py::test_recover_resumes_transcribing_job_without_repeating_chunk`).
+- La instalación de modelos (`FileSystemModelStore.install`) **no** está
+  expuesta por HTTP ni CLI: ningún código de `src/voz/` la invoca. Un modelo
+  debe estar ya instalado para que una opción sea iniciable
+  (`can_start` en `/api/transcription-options`). Un Model Manager con
+  interfaz de usuario es Sección 8, **planificado**.
+- Solo Faster Whisper está implementado. El resto de providers y su registry
+  se tratan en [ADR-0005](0005-transcription-providers.md).
+
 ## Consecuencias positivas
 
 - El modo offline no depende de resolución remota durante la transcripción.
@@ -133,6 +157,18 @@ bootstrap verifica que el cierre del runtime alcanza al provider registrado.
   <https://huggingface.co/docs/huggingface_hub/en/package_reference/file_download>
 - CTranslate2 expone los compute types soportados por device:
   <https://opennmt.net/CTranslate2/python/ctranslate2.get_supported_compute_types.html>
+
+## Evidencia actual (2026-09-30)
+
+| Requisito | Prueba |
+| --- | --- |
+| Adapter, timestamps, idioma y errores canónicos | `tests/unit/infrastructure/asr/test_faster_whisper.py`, `tests/contract/test_transcription_provider.py` |
+| Lifecycle: reemplazo, `close()`, cancelación por fase | `tests/unit/infrastructure/asr/test_faster_whisper_lifecycle.py` |
+| Catálogo de descriptores, hardware y opciones | `tests/unit/infrastructure/asr/test_catalog.py`, `test_hardware.py`, `test_options.py`, `tests/unit/application/test_asr_device_selection.py` |
+| Instalación explícita, revisión fijada, manifest | `tests/unit/infrastructure/test_model_storage.py` |
+| Composición sin descargas y cierre del runtime | `tests/unit/test_asr_bootstrap.py` |
+| Chunks recuperables y reanudación | `tests/unit/application/test_chunked_transcription.py`, `tests/integration/application/test_recoverable_transcription.py`, `tests/integration/application/test_local_asr_pipeline.py` |
+| Smoke real opt-in con modelo instalado por el usuario | `tests/integration/application/test_faster_whisper_real_opt_in.py` (variables `VOZ_FASTER_WHISPER_MODEL_*`) |
 
 ## Verificación
 

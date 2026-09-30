@@ -100,6 +100,14 @@ class SegmentRepository(Protocol):
         """Persist the current snapshot of an existing segment."""
         ...
 
+    def update_text_if_revision(self, segment: Segment, expected_revision: int) -> bool:
+        """Atomically store an edited text if the stored revision still matches.
+
+        Returns ``False`` (nothing written) when the segment is missing or its
+        stored revision differs from ``expected_revision``.
+        """
+        ...
+
     def get(self, segment_id: UUID) -> Segment | None:
         """Return a segment by identity, or ``None`` when absent."""
         ...

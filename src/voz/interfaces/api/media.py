@@ -9,6 +9,7 @@ removed on every path and no host path ever reaches the response or the log.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import shutil
@@ -24,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from voz.application.import_media import ImportedMedia, ImportMedia
+from voz.application.ports.disk_space import InsufficientDiskSpace
 from voz.application.ports.media_probe import MediaProbeError, MediaProbeFailureCode
 from voz.application.ports.media_storage import (
     MediaStorageError,
@@ -106,7 +108,12 @@ def create_media_router(
         )
         try:
             source = staging_directory / filename
-            await _stream_body_to(request, source, max_upload_bytes)
+            try:
+                await _stream_body_to(request, source, max_upload_bytes)
+            except OSError as error:
+                if error.errno != errno.ENOSPC:
+                    raise
+                raise _disk_full() from None
             imported = await _import_or_translate(import_media, source, project_id)
         finally:
             await run_in_threadpool(
@@ -168,6 +175,14 @@ def _reject_declared_oversize(content_length: str | None, limit: int) -> None:
         raise _too_large()
 
 
+def _disk_full() -> HTTPException:
+    return _error(
+        507,
+        "disk_space_insufficient",
+        "There is not enough free disk space for this upload.",
+    )
+
+
 def _too_large() -> HTTPException:
     return _error(413, "media_too_large", "The uploaded file exceeds the size limit.")
 
@@ -206,6 +221,8 @@ async def _import_or_translate(
     except MediaProbeError as error:
         status_code, code, message = _PROBE_STATUS[error.code]
         raise _error(status_code, code, message) from None
+    except InsufficientDiskSpace:
+        raise _disk_full() from None
     except MediaStorageError as error:
         if error.code is MediaStorageErrorCode.UNSAFE_DISPLAY_NAME:
             raise _error(

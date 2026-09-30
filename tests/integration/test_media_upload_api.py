@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from starlette.types import Message
 
 from voz.application.import_media import ImportMedia
+from voz.application.ports.disk_space import DiskLocation, DiskSpacePort
 from voz.application.ports.media_probe import MediaProbePort
 from voz.application.ports.media_storage import MediaStoragePort
 from voz.application.ports.repositories import MediaAssetRepository
@@ -68,6 +69,7 @@ def _build(
     media_probe: MediaProbePort | None = None,
     media_storage: MediaStoragePort | None = None,
     media_assets: MediaAssetRepository | None = None,
+    disk_space: DiskSpacePort | None = None,
 ) -> _Harness:
     database_path = tmp_path / "data" / "voz.db"
     _migrate(database_path)
@@ -83,6 +85,7 @@ def _build(
         media_probe=FfprobeMediaProbe() if media_probe is None else media_probe,
         media_storage=storage if media_storage is None else media_storage,
         media_assets=assets if media_assets is None else media_assets,
+        disk_space=disk_space,
     )
     app = FastAPI()
     if max_upload_bytes is None:
@@ -374,4 +377,59 @@ def test_unexpected_failure_is_generic_without_traceback(tmp_path: Path) -> None
     assert "/private/" not in serialized
     assert "Traceback" not in serialized
     assert str(tmp_path) not in serialized
+    assert _staging_is_empty(harness.upload_dir)
+
+
+class _FreeBytes:
+    def __init__(self, free: int) -> None:
+        self.free = free
+        self.locations: list[DiskLocation] = []
+
+    def free_bytes(self, location: DiskLocation) -> int:
+        self.locations.append(location)
+        return self.free
+
+
+def test_upload_without_enough_free_space_maps_to_507_and_leaves_nothing(
+    tmp_path: Path,
+) -> None:
+    disk = _FreeBytes(free=1024)
+    harness = _build(tmp_path, disk_space=disk)
+
+    status, body = _upload(harness, MEDIA_FIXTURE.read_bytes())
+
+    assert status == 507
+    assert _detail(body)["code"] == "disk_space_insufficient"
+    assert str(tmp_path) not in json.dumps(body)
+    assert disk.locations == [DiskLocation.ORIGINALS]
+    assert harness.media_assets.list_by_project(harness.project_id) == ()
+    assert _staging_is_empty(harness.upload_dir)
+    assert not any((tmp_path / "data").rglob("*.wav"))
+
+
+def test_upload_with_enough_free_space_still_succeeds(tmp_path: Path) -> None:
+    harness = _build(tmp_path, disk_space=_FreeBytes(free=10 * 1024**3))
+
+    status, _ = _upload(harness, MEDIA_FIXTURE.read_bytes())
+
+    assert status == 201
+
+
+def test_disk_full_while_streaming_maps_to_507(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import errno
+
+    from voz.interfaces.api import media as media_api
+
+    async def full_disk(*_: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(media_api, "_stream_body_to", full_disk)
+    harness = _build(tmp_path)
+
+    status, body = _upload(harness, MEDIA_FIXTURE.read_bytes())
+
+    assert status == 507
+    assert _detail(body)["code"] == "disk_space_insufficient"
     assert _staging_is_empty(harness.upload_dir)

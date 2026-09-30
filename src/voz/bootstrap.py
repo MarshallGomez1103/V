@@ -21,6 +21,8 @@ from voz.application.asr_device_selection import (
     select_execution,
 )
 from voz.application.create_transcription_job import CreateTranscriptionJob
+from voz.application.edit_segment import EditSegmentText
+from voz.application.export.service import ExportTranscript
 from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
@@ -33,6 +35,7 @@ from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
 )
+from voz.application.waveform_peaks import GetWaveformPeaks
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
@@ -43,6 +46,8 @@ from voz.infrastructure.asr.options import (
 )
 from voz.infrastructure.audio.ffmpeg import FfmpegMediaNormalizer
 from voz.infrastructure.audio.ffprobe import FfprobeMediaProbe
+from voz.infrastructure.audio.waveform_peaks import FfmpegWaveformPeaks
+from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
 from voz.infrastructure.model_storage import FileSystemModelStore
@@ -53,6 +58,7 @@ from voz.infrastructure.persistence.repositories import (
     SqliteMediaAssetRepository,
     SqliteProjectRepository,
     SqliteSegmentRepository,
+    SqliteSpeakerRepository,
     SqliteTranscriptionJobRepository,
     SqliteTranscriptRepository,
 )
@@ -62,6 +68,7 @@ from voz.infrastructure.persistence.transcription_checkpoints import (
 from voz.infrastructure.persistence.transcription_job_selections import (
     SqliteTranscriptionJobSelectionRepository,
 )
+from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
 from voz.interfaces.api.job_events import create_job_events_router
 from voz.interfaces.api.job_views import job_view as job_view_without_selection
@@ -69,7 +76,9 @@ from voz.interfaces.api.jobs import create_jobs_router, job_view
 from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
 from voz.interfaces.api.projects import create_projects_router
+from voz.interfaces.api.segments import create_segments_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
+from voz.interfaces.api.waveform import create_waveform_router
 
 STATIC_DIRECTORY = Path(__file__).with_name("static")
 DATABASE_FILENAME = "voz.sqlite3"
@@ -169,8 +178,10 @@ def create_app(
     selections = SqliteTranscriptionJobSelectionRepository(resolved_engine)
     transcripts = SqliteTranscriptRepository(resolved_engine)
     segments = SqliteSegmentRepository(resolved_engine)
+    speakers = SqliteSpeakerRepository(resolved_engine)
     media_storage = FileSystemMediaStorage(resolved_paths.data)
     media_probe = FfprobeMediaProbe()
+    disk_space = ShutilDiskSpace(resolved_paths.data)
     if transcription_options is None:
         transcription_options = GetTranscriptionOptions(
             LocalTranscriptionModelCatalog(
@@ -215,6 +226,7 @@ def create_app(
             normalize=NormalizeImportedMedia(
                 media_storage=media_storage,
                 media_normalization=FfmpegMediaNormalizer(resolved_paths.data),
+                disk_space=disk_space,
             ),
         ),
     )
@@ -270,6 +282,7 @@ def create_app(
                 media_probe=media_probe,
                 media_storage=media_storage,
                 media_assets=media_assets,
+                disk_space=disk_space,
             ),
             projects,
             resolved_paths.cache / "uploads",
@@ -289,6 +302,26 @@ def create_app(
     )
     application.include_router(create_job_events_router(jobs, view=view))
     application.include_router(create_media_stream_router(media_assets, media_storage))
+    application.include_router(
+        create_segments_router(EditSegmentText(segments), segments)
+    )
+    application.include_router(
+        create_waveform_router(
+            GetWaveformPeaks(
+                media_assets,
+                FfmpegWaveformPeaks(
+                    storage_root=resolved_paths.data,
+                    cache_root=resolved_paths.cache,
+                    media_storage=media_storage,
+                ),
+            )
+        )
+    )
+    application.include_router(
+        create_export_router(
+            ExportTranscript(transcripts, segments, speakers, projects, media_assets)
+        )
+    )
     if STATIC_DIRECTORY.is_dir():
         application.mount(
             "/",

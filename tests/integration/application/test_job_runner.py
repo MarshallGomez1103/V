@@ -2,28 +2,41 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import shutil
 import wave
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine
 
 from voz.application.job_runner import (
+    InferenceAudioPreparer,
     JobNotFound,
     JobRunner,
     JobTerminal,
     transcript_id_for,
 )
+from voz.application.normalize_media import NormalizeImportedMedia
+from voz.application.ports.disk_space import DiskLocation
 from voz.application.ports.media_normalization import (
     MediaNormalizationCancellationToken,
+    MediaNormalizationPort,
+    NormalizedAudio,
 )
+from voz.application.ports.media_probe import (
+    MediaProbeResult,
+    MediaStreamKind,
+    ProbedMediaStream,
+)
+from voz.application.ports.media_storage import MediaStoragePort
 from voz.application.ports.transcription import (
     TranscriptionCancellationToken,
     TranscriptionError,
@@ -34,9 +47,12 @@ from voz.application.ports.transcription import (
 )
 from voz.application.ports.transcription_checkpoint import TranscriptionCheckpoint
 from voz.application.ports.transcription_job_selection import JobSelection
+from voz.application.prepare_inference_audio import PrepareInferenceAudio
 from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.project import Project
+from voz.domain.entities.segment import Segment
+from voz.domain.entities.transcript import Transcript
 from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
@@ -81,8 +97,12 @@ class Provider:
         *,
         fail_on_call: int | None = None,
         cancel_on_call: int | None = None,
+        crash_on_call: int | None = None,
+        content_text: bool = False,
     ) -> None:
         self.calls = 0
+        self.crash_on_call = crash_on_call
+        self.content_text = content_text
         self.fail_on_call = fail_on_call
         self.cancel_on_call = cancel_on_call
         self.on_cancel: Callable[[], object] | None = None
@@ -100,7 +120,10 @@ class Provider:
         assert options.clip is None
         with wave.open(audio, "rb") as source:
             duration_ms = source.getnframes() * 1_000 // source.getframerate()
+            frames = source.readframes(source.getnframes())
         self.calls += 1
+        if self.crash_on_call == self.calls:
+            raise Crash
         self.clip_durations_ms.append(duration_ms)
         if self.fail_on_call == self.calls:
             raise TranscriptionError(
@@ -109,15 +132,26 @@ class Provider:
         if self.cancel_on_call == self.calls and self.on_cancel is not None:
             self.on_cancel()
         return TranscriptionResult(
-            (TranscriptionSegment(0, duration_ms, f"chunk-{self.calls}"),),
+            (TranscriptionSegment(0, duration_ms, self._text(frames)),),
             "es",
         )
+
+    def _text(self, frames: bytes) -> str:
+        # Depends on the clip, not on how many times the provider was called.
+        if self.content_text:
+            return "clip-" + hashlib.sha256(frames).hexdigest()[:8]
+        return f"chunk-{self.calls}"
+
+
+class Crash(BaseException):
+    """Simulates a process kill: not an ``Exception``, so nothing records FAILED."""
 
 
 @dataclass(slots=True)
 class Preparer:
     storage_root: Path
     calls: list[tuple[UUID, UUID]] = field(default_factory=list[tuple[UUID, UUID]])
+    crash_first: bool = False
 
     def prepare(
         self,
@@ -128,6 +162,9 @@ class Preparer:
     ) -> None:
         del cancellation
         self.calls.append((project_id, media_asset_id))
+        if self.crash_first:
+            self.crash_first = False
+            raise Crash
         _install_derivative(self.storage_root, project_id, media_asset_id)
 
 
@@ -165,6 +202,7 @@ def harness(
     *,
     provider: Provider | None = None,
     derivative: bool = True,
+    audio_preparer: InferenceAudioPreparer | None = None,
 ) -> Harness:
     engine = create_sqlite_engine((tmp_path / "voz.db").absolute())
     metadata.create_all(engine)
@@ -206,7 +244,7 @@ def harness(
         audio_source_for=lambda project_id, media_asset_id: (
             FileSystemInferenceAudioSource(root, project_id, media_asset_id)
         ),
-        audio_preparer=preparer,
+        audio_preparer=audio_preparer or preparer,
         clock=lambda: BASE_TIME + timedelta(seconds=next(ticks)),
         chunk_duration_ms=100,
         overlap_ms=20,
@@ -383,4 +421,271 @@ def test_recover_finishes_job_left_in_cancelling(tmp_path: Path) -> None:
     assert finished is not None
     assert finished.state is TranscriptionJobState.CANCELLED
     assert fixture.provider.calls == 0
+    fixture.engine.dispose()
+
+
+# -- disk space (S14.03) -------------------------------------------------------
+
+
+class _LowDisk:
+    def free_bytes(self, location: DiskLocation) -> int:
+        return 1024
+
+
+class _Storage:
+    def open_original(self, *, project_id: UUID, media_asset_id: UUID) -> BinaryIO:
+        return BytesIO(b"original")
+
+    def import_original(self, **_: object) -> object:
+        raise NotImplementedError
+
+    def discard_original(self, **_: object) -> None:
+        raise NotImplementedError
+
+
+class _Probe:
+    def probe(self, source: BinaryIO) -> MediaProbeResult:
+        stream = ProbedMediaStream(
+            0, MediaStreamKind.AUDIO, "pcm_s16le", True, 8_000, 1
+        )
+        return MediaProbeResult(("wav",), (stream,), 250)
+
+
+class _NeverNormalizes:
+    def normalize(self, **_: object) -> NormalizedAudio:
+        raise AssertionError("must not start normalizing without disk space")
+
+
+def test_job_fails_with_disk_space_code_and_leaves_no_partial_artifacts(
+    tmp_path: Path,
+) -> None:
+    fixture = harness(tmp_path, derivative=False)
+    media_assets = SqliteMediaAssetRepository(fixture.engine)
+    fixture.runner.audio_preparer = PrepareInferenceAudio(
+        media_storage=cast(MediaStoragePort, _Storage()),
+        media_probe=_Probe(),
+        media_assets=media_assets,
+        normalize=NormalizeImportedMedia(
+            media_storage=cast(MediaStoragePort, _Storage()),
+            media_normalization=cast(MediaNormalizationPort, _NeverNormalizes()),
+            disk_space=_LowDisk(),
+        ),
+    )
+
+    finished = fixture.runner.run_job(fixture.job.id)
+
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.FAILED
+    assert finished.error_code == "disk_space_insufficient"
+    assert fixture.persisted().error_code == "disk_space_insufficient"
+    assert fixture.provider.calls == 0
+    assert not (fixture.root / "projects").exists()
+    assert fixture.checkpoints.list_for_job(fixture.job.id) == ()
+    assert (
+        SqliteTranscriptRepository(fixture.engine).get(
+            transcript_id_for(fixture.job.id)
+        )
+        is None
+    )
+    fixture.engine.dispose()
+
+
+# -- idempotent resume (S14.14) -------------------------------------------------
+
+
+class _CrashingJobs(SqliteTranscriptionJobRepository):
+    """Simulates a process kill right before a given state would be persisted."""
+
+    crash_before: TranscriptionJobState | None = None
+
+    def save(self, job: TranscriptionJob) -> None:
+        if job.state is self.crash_before:
+            self.crash_before = None
+            raise Crash
+        super().save(job)
+
+
+class _CrashingTranscripts(SqliteTranscriptRepository):
+    crash = False
+
+    def add(self, transcript: Transcript) -> None:
+        if self.crash:
+            self.crash = False
+            raise Crash
+        super().add(transcript)
+
+
+class _CrashingSegments(SqliteSegmentRepository):
+    crash_on_add: int | None = None
+    adds = 0
+
+    def add(self, segment: Segment) -> None:
+        self.adds += 1
+        if self.adds == self.crash_on_add:
+            self.crash_on_add = None
+            raise Crash
+        super().add(segment)
+
+
+Snapshot = tuple[str, str | None, list[tuple[int, int, str]], int]
+
+
+def _snapshot(fixture: Harness) -> Snapshot:
+    transcript = SqliteTranscriptRepository(fixture.engine).get(
+        transcript_id_for(fixture.job.id)
+    )
+    assert transcript is not None
+    stored = SqliteSegmentRepository(fixture.engine).list_by_transcript(transcript.id)
+    assert len({segment.id for segment in stored}) == len(stored)
+    return (
+        fixture.persisted().state.value,
+        transcript.language,
+        [(s.start_ms, s.end_ms, s.text) for s in stored],
+        len(fixture.checkpoints.list_for_job(fixture.job.id)),
+    )
+
+
+def _clean_snapshot(tmp_path: Path) -> Snapshot:
+    fixture = harness(tmp_path / "clean", provider=Provider(content_text=True))
+    finished = fixture.runner.run_job(fixture.job.id)
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.COMPLETED
+    snapshot = _snapshot(fixture)
+    assert len(snapshot[2]) == 3
+    fixture.engine.dispose()
+    return snapshot
+
+
+def _crash_then_resume(fixture: Harness) -> None:
+    with pytest.raises(Crash):
+        fixture.runner.run_job(fixture.job.id)
+    interrupted = fixture.persisted()
+    assert not interrupted.state.is_terminal
+    # A restarted process: repositories are healthy again and recover() re-queues.
+    fixture.runner.jobs = SqliteTranscriptionJobRepository(fixture.engine)
+    fixture.runner.transcripts = SqliteTranscriptRepository(fixture.engine)
+    fixture.runner.segments = SqliteSegmentRepository(fixture.engine)
+    assert fixture.runner.recover() == (fixture.job.id,)
+    finished = fixture.runner.run_job(fixture.job.id)
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.COMPLETED
+
+
+def test_resume_after_crash_while_preprocessing_matches_a_clean_run(
+    tmp_path: Path,
+) -> None:
+    expected = _clean_snapshot(tmp_path)
+    fixture = harness(
+        tmp_path / "resumed", provider=Provider(content_text=True), derivative=False
+    )
+    fixture.preparer.crash_first = True
+
+    _crash_then_resume(fixture)
+
+    assert fixture.persisted().state is TranscriptionJobState.COMPLETED
+    assert len(fixture.preparer.calls) == 2
+    assert _snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+@pytest.mark.parametrize("crash_call", [1, 2, 3])
+def test_resume_after_crash_mid_chunks_matches_a_clean_run(
+    tmp_path: Path, crash_call: int
+) -> None:
+    expected = _clean_snapshot(tmp_path)
+    provider = Provider(content_text=True, crash_on_call=crash_call)
+    fixture = harness(tmp_path / "resumed", provider=provider)
+
+    _crash_then_resume(fixture)
+
+    assert _snapshot(fixture) == expected
+    # Committed chunks are never transcribed again; only the in-flight one repeats.
+    assert provider.calls == 3 + 1
+    fixture.engine.dispose()
+
+
+def test_resume_after_last_chunk_committed_but_before_advancing(
+    tmp_path: Path,
+) -> None:
+    expected = _clean_snapshot(tmp_path)
+    provider = Provider(content_text=True)
+    fixture = harness(tmp_path / "resumed", provider=provider)
+    crashing = _CrashingJobs(fixture.engine)
+    crashing.crash_before = TranscriptionJobState.ALIGNING
+    fixture.runner.jobs = crashing
+
+    _crash_then_resume(fixture)
+
+    assert provider.calls == 3
+    assert _snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+@pytest.mark.parametrize("crash_on_add", [1, 2, 3])
+def test_resume_after_crash_while_persisting_segments_adds_only_the_missing(
+    tmp_path: Path, crash_on_add: int
+) -> None:
+    expected = _clean_snapshot(tmp_path)
+    provider = Provider(content_text=True)
+    fixture = harness(tmp_path / "resumed", provider=provider)
+    segments = _CrashingSegments(fixture.engine)
+    segments.crash_on_add = crash_on_add
+    fixture.runner.segments = segments
+
+    _crash_then_resume(fixture)
+
+    assert provider.calls == 3
+    assert _snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+def test_resume_after_crash_before_transcript_insert_matches_a_clean_run(
+    tmp_path: Path,
+) -> None:
+    expected = _clean_snapshot(tmp_path)
+    fixture = harness(tmp_path / "resumed", provider=Provider(content_text=True))
+    transcripts = _CrashingTranscripts(fixture.engine)
+    transcripts.crash = True
+    fixture.runner.transcripts = transcripts
+
+    _crash_then_resume(fixture)
+
+    assert _snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+def test_persisting_twice_does_not_duplicate_segments(tmp_path: Path) -> None:
+    expected = _clean_snapshot(tmp_path)
+    fixture = harness(tmp_path / "resumed", provider=Provider(content_text=True))
+    crashing = _CrashingJobs(fixture.engine)
+    crashing.crash_before = TranscriptionJobState.COMPLETED
+    fixture.runner.jobs = crashing
+
+    # Everything is persisted, then the process dies before COMPLETED is saved.
+    _crash_then_resume(fixture)
+
+    assert fixture.provider.calls == 3
+    assert _snapshot(fixture) == expected
+    fixture.engine.dispose()
+
+
+def test_recover_twice_does_not_duplicate_queued_jobs(tmp_path: Path) -> None:
+    fixture = harness(tmp_path)
+
+    first = fixture.runner.recover()
+    second = fixture.runner.recover()
+    fixture.runner.enqueue(fixture.job.id)
+
+    assert first == second == (fixture.job.id,)
+    assert fixture.runner._queue.qsize() == 1  # pyright: ignore[reportPrivateUsage]
+
+    fixture.runner.start()
+    try:
+        assert fixture.runner.wait_idle(10.0)
+        # Once drained, the job can be queued again (recover after a restart).
+        assert fixture.runner.recover() == ()
+    finally:
+        fixture.runner.stop()
+    assert fixture.persisted().state is TranscriptionJobState.COMPLETED
+    assert fixture.provider.calls == 3
     fixture.engine.dispose()

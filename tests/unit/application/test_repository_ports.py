@@ -76,7 +76,13 @@ def test_repository_ports_expose_complete_owner_queries() -> None:
             "list_by_project",
             "list_by_media_asset",
         },
-        SegmentRepository: {"add", "save", "get", "list_by_transcript"},
+        SegmentRepository: {
+            "add",
+            "save",
+            "get",
+            "list_by_transcript",
+            "update_text_if_revision",
+        },
         WordRepository: {"add", "save", "get", "list_by_segment"},
         SpeakerRepository: {"add", "save", "get", "list_by_project"},
         SpeakerTurnRepository: {

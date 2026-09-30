@@ -183,6 +183,7 @@ class JobRunner:
     _cancel: threading.Event = field(default_factory=threading.Event, repr=False)
     _stopping: threading.Event = field(default_factory=threading.Event, repr=False)
     _current: UUID | None = field(default=None, repr=False)
+    _queued: set[UUID] = field(default_factory=set[UUID], repr=False)
     _thread: threading.Thread | None = field(default=None, repr=False)
 
     # -- lifecycle -----------------------------------------------------------
@@ -205,6 +206,11 @@ class JobRunner:
             self._thread = None
 
     def enqueue(self, job_id: UUID) -> None:
+        """Queue a job once; a job already waiting or running is not duplicated."""
+        with self._lock:
+            if job_id in self._queued or job_id == self._current:
+                return
+            self._queued.add(job_id)
         self._queue.put(job_id)
 
     def recover(self) -> tuple[UUID, ...]:
@@ -253,6 +259,7 @@ class JobRunner:
     def run_job(self, job_id: UUID) -> TranscriptionJob | None:
         """Process one job synchronously; the worker thread calls this per item."""
         with self._lock:
+            self._queued.discard(job_id)
             job = self.jobs.get(job_id)
             if job is None or job.state.is_terminal:
                 return job
@@ -395,29 +402,32 @@ class JobRunner:
         result: TranscriptionResult,
     ) -> None:
         transcript_id = transcript_id_for(job.id)
-        if self.transcripts.get(transcript_id) is not None:
-            # ponytail: a crash between transcript insert and COMPLETED leaves the
-            # transcript as persisted; segments are not re-checked one by one.
-            return
-        self.transcripts.add(
-            Transcript(
-                job.project_id,
-                job.media_asset_id,
-                id=transcript_id,
-                language=result.language or selection.language,
-                created_at=self._not_before(job),
-            )
-        )
-        for index, item in enumerate(result.segments):
-            self.segments.add(
-                Segment(
-                    transcript_id,
-                    item.start_ms,
-                    item.end_ms,
-                    item.text,
-                    id=uuid5(transcript_id, f"segment:{index}"),
+        # Identities are deterministic, so a crash between the transcript insert
+        # and the last segment (or before COMPLETED) resumes by adding only the
+        # missing segments instead of duplicating or skipping them.
+        if self.transcripts.get(transcript_id) is None:
+            self.transcripts.add(
+                Transcript(
+                    job.project_id,
+                    job.media_asset_id,
+                    id=transcript_id,
+                    language=result.language or selection.language,
+                    created_at=self._not_before(job),
                 )
             )
+        stored = {s.id for s in self.segments.list_by_transcript(transcript_id)}
+        for index, item in enumerate(result.segments):
+            segment_id = uuid5(transcript_id, f"segment:{index}")
+            if segment_id not in stored:
+                self.segments.add(
+                    Segment(
+                        transcript_id,
+                        item.start_ms,
+                        item.end_ms,
+                        item.text,
+                        id=segment_id,
+                    )
+                )
 
     def _latest(self, job: TranscriptionJob) -> TranscriptionJob:
         """Re-read after a failure so persisted checkpoint progress is kept."""

@@ -807,3 +807,11 @@ progress::-moz-progress-bar {
 .segment-seek:hover time {
   color: var(--lime);
 }
+
+.transcript-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}

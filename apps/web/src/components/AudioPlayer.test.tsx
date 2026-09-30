@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AudioPlayer } from './AudioPlayer'
@@ -58,5 +58,36 @@ describe('AudioPlayer', () => {
     expect(() => {
       rerender(<AudioPlayer mediaAssetId="a1" seekToMs={1000} seekNonce={1} />)
     }).not.toThrow()
+  })
+
+  it('notifica la posición en ms enteros con timeupdate y seeked', () => {
+    const onTimeUpdate = vi.fn()
+    render(
+      <AudioPlayer
+        mediaAssetId="a1"
+        seekToMs={null}
+        seekNonce={0}
+        onTimeUpdate={onTimeUpdate}
+      />,
+    )
+    const audio = screen.getByLabelText<HTMLAudioElement>(
+      'Reproductor del original',
+    )
+
+    audio.currentTime = 1.2344
+    fireEvent(audio, new Event('timeupdate'))
+    audio.currentTime = 90
+    fireEvent(audio, new Event('seeked'))
+
+    expect(onTimeUpdate.mock.calls).toEqual([[1234], [90_000]])
+  })
+
+  it('sin onTimeUpdate los eventos nativos no fallan', () => {
+    render(<AudioPlayer mediaAssetId="a1" seekToMs={null} seekNonce={0} />)
+    const audio = screen.getByLabelText<HTMLAudioElement>(
+      'Reproductor del original',
+    )
+
+    expect(() => fireEvent(audio, new Event('timeupdate'))).not.toThrow()
   })
 })

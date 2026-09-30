@@ -89,3 +89,27 @@ literales. Al arrancar el servidor se re-encolan los jobs procesables sin
 repetir chunks confirmados. `POST …/cancel` marca `CANCELLING` y el runner
 termina en `CANCELLED` entre unidades recuperables. Los fallos se exponen como
 `error_code` estable.
+
+### Espacio en disco insuficiente (S14.03)
+
+Antes de importar un original se exige `tamaño del archivo + 64 MiB` libres en
+el almacén de originales; antes de normalizar, `duration_ms * 32` bytes (PCM
+mono 16 kHz s16) `+ 64 MiB` en el almacén de derivados. Si no alcanza, el error
+tipado `InsufficientDiskSpace` (`code="disk_space_insufficient"`,
+`retryable=true`) se traduce así, sin dejar artefactos parciales:
+
+| Contexto | Resultado |
+| --- | --- |
+| `POST /api/projects/{project_id}/media` | 507 `{"detail": {"code": "disk_space_insufficient", "message": …}}`; el temporal de subida se elimina. También se devuelve 507 si el disco se llena mientras se recibe el cuerpo (`ENOSPC`). |
+| `JobRunner` (normalización pendiente) | job `FAILED` con `error_code = "disk_space_insufficient"`; el job no se reintenta solo, la UI puede ofrecer reintentar tras liberar espacio. |
+
+La comprobación es opcional en los casos de uso (`disk_space=None` la omite) y
+se cablea en `bootstrap.py` con el adaptador `ShutilDiskSpace`.
+
+### Idempotencia de la reanudación (S14.14)
+
+`recover()` y `enqueue()` no duplican un job ya en cola o en ejecución. Al
+persistir, `Transcript` y `Segment`s usan identidades deterministas
+(`uuid5` del job), por lo que reanudar tras una interrupción en `PERSISTING`
+añade solo los segmentos que faltan: el resultado es idéntico al de una
+ejecución limpia y repetir la etapa no duplica nada.

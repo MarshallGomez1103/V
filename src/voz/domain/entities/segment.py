@@ -38,13 +38,40 @@ class Segment:
     text: str
     id: UUID = field(default_factory=uuid4, kw_only=True)
     words: tuple[Word, ...] = field(default=(), kw_only=True)
+    speaker_id: UUID | None = field(default=None, kw_only=True)
+    edited: bool = field(default=False, kw_only=True)
+    revision: int = field(default=0, kw_only=True)
+    original_text: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _validate_uuid(self.id, "id")
         _validate_uuid(self.transcript_id, "transcript_id")
+        if self.speaker_id is not None:
+            _validate_uuid(self.speaker_id, "speaker_id")
+        if type(self.edited) is not bool:
+            raise TypeError("segment edited must be a bool")
+        if type(self.revision) is not int:
+            raise TypeError("segment revision must be an integer")
+        if self.revision < 0:
+            raise ValueError("segment revision cannot be negative")
+        if self.original_text is not None:
+            _validate_text(self.original_text)
         _validate_offsets(self.start_ms, self.end_ms)
         _validate_text(self.text)
         self._validate_words(self.words)
+
+    def edit_text(self, text: str) -> "Segment":
+        """Return a copy with corrected text, keeping the literal ASR text once."""
+
+        _validate_text(text)
+        original = self.original_text if self.edited else self.text
+        return replace(
+            self,
+            text=text,
+            edited=True,
+            revision=self.revision + 1,
+            original_text=original,
+        )
 
     def _validate_words(self, words: object) -> None:
         if not isinstance(words, tuple):

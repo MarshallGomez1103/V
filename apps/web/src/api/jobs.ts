@@ -63,6 +63,9 @@ export interface TranscriptSegment {
   start_ms: number
   end_ms: number
   text: string
+  edited: boolean
+  revision: number
+  speaker_id: string | null
 }
 
 export class JobApiError extends Error {
@@ -137,7 +140,10 @@ function isSegment(value: unknown): value is TranscriptSegment {
     typeof value.id === 'string' &&
     typeof value.start_ms === 'number' &&
     typeof value.end_ms === 'number' &&
-    typeof value.text === 'string'
+    typeof value.text === 'string' &&
+    typeof value.edited === 'boolean' &&
+    typeof value.revision === 'number' &&
+    isNullableString(value.speaker_id)
   )
 }
 

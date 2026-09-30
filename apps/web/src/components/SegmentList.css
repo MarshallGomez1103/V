@@ -1,0 +1,83 @@
+/* S5.11/S5.13/S5.15: barra de búsqueda, fila activa y contención por fila. */
+
+.segment-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.segment-search {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+}
+
+.segment-search-count {
+  min-width: 6ch;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.segment-tool {
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+}
+
+.segment-tool:disabled {
+  color: var(--muted-dark);
+  cursor: default;
+}
+
+.segment-follow {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.segments-scroll {
+  max-height: 60vh;
+  margin-top: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.segments-scroll .segments {
+  margin-top: 0;
+}
+
+/* ponytail: content-visibility:auto es la "virtualización" nativa (S5.15). */
+.segments .segment-row {
+  padding: 6px 10px;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+.segments .segment-row[aria-current='true'] {
+  border-left-color: var(--lime);
+  background: rgb(184 244 153 / 8%);
+}
+
+.segment-match {
+  border-radius: 3px;
+  background: rgb(184 244 153 / 30%);
+  color: inherit;
+}
+
+.segment-match.is-current {
+  background: var(--lime);
+  color: var(--ink);
+}

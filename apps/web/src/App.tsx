@@ -1,13 +1,19 @@
 import { useCallback, useState } from 'react'
 
 import { cancelJob, createJob, JobApiError } from './api/jobs'
+import type { TranscriptSegment } from './api/jobs'
 import { AudioPlayer } from './components/AudioPlayer'
+import { AutosaveStatus } from './components/AutosaveStatus'
+import { ExportMenu } from './components/ExportMenu'
 import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
+import { SegmentEditor } from './components/SegmentEditor'
 import { SegmentList } from './components/SegmentList'
 import { TranscriptionOptionsSelector } from './components/TranscriptionOptionsSelector'
+import { Waveform } from './components/Waveform'
 import { useJobEvents } from './hooks/useJobEvents'
+import { useSegmentDrafts } from './hooks/useSegmentDrafts'
 import { useSeek } from './hooks/useSeek'
 
 function BrandMark() {
@@ -55,6 +61,14 @@ export function App() {
   const [jobError, setJobError] = useState<string | null>(null)
   const events = useJobEvents(jobId)
   const { seekToMs, seekNonce, seek } = useSeek()
+  const [currentMs, setCurrentMs] = useState<number | undefined>(undefined)
+  const drafts = useSegmentDrafts()
+  const renderSegmentText = useCallback(
+    (segment: TranscriptSegment) => (
+      <SegmentEditor segment={segment} drafts={drafts} />
+    ),
+    [drafts],
+  )
 
   const startJob = useCallback(async () => {
     if (!imported || !optionId) {
@@ -158,6 +172,12 @@ export function App() {
                   mediaAssetId={imported.media.media_asset_id}
                   seekToMs={seekToMs}
                   seekNonce={seekNonce}
+                  onTimeUpdate={setCurrentMs}
+                />
+                <Waveform
+                  mediaAssetId={imported.media.media_asset_id}
+                  currentMs={currentMs ?? 0}
+                  onSeek={seek}
                 />
               </article>
             ) : null}
@@ -172,7 +192,18 @@ export function App() {
                     void cancelJob(jobId).catch(() => undefined)
                   }}
                 />
-                <SegmentList transcriptId={transcriptId} onSeek={seek} />
+                {transcriptId ? (
+                  <div className="transcript-tools">
+                    <AutosaveStatus drafts={drafts} />
+                    <ExportMenu transcriptId={transcriptId} />
+                  </div>
+                ) : null}
+                <SegmentList
+                  transcriptId={transcriptId}
+                  onSeek={seek}
+                  currentMs={currentMs}
+                  renderText={renderSegmentText}
+                />
               </>
             ) : null}
           </div>

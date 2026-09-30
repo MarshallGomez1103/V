@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from voz.application.export.grouping import group_by_speaker
 from voz.application.export.port import format_timestamp, ordered_segments
 from voz.domain.entities.segment import Segment
 from voz.domain.entities.speaker import Speaker
@@ -41,6 +42,7 @@ class MarkdownExporter:
     file_extension: str = field(default="md", init=False)
 
     include_timestamps: bool = False
+    group_by_speaker: bool = False
 
     def render(
         self,
@@ -50,13 +52,17 @@ class MarkdownExporter:
     ) -> str:
         """Render the document; an empty transcript still yields a valid file."""
 
-        del speakers  # accepted for the port; Markdown has no speaker grouping.
         blocks = ["# Transcript"]
         if transcript.language is not None:
             blocks.append(f"- Language: {escape_markdown(transcript.language)}")
-        blocks.extend(
-            self._paragraph(segment) for segment in ordered_segments(segments)
-        )
+        if self.group_by_speaker:
+            for label, members in group_by_speaker(segments, speakers):
+                blocks.append(f"## {escape_markdown(label)}")
+                blocks.extend(self._paragraph(segment) for segment in members)
+        else:
+            blocks.extend(
+                self._paragraph(segment) for segment in ordered_segments(segments)
+            )
         return "\n\n".join(blocks) + "\n"
 
     def _paragraph(self, segment: Segment) -> str:

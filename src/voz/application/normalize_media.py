@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from voz.application.import_media import ImportedMedia
+from voz.application.ports.disk_space import (
+    PCM_BYTES_PER_MS,
+    DiskLocation,
+    DiskSpacePort,
+    require_free_space,
+)
 from voz.application.ports.media_normalization import (
     MediaNormalizationCancellationToken,
     MediaNormalizationError,
@@ -23,6 +29,7 @@ class NormalizeImportedMedia:
 
     media_storage: MediaStoragePort
     media_normalization: MediaNormalizationPort
+    disk_space: DiskSpacePort | None = None
 
     def execute(
         self,
@@ -52,6 +59,10 @@ class NormalizeImportedMedia:
                 MediaNormalizationFailureCode.INVALID_SOURCE,
                 "The imported media has no decodable audio stream.",
             )
+
+        require_free_space(
+            self.disk_space, DiskLocation.DERIVATIVES, duration_ms * PCM_BYTES_PER_MS
+        )
 
         media_asset = imported_media.media_asset
         with self.media_storage.open_original(

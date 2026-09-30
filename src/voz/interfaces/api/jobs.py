@@ -31,6 +31,7 @@ from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
 )
+from voz.interfaces.api.segments import segment_view
 
 _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.PROJECT_NOT_FOUND: 404,
@@ -178,12 +179,7 @@ def create_jobs_router(
             raise _error(404, "transcript_not_found", "The transcript does not exist.")
         return {
             "segments": [
-                {
-                    "id": str(segment.id),
-                    "start_ms": segment.start_ms,
-                    "end_ms": segment.end_ms,
-                    "text": segment.text,
-                }
+                segment_view(segment)
                 for segment in segments_repo.list_by_transcript(transcript_id)
             ]
         }

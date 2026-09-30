@@ -1,0 +1,90 @@
+.segment-editor {
+  display: grid;
+  gap: 4px;
+}
+
+.segment-editor-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.segment-editor-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.4em;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  /* Altura automática donde exista; si no, el usuario puede redimensionar. */
+  field-sizing: content;
+}
+
+.segment-editor-input:focus-visible {
+  border-color: var(--lime);
+  outline: 2px solid var(--lime);
+  outline-offset: 1px;
+}
+
+.segment-editor[data-status="error"] .segment-editor-input,
+.segment-editor[data-status="conflict"] .segment-editor-input {
+  border-color: var(--warning);
+}
+
+.segment-editor-state,
+.autosave-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.autosave-error,
+.autosave-conflict {
+  color: var(--warning);
+}
+
+.segment-editor-conflict {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.segment-editor-conflict p,
+.segment-editor-conflict blockquote {
+  margin: 0;
+}
+
+.segment-editor-conflict blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  white-space: pre-wrap;
+}
+
+.segment-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.autosave-retry,
+.segment-editor-state button,
+.segment-editor-actions button {
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

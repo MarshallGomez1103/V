@@ -169,7 +169,8 @@ def _prepare_source_descriptor(source: BinaryIO) -> int:
 def _load_payload(stdout: str) -> dict[str, object]:
     try:
         payload: object = json.loads(stdout)
-    except (json.JSONDecodeError, RecursionError) as error:
+    # ValueError also covers integers beyond Python's digit limit (a DoS guard).
+    except (ValueError, RecursionError) as error:
         raise MediaProbeError(
             MediaProbeFailureCode.INVALID_RESPONSE,
             "The media inspection tool returned an invalid response.",
@@ -269,7 +270,10 @@ def _parse_positive_int(value: object) -> int | None:
     if isinstance(value, int):
         return value if value > 0 else None
     if isinstance(value, str) and value.isascii() and value.isdigit():
-        parsed = int(value)
+        try:
+            parsed = int(value)
+        except ValueError:  # more digits than Python converts
+            return None
         return parsed if parsed > 0 else None
     return None
 

@@ -4,6 +4,8 @@
 - Fecha: 2026-09-03
 - Responsables: mantenedores de VOZ
 - Alcance: inspección, almacenamiento y normalización multimedia local
+- Última revisión: 2026-09-30 (S16.14; añade cableado actual y evidencia)
+- Diagramas: [componentes](../architecture/03-componentes.md)
 
 ## Contexto
 
@@ -72,8 +74,16 @@ para el usuario.
   esquema inicial persiste hash, tamaño, duración y MIME.
 - Un error persistente del filesystem puede impedir confirmar un rollback. Ese
   estado se expone como error explícito para reconciliación posterior.
-- La importación HTTP y la UI de selección pertenecen a la Sección 5; esta ADR
-  cubre el pipeline local invocable desde application.
+- Esta ADR cubre el pipeline local invocable desde application. La importación
+  HTTP y su contrato se documentan en [docs/api/jobs.md](../api/jobs.md); aquí
+  solo se registra cómo se cablea (sección siguiente).
+- FFmpeg y ffprobe son binarios del sistema, no vendorizados. Sin ellos la
+  importación falla con un error tipado (`MediaProbeFailureCode.TOOL_UNAVAILABLE`, HTTP 503
+  `media_probe_unavailable`) y `voz doctor` lo reporta como fallo. No se fija
+  ni verifica una versión mínima; **planificado** si aparece una
+  incompatibilidad concreta.
+- Compatibilidad probada: fixtures sintéticos WAV, MP3, M4A, OGG, OPUS y WebM
+  sobre Linux. Otras plataformas y contenedores son experimentales.
 
 ## Alternativas consideradas
 
@@ -96,6 +106,67 @@ completo.
 
 Rechazada. Acoplaría application al layout del host y facilitaría fugas hacia la
 API o el navegador.
+
+## Cableado actual (2026-09-30)
+
+```text
+POST /api/projects/{id}/media        (interfaces/api/media.py)
+  cuerpo crudo -> temporal en ~/.cache/voz/uploads (siempre borrado)
+  -> ImportMedia (application/import_media.py)
+       MediaStoragePort  = FileSystemMediaStorage   (copia inmutable + SHA-256)
+       MediaProbePort    = FfprobeMediaProbe        (sobre la copia ya publicada)
+       MediaAssetRepository (SQLite)
+
+job en estado PREPROCESSING          (application/job_runner.py)
+  -> PrepareInferenceAudio -> re-probe del original inmutable
+  -> NormalizeImportedMedia -> MediaNormalizationPort = FfmpegMediaNormalizer
+  -> projects/<p>/derivatives/<m>.inference.wav  (solo si el derivado no existe)
+```
+
+- La normalización ocurre dentro del job, no durante la subida (decisión de
+  Sección 5). Un job reanudado reutiliza el derivado existente
+  (`JobRunner._derivative_exists`).
+- La subida rechaza cuerpos vacíos, nombres inseguros y tamaños por encima de
+  `DEFAULT_MAX_UPLOAD_BYTES` (8 GiB). El nombre visible se guarda como
+  `display_name`; nunca forma parte del destino en disco.
+- `ffprobe` corre con `timeout_seconds=15` y sin shell (`FfprobeMediaProbe`).
+- La cancelación de un job durante la normalización llega a FFmpeg mediante
+  `MediaNormalizationCancellationToken`; no se publica un derivado parcial.
+
+## Evidencia actual (2026-09-30)
+
+| Requisito | Prueba |
+| --- | --- |
+| Extensión irrelevante o engañosa | `tests/integration/audio/test_ffprobe_media_probe.py` |
+| Fixtures de seis formatos deterministas y decodificables | `tests/integration/media/test_media_fixtures.py`, licencias en [fixtures-licenses.md](../fixtures-licenses.md) |
+| Contrato común del probe | `tests/contract/test_media_probe_port.py`, `tests/unit/infrastructure/audio/test_ffprobe.py` |
+| Copia inmutable, hash, symlinks, traversal, `fsync`, cleanup | `tests/unit/infrastructure/test_media_storage.py` |
+| Importación con compensación y reconciliación | `tests/unit/application/test_import_media.py`, `tests/integration/application/test_import_media_sqlite.py` |
+| PCM mono 16 kHz, original intacto, primer stream de audio | `tests/integration/audio/test_ffmpeg_media_normalizer_integration.py` |
+| Cancelación, callbacks que fallan, carreras de symlink y raíz, fallos de `fsync` sin artefactos parciales | mismo archivo |
+| Normalización desde application | `tests/unit/application/test_normalize_media.py`, `tests/integration/application/test_normalize_imported_media.py` |
+| Contrato HTTP de subida sin rutas | `tests/integration/test_media_upload_api.py` |
+| Preparación del derivado dentro del job | `tests/integration/application/test_job_runner.py::test_missing_derivative_is_prepared_before_transcribing` |
+
+## Alternativas adicionales consideradas
+
+### Subida multipart
+
+No adoptada. FastAPI necesitaría una dependencia adicional para multipart
+(documentado en [docs/api/jobs.md](../api/jobs.md)); el cuerpo crudo con
+cabecera `X-Voz-Filename` se transmite directamente a un temporal con límite de
+tamaño (regla de dependencias de [AGENTS.md](../../AGENTS.md)).
+
+### Normalizar durante la subida
+
+No adoptada. Bloquearía la petición HTTP con un trabajo largo y cancelable. La
+normalización es una etapa del job con progreso y cancelación.
+
+### Bibliotecas Python de audio (PyAV, pydub, soundfile) en lugar de FFmpeg
+
+No adoptadas por ahora. FFmpeg ya es requisito, decodifica los seis formatos
+del contrato y permite pasar descriptors heredados sin rutas. Cada biblioteca
+añadiría una dependencia y otro conjunto de códecs a verificar.
 
 ## Verificación
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from voz.application.export.grouping import group_by_speaker
 from voz.application.export.port import format_timestamp, ordered_segments
 from voz.domain.entities.segment import Segment
 from voz.domain.entities.speaker import Speaker
@@ -25,6 +26,7 @@ class TxtExporter:
     # ponytail: options live on the exporter instead of a separate request
     # object; one bool does not justify a second dataclass.
     include_timestamps: bool = False
+    group_by_speaker: bool = False
 
     def render(
         self,
@@ -32,11 +34,23 @@ class TxtExporter:
         segments: Sequence[Segment],
         speakers: Sequence[Speaker] = (),
     ) -> str:
-        """Render every segment on its own line; empty input yields ``""``."""
+        """Render every segment on its own line; empty input yields ``""``.
 
-        del transcript, speakers  # accepted for the port; TXT has no header.
-        lines = [self._line(segment) for segment in ordered_segments(segments)]
-        return "".join(f"{line}\n" for line in lines)
+        With ``group_by_speaker`` each run of one speaker is a ``Name:`` block
+        and blocks are separated by a blank line.
+        """
+
+        del transcript  # accepted for the port; TXT has no header.
+        if not self.group_by_speaker:
+            lines = [self._line(segment) for segment in ordered_segments(segments)]
+            return "".join(f"{line}\n" for line in lines)
+        blocks = [
+            "".join(
+                [f"{label}:\n", *(f"{self._line(segment)}\n" for segment in members)]
+            )
+            for label, members in group_by_speaker(segments, speakers)
+        ]
+        return "\n".join(blocks)
 
     def _line(self, segment: Segment) -> str:
         if self.include_timestamps:

@@ -111,21 +111,22 @@ alterar los IDs.
 | OSS-DOCS-001 | S16.03-S16.08, S16.17, S16.18 | `docs_oss` | verificado | CONTRIBUTING, CODE_OF_CONDUCT (Covenant 2.1), SECURITY, plantillas issue/PR, licencias de fixtures y NOTICE con licencias verificadas; enlaces comprobados. |
 | DOCTOR-CLI-001 | S8.12, S8.13 | `doctor_cli` | verificado | `voz doctor` (texto/--json/--redact): ffmpeg/ffprobe, puerto, rutas XDG, disco, runtime ASR y GPU sin cargar modelos; 12 tests + ejecución real; `voz` sin subcomando sigue sirviendo. |
 | UI-PLAYER-001 | S5.08, S5.10 | `media_player` | verificado | GET /api/media/{id}/original con FileResponse (Range 206/416, sin paths) y AudioPlayer nativo con seek desde SegmentList; 5 tests backend + 8 frontend; smoke HTTP 200/206 en vivo. |
+| SEGMENTS-EDIT-001 | S5.12 (backend) | `segments_edit_api` | verificado | PUT /api/segments/{id} con revisión optimista (UPDATE condicional), original_text preservado, migración 0004 conserva words; smoke 404 real. |
+| EXPORT-HTTP-001 | S10.07, S10.08, S10.14 | `export_http` | verificado | GET /api/transcripts/{id}/export 5 formatos, filename* RFC 5987, agrupado por speaker y tiempos opcionales; 17 tests HTTP + goldens; ExportMenu montado. |
+| WAVEFORM-001 | S5.09, S5.14 | `waveform` | verificado | Peaks FFmpeg en streaming (1 h WAV en 0,86 s, 70 MB RSS), cache XDG atómica, canvas con zoom 1–32x y seek por clic/teclado; smoke 200/422. |
+| TRANSCRIPT-VIEW-001 | S5.11, S5.13, S5.15 | `transcript_view` | verificado | Segmento activo por búsqueda binaria, autoscroll pausable, búsqueda sin tildes con navegación; content-visibility + filas memo (10k segmentos, 2 renders por cambio). |
+| SEGMENT-EDITOR-001 | S5.12 (UI), S5.16 | `segment_editor_ui` | verificado | Borradores fuera de filas, debounce 800 ms + blur, PUT serializado por segmento, conflicto 409 resoluble, AutosaveStatus global; 29 tests. |
+| ARCH-DOCS-001 | S16.09-S16.11 | `docs_arch` | verificado | docs/architecture C4 (contexto, contenedores, componentes) en Mermaid; 83 enlaces y 124 rutas comprobados. |
+| ARCH-ADR-001 | S16.12-S16.16 | `docs_arch` | verificado | ADR-0001–0004 completados con evidencia; ADR-0005 providers y ADR-0006 local-first nuevos. |
+| ROBUST-001 | S14.03, S14.12, S14.14 | `robustness` | verificado | 507 disk_space_insufficient en upload/normalización, fuzz ffprobe (2 bugs corregidos), resume idempotente (2 bugs del runner corregidos); 739 tests. |
 
 ### Retomar en una sesión nueva
 
-Leer `AGENTS.md`, este tablero, `.ai/HANDOFF.md` si existe y
-`docs/api/transcription-options.md`; comprobar Git y las validaciones antes de
-editar. Corte A y B1 están terminados. El próximo objetivo acotado es S5.19,
-sujeto a la instrucción del usuario de continuar ese corte. No interpretar un
-cold start como autorización para completar toda S5, S5.20, jobs HTTP o S6.
-El handoff es local/ignorado; este tablero y los contratos API
-(`docs/api/transcription-options.md`, `docs/api/jobs.md`) conservan el contexto
-durable también en otro checkout. Oleada 2026-09-21: proyectos, subida, jobs
-con runner recuperable, SSE, selector, pantalla de job, exportación pura,
-`voz doctor` y docs OSS verificados. Próximos cortes propuestos: S5.12 edición
-de segmentos, endpoint HTTP de exportación (S10 no tiene ID propio; proponer
-S10.14) y S5.09 waveform.
+Leer `AGENTS.md`, este tablero, `.ai/HANDOFF.md` y `.ai/CHECKLIST.md` si
+existen, y los contratos en `docs/api/`; comprobar Git y las validaciones antes
+de editar. Oleada 3 (2026-09-30) cerró S5 salvo S5.17 (E2E), S10 completa,
+S14.03/12/14 y S16.09–S16.16. Siguiente: S5.17 y Model Manager (S8), con
+reutilización del cache de Buzz (S8.09/S8.10) para el primer smoke real.
 
 ## Sección 1 — Bootstrap del repositorio
 
@@ -245,14 +246,14 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [x] **S5.06** Consumir progreso mediante SSE.
 - [x] **S5.07** Renderizar lista de segmentos.
 - [x] **S5.08** Añadir reproductor del original.
-- [ ] **S5.09** Renderizar waveform.
+- [x] **S5.09** Renderizar waveform.
 - [x] **S5.10** Hacer seek al seleccionar un timestamp.
-- [ ] **S5.11** Sincronizar selección/autoscroll con playback.
-- [ ] **S5.12** Editar y guardar texto de un segmento.
-- [ ] **S5.13** Buscar texto en el transcript.
-- [ ] **S5.14** Controlar zoom del waveform.
-- [ ] **S5.15** Virtualizar transcripts largos.
-- [ ] **S5.16** Añadir autosave con estado visible.
+- [x] **S5.11** Sincronizar selección/autoscroll con playback.
+- [x] **S5.12** Editar y guardar texto de un segmento.
+- [x] **S5.13** Buscar texto en el transcript.
+- [x] **S5.14** Controlar zoom del waveform.
+- [x] **S5.15** Virtualizar transcripts largos.
+- [x] **S5.16** Añadir autosave con estado visible.
 - [ ] **S5.17** Probar importación, reproducción y edición E2E.
 - [x] **S5.18** Exponer opciones canónicas de transcripción mediante consulta backend.
 - [x] **S5.19** Implementar selector básico frontend, sin Model Manager.
@@ -345,13 +346,14 @@ mismo contrato.
 - [x] **S10.04** Exportar SRT con timestamps válidos.
 - [x] **S10.05** Exportar VTT con timestamps válidos.
 - [x] **S10.06** Exportar JSON canónico versionado.
-- [ ] **S10.07** Exportar agrupado por speaker.
-- [ ] **S10.08** Exportar texto con timestamps opcionales.
+- [x] **S10.07** Exportar agrupado por speaker.
+- [x] **S10.08** Exportar texto con timestamps opcionales.
 - [x] **S10.09** Sanitizar nombres y evitar path traversal.
 - [x] **S10.10** Añadir golden tests TXT/Markdown.
 - [x] **S10.11** Añadir golden tests SRT/VTT.
 - [x] **S10.12** Añadir golden tests JSON.
 - [x] **S10.13** Verificar round-trip del formato canónico cuando aplique.
+- [x] **S10.14** Exponer exportación por HTTP con descarga segura.
 
 **Criterio de salida:** exportaciones estables, seguras y reproducibles completan
 el MVP junto con las Secciones 1–6.
@@ -414,7 +416,7 @@ con sus grabaciones sin presentar intuiciones como resultados.
 
 - [x] **S14.01** Recuperar jobs interrumpidos al iniciar.
 - [ ] **S14.02** Escribir checkpoints y metadatos críticos atómicamente.
-- [ ] **S14.03** Comprobar espacio antes de import/normalización.
+- [x] **S14.03** Comprobar espacio antes de import/normalización.
 - [ ] **S14.04** Comprobar espacio antes de descargar modelos.
 - [ ] **S14.05** Añadir guard de RAM.
 - [ ] **S14.06** Añadir guard de VRAM.
@@ -423,9 +425,9 @@ con sus grabaciones sin presentar intuiciones como resultados.
 - [ ] **S14.09** Recuperar descargas corruptas/incompletas.
 - [ ] **S14.10** Crear backup antes de una migración destructiva.
 - [ ] **S14.11** Generar bundle diagnóstico redactado.
-- [ ] **S14.12** Añadir fuzz tests de metadata de importación.
+- [x] **S14.12** Añadir fuzz tests de metadata de importación.
 - [ ] **S14.13** Probar cierre/reapertura durante un job largo.
-- [ ] **S14.14** Probar idempotencia de resume.
+- [x] **S14.14** Probar idempotencia de resume.
 
 **Criterio de salida:** cerrar o reabrir VOZ no destruye el trabajo confirmado y
 los fallos dan acciones recuperables.
@@ -460,14 +462,14 @@ README, sin depender del checkout.
 - [x] **S16.06** Crear issue template de bug.
 - [x] **S16.07** Crear issue template de feature.
 - [x] **S16.08** Crear PR template con checks relevantes.
-- [ ] **S16.09** Documentar diagrama C4 de contexto.
-- [ ] **S16.10** Documentar diagrama C4 de contenedores.
-- [ ] **S16.11** Documentar diagrama C4 de componentes.
-- [ ] **S16.12** Completar ADR de límites hexagonales.
-- [ ] **S16.13** Completar ADR de SQLite/filesystem.
-- [ ] **S16.14** Completar ADR de ingestión FFmpeg.
-- [ ] **S16.15** Completar ADR de providers.
-- [ ] **S16.16** Completar ADR local-first.
+- [x] **S16.09** Documentar diagrama C4 de contexto.
+- [x] **S16.10** Documentar diagrama C4 de contenedores.
+- [x] **S16.11** Documentar diagrama C4 de componentes.
+- [x] **S16.12** Completar ADR de límites hexagonales.
+- [x] **S16.13** Completar ADR de SQLite/filesystem.
+- [x] **S16.14** Completar ADR de ingestión FFmpeg.
+- [x] **S16.15** Completar ADR de providers.
+- [x] **S16.16** Completar ADR local-first.
 - [x] **S16.17** Documentar licencias de todos los fixtures.
 - [x] **S16.18** Crear `NOTICE` para código/dependencias reutilizadas.
 - [ ] **S16.19** Auditar secretos y archivos ignorados antes de abrir el repo.

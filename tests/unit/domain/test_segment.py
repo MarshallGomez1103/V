@@ -131,3 +131,62 @@ def test_segment_validates_words_during_aggregate_construction() -> None:
 
     with pytest.raises(ValueError, match="reference this segment"):
         make_segment(segment_id=segment_id, words=(foreign_word,))
+
+
+def test_segment_editing_defaults_are_pristine() -> None:
+    segment = make_segment()
+
+    assert segment.speaker_id is None
+    assert segment.edited is False
+    assert segment.revision == 0
+    assert segment.original_text is None
+
+
+def test_edit_text_returns_a_copy_and_preserves_the_asr_literal() -> None:
+    segment = make_segment(text="hola mundo")
+
+    edited = segment.edit_text("Hola, mundo.")
+
+    assert segment.text == "hola mundo"
+    assert segment.edited is False
+    assert edited.id == segment.id
+    assert edited.text == "Hola, mundo."
+    assert edited.edited is True
+    assert edited.revision == 1
+    assert edited.original_text == "hola mundo"
+
+
+def test_edit_text_keeps_the_first_original_on_later_edits() -> None:
+    twice = make_segment(text="asr").edit_text("uno").edit_text("dos")
+
+    assert twice.text == "dos"
+    assert twice.revision == 2
+    assert twice.original_text == "asr"
+
+
+def test_edit_text_keeps_words_and_rejects_empty_text() -> None:
+    segment = make_segment()
+    segment = segment.add_word(make_word(segment.id))
+
+    assert segment.edit_text("nuevo").words == segment.words
+    with pytest.raises(ValueError):
+        segment.edit_text("")
+    with pytest.raises(TypeError):
+        segment.edit_text(1)  # type: ignore[arg-type]
+
+
+def test_segment_validates_editing_fields() -> None:
+    transcript_id = uuid4()
+    base = {"transcript_id": transcript_id, "start_ms": 0, "end_ms": 1, "text": "a"}
+
+    assert Segment(**base, speaker_id=uuid4()).speaker_id is not None  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        Segment(**base, speaker_id="x")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        Segment(**base, revision=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        Segment(**base, revision=-1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        Segment(**base, edited=1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        Segment(**base, original_text="")  # type: ignore[arg-type]

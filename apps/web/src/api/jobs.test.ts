@@ -118,11 +118,25 @@ describe('api/jobs', () => {
   })
 
   it('getSegments devuelve la lista y rechaza cuerpos inválidos', async () => {
-    stubFetch({ segments: [{ id: 's1', start_ms: 0, end_ms: 10, text: 'a' }] })
-    expect(await getSegments('tr-1')).toHaveLength(1)
+    const segment = {
+      id: 's1',
+      start_ms: 0,
+      end_ms: 10,
+      text: 'a',
+      edited: false,
+      revision: 1,
+      speaker_id: null,
+    }
+    stubFetch({ segments: [segment, { ...segment, id: 's2', speaker_id: 'S1' }] })
+    expect(await getSegments('tr-1')).toHaveLength(2)
 
     stubFetch({ segments: [{ id: 's1' }] })
     const error = await getSegments('tr-1').catch((caught: unknown) => caught)
     expect((error as JobApiError).code).toBe('invalid_response')
+
+    // Contrato nuevo: sin edited/revision/speaker_id el segmento es inválido.
+    stubFetch({ segments: [{ id: 's1', start_ms: 0, end_ms: 10, text: 'a' }] })
+    const legacy = await getSegments('tr-1').catch((caught: unknown) => caught)
+    expect((legacy as JobApiError).code).toBe('invalid_response')
   })
 })
