@@ -138,6 +138,26 @@ alterar los IDs.
 | DIAR-SHERPA-002 | S6.05-S6.07 | `diarization_sherpa` | verificado | Real: automático y exacto=2 → A/B/A; rango 1–1 re-ejecuta recortado a 1 speaker sin recargar modelos. |
 | WORDS-001 | S7.01, S7.03, S7.04 | `word_timestamps` | verificado | AlignmentProvider sin implementación extra; ADR-0008 (nativo faster-whisper, WhisperX no evaluado); Words persistidas con uuid5 y clamp; API words ([] si editado). |
 | WORDS-002 | S7.08, S7.09 | `word_timestamps` | verificado | Fallback sin palabras completa el job; checkpoints viejos compatibles; monotonicidad, clamp y overlap sin duplicar probados; 1011 tests. |
+| DIAR-PIPE-001 | S6.13, S6.15, S14.07 | `diarization_pipeline` | en curso | Oleada 5b: etapa DIARIZING opcional, liberación del ASR antes de diarizar y prueba de 2 speakers. |
+| SPEAKERS-001 | S6.09-S6.11 | `speakers_ui_api` | en curso | Oleada 5b: colores persistentes, renombrar y fusionar speakers sin reejecutar modelos. |
+| SPEAKERS-002 | S6.12 | `speakers_ui_api` | en curso | Oleada 5b: reasignación manual de un segmento. |
+| WORDS-003 | S7.05 | `word_ui` | en curso | Oleada 5b: palabra↔speaker por turn. |
+| WORDS-UI-001 | S7.06, S7.07 | `word_ui` | en curso | Oleada 5b: seek por palabra y resaltado de la palabra actual. |
+| CLOUD-SECRETS-001 | S11.01 | `openai_provider` | en curso | Oleada 5b: claves fuera de SQLite/logs (env o secrets.toml 0600). |
+| OPENAI-001 | S11.02, S11.05, S11.06 | `openai_provider` | en curso | Oleada 5b: adapter de archivo con división y offsets globales (transporte fake). |
+| OPENAI-002 | S11.03, S11.04, S11.07 | `openai_provider` | en curso | Oleada 5b: diarizado, límites fechados y retries solo recuperables. |
+| OPENAI-003 | S11.08, S11.10, S11.11 | `openai_provider` | en curso | Oleada 5b: coste estimado, fake client y suite de contrato. |
+| OPENAI-004 | S11.12, S11.13 | `openai_provider` | en curso | Oleada 5b: privacidad documentada y nunca activación implícita. |
+| ELEVEN-001 | S12.01-S12.03 | `elevenlabs_provider` | en curso | Oleada 5b: clave segura, adapter Scribe y diarización canónica (fake). |
+| ELEVEN-002 | S12.04-S12.06 | `elevenlabs_provider` | en curso | Oleada 5b: palabras, keyterms y archivos largos con progreso. |
+| ELEVEN-003 | S12.07-S12.09 | `elevenlabs_provider` | en curso | Oleada 5b: coste, fake client y contrato. |
+| ELEVEN-004 | S12.10, S12.11 | `elevenlabs_provider` | en curso | Oleada 5b: privacidad y aislamiento del adapter. |
+| WCPP-001 | S9.01, S9.02, S9.05 | `whispercpp_provider` | en curso | Oleada 5b: adapter, detección del binario y modelos ggml fijados. |
+| WCPP-002 | S9.06-S9.08 | `whispercpp_provider` | en curso | Oleada 5b: mapeo, errores/cancelación y contrato con binario fake. |
+| WCPP-003 | S9.03, S9.04, S9.09 | `whispercpp_provider` | en curso | Oleada 5b: docs CUDA/Vulkan y política de fallback visible. |
+| ROBUST-002 | S14.02, S14.13 | `robustness2` | en curso | Oleada 5b: auditoría de escrituras atómicas y cierre/reapertura en job largo. |
+| PKG-004 | S15.10 | `robustness2` | en curso | Oleada 5b: instalación documentada verificada en Bazzite. |
+| OSS-AUDIT-001 | S16.19 | `robustness2` | en curso | Oleada 5b: auditoría de secretos, historial e ignorados. |
 
 ### Retomar en una sesión nueva
 
