@@ -167,6 +167,10 @@ alterar los IDs.
 | MODELS-UI-002 | (completa S8) | `models_ui2` | verificado | Claves `proveedor:modelo`; ManagedModelCatalog + RoutingModelStore: faster-whisper, whisper.cpp (si hay whisper-cli) y diarization:sherpa-default con descarga/borrado; smoke HTTP real OK. |
 | PKG-005 | S15.06 | `packaging2` | verificado | .github/workflows/release-dry-run.yml: build reproducible, checksums, install check, artifact 7 días, contents: read, sin publicar (no ejecutado: requiere push). |
 | PKG-006 | S15.12, S15.13 | `packaging2` | verificado | Prototipos medidos: AppImage base 46 MiB (arranque ~1 s), asr-local 1,42 GiB con CUDA; Flatpak base 52,6 MB instalado, asr-local 2,8 GB; recomendación en docs/packaging/appimage-flatpak.md. |
+| QUALITY-CORE-001 | S13.01 | `quality_core` | en curso | Oleada 5c-2: glosario/keyterms por proyecto (migración 0007) hacia hotwords/keyterms. |
+| QUALITY-CORE-002 | S13.02, S13.03, S13.11 | `quality_core` | en curso | Oleada 5c-2: perfiles reproducibles con VAD y recomendación por idioma desde mediciones. |
+| INTEGRITY-001 | (riesgos) | `integrity` | en curso | Oleada 5c-2: speakers cloud como entidades y job+selección atómicos. |
+| DOCS-DEMO-001 | S16.02 | `docs_demo` | en curso | Oleada 5c-2: capturas reales reproducibles con Chrome headless. |
 
 ### Retomar en una sesión nueva
 
