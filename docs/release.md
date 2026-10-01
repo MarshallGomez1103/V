@@ -46,3 +46,20 @@ scripts/check-install.sh dist/*.whl   # uv tool install + arranque fuera del che
 
 Publicar una release (etiqueta, GitHub Release, PyPI) solo se hace con
 autorización explícita del mantenedor y no forma parte de estos scripts.
+
+## Ensayo de release en CI (sin publicar)
+
+`.github/workflows/release-dry-run.yml` (S15.06) se lanza a mano (`workflow_dispatch`)
+y al empujar una etiqueta `v*`. Ejecuta el build reproducible de tres pasadas,
+construye wheel + sdist con `SOURCE_DATE_EPOCH` del último commit, genera
+`SHA256SUMS`, instala el wheel con `uv tool` fuera del checkout
+(`scripts/check-install.sh`) y sube `dist/*.whl`, `dist/*.tar.gz` y `SHA256SUMS` como
+*workflow artifacts* con retención de 7 días. Su único permiso es `contents: read` y
+no contiene ningún paso que cree una GitHub Release ni publique en PyPI: la
+publicación sigue siendo una decisión manual del mantenedor. El archivo se validó
+localmente (sintaxis YAML y claves de Actions) pero **no se ha ejecutado** porque
+necesita un push.
+
+Los prototipos de AppImage y Flatpak (S15.12, S15.13) y sus medidas están en
+[packaging/appimage-flatpak.md](packaging/appimage-flatpak.md); no forman parte del
+workflow.

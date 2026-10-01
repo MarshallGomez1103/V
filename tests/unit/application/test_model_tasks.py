@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 import pytest
@@ -323,3 +323,26 @@ def test_stop_cancels_running_and_queued_and_joins(
     assert not any(t.name == "voz-model-tasks" for t in threading.enumerate())
     with pytest.raises(ModelTaskError):
         runner.enqueue("small", "download", None, confirm=True)
+
+
+def test_same_model_id_in_two_providers_is_told_apart_by_key() -> None:
+    cpp = replace(make("small"), provider_id="whisper-cpp")
+
+    class Both:
+        def entries(self) -> tuple[Entry, ...]:
+            files = (ModelFile("model.bin", 100, None),)
+            return (Entry(make("small"), files), Entry(cpp, files))
+
+    store = Store()
+    instance = ModelTaskRunner(Both(), store, External())
+    try:
+        first = instance.enqueue("small", "download", None, confirm=True)
+        second = instance.enqueue("whisper-cpp:small", "download", None, confirm=True)
+        assert (first.key, second.key) == ("faster-whisper:small", "whisper-cpp:small")
+        assert first.id != second.id
+        # A bare id and its full key are the same model: the active task is reused.
+        again = instance.enqueue("faster-whisper:small", "download", None, confirm=True)
+        assert again.id == first.id
+    finally:
+        store.gate.set()
+        instance.stop()

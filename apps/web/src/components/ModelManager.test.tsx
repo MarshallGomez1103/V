@@ -36,6 +36,11 @@ function jsonResponse(status: number, body: unknown): Response {
 
 function model(overrides: Partial<ModelView> & Pick<ModelView, 'model_id'>): ModelView {
   return {
+    key: 'faster-whisper:' + overrides.model_id,
+    provider_id: 'faster-whisper',
+    kind: 'asr',
+    requires: null,
+    runtime_available: true,
     display_name: 'Faster Whisper ' + overrides.model_id,
     source: 'Systran/faster-whisper-' + overrides.model_id,
     revision: 'abc123',
@@ -53,6 +58,7 @@ function model(overrides: Partial<ModelView> & Pick<ModelView, 'model_id'>): Mod
 function task(overrides: Partial<TaskView> = {}): TaskView {
   return {
     id: 't1',
+    key: 'faster-whisper:' + (overrides.model_id ?? 'turbo'),
     model_id: 'turbo',
     method: 'download',
     origin: null,
@@ -134,7 +140,7 @@ describe('ModelManager', () => {
     const onModelsChanged = vi.fn()
     stubApi(
       (url, init) => {
-        if (url === '/api/models/tiny/install' && init?.method === 'POST') {
+        if (url === '/api/models/faster-whisper%3Atiny/install' && init?.method === 'POST') {
           installBody = JSON.parse(init.body as string)
           return jsonResponse(
             202,
@@ -181,7 +187,7 @@ describe('ModelManager', () => {
     let installBody: unknown
     const fetchMock = stubApi(
       (url, init) => {
-        if (url === '/api/models/turbo/install' && init?.method === 'POST') {
+        if (url === '/api/models/faster-whisper%3Aturbo/install' && init?.method === 'POST') {
           installBody = JSON.parse(init.body as string)
           return jsonResponse(202, task({ state: 'queued', done_bytes: 0 }))
         }
@@ -273,7 +279,7 @@ describe('ModelManager', () => {
   it('explica el error 409 al iniciar una instalación y refresca la lista', async () => {
     const fetchMock = stubApi(
       (url, init) =>
-        url === '/api/models/turbo/install' && init?.method === 'POST'
+        url === '/api/models/faster-whisper%3Aturbo/install' && init?.method === 'POST'
           ? jsonResponse(409, {
               detail: { code: 'model_already_installed', message: 'x' },
             })
@@ -301,10 +307,14 @@ describe('ModelManager', () => {
     const onModelsChanged = vi.fn()
     stubApi(
       (url, init) => {
-        if (url.startsWith('/api/models/tiny') && init?.method === 'DELETE') {
+        if (url.startsWith('/api/models/faster-whisper%3Atiny') && init?.method === 'DELETE') {
           deleteUrl = url
           deleted = true
-          return jsonResponse(200, { model_id: 'tiny', freed_bytes: 77_003_619 })
+          return jsonResponse(200, {
+            key: 'faster-whisper:tiny',
+            model_id: 'tiny',
+            freed_bytes: 77_003_619,
+          })
         }
         return undefined
       },
@@ -340,7 +350,9 @@ describe('ModelManager', () => {
     await waitFor(() => {
       expect(onModelsChanged).toHaveBeenCalledTimes(1)
     })
-    expect(deleteUrl).toBe('/api/models/tiny?confirm=tiny')
+    expect(deleteUrl).toBe(
+      '/api/models/faster-whisper%3Atiny?confirm=faster-whisper%3Atiny',
+    )
     expect(await screen.findByRole('button', { name: /descargar/i })).toBeDefined()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -348,7 +360,7 @@ describe('ModelManager', () => {
   it('explica model_in_use dentro del diálogo de borrado', async () => {
     stubApi(
       (url, init) =>
-        url.startsWith('/api/models/tiny') && init?.method === 'DELETE'
+        url.startsWith('/api/models/faster-whisper%3Atiny') && init?.method === 'DELETE'
           ? jsonResponse(409, { detail: { code: 'model_in_use', message: 'x' } })
           : undefined,
       models([model({ model_id: 'tiny', installed: true, disk_bytes: 1000 })]),
@@ -395,5 +407,168 @@ describe('ModelManager', () => {
     render(<ModelManager />)
     await screen.findByRole('status')
     expect(screen.queryByRole('button', { name: /descargar/i })).toBeNull()
+  })
+
+  it('distingue "small" de faster-whisper y de whisper.cpp por su clave', async () => {
+    let installUrl = ''
+    stubApi(
+      (url, init) => {
+        if (url.endsWith('/install') && init?.method === 'POST') {
+          installUrl = url
+          return jsonResponse(
+            202,
+            task({ key: 'whisper-cpp:small', model_id: 'small', state: 'queued' }),
+          )
+        }
+        return undefined
+      },
+      models([
+        model({
+          key: 'whisper-cpp:small',
+          provider_id: 'whisper-cpp',
+          requires: 'whisper-cli',
+          display_name: 'whisper.cpp Small',
+          model_id: 'small',
+        }),
+        model({ model_id: 'small', display_name: 'Faster Whisper Small' }),
+      ]),
+      tasks([]),
+    )
+
+    render(<ModelManager />)
+    const headings = (await screen.findAllByRole('heading', { level: 3 })).map(
+      (h) => h.textContent,
+    )
+    expect(headings).toEqual(['Faster Whisper Small', 'whisper.cpp Small'])
+    expect(screen.getByText('whisper-cli')).toBeDefined()
+
+    const [, cpp] = screen.getAllByRole('listitem')
+    fireEvent.click(within(cpp as HTMLElement).getByRole('button', { name: /descargar/i }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Descargar' }))
+
+    await waitFor(() => {
+      expect(installUrl).toBe('/api/models/whisper-cpp%3Asmall/install')
+    })
+  })
+
+  it('la tarea de whisper.cpp solo afecta a la fila de su clave', async () => {
+    stubApi(
+      models([
+        model({
+          key: 'whisper-cpp:small',
+          provider_id: 'whisper-cpp',
+          requires: 'whisper-cli',
+          display_name: 'whisper.cpp Small',
+          model_id: 'small',
+        }),
+        model({ model_id: 'small', display_name: 'Faster Whisper Small' }),
+      ]),
+      tasks([task({ key: 'whisper-cpp:small', model_id: 'small' })]),
+    )
+
+    render(<ModelManager />)
+    await screen.findByRole('status')
+
+    const [faster, cpp] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
+    expect(within(faster).getByRole('button', { name: /descargar/i })).toBeDefined()
+    expect(within(cpp).getByRole('status')).toBeDefined()
+  })
+
+  describe('hablantes', () => {
+    const speakers = (overrides: Partial<ModelView> = {}) =>
+      model({
+        key: 'diarization:sherpa-default',
+        provider_id: 'diarization',
+        kind: 'diarization',
+        requires: 'diarization',
+        model_id: 'sherpa-default',
+        display_name: 'Separación de hablantes (sherpa-onnx)',
+        source: null,
+        revision: null,
+        profile: null,
+        license: 'MIT (pyannote segmentation) · Apache-2.0 (WeSpeaker)',
+        size_bytes: 33_488_994,
+        ...overrides,
+      })
+
+    it('muestra la separación de hablantes en su propia sección y la instala', async () => {
+      let installUrl = ''
+      stubApi(
+        (url, init) => {
+          if (url.endsWith('/install') && init?.method === 'POST') {
+            installUrl = url
+            return jsonResponse(
+              202,
+              task({ key: 'diarization:sherpa-default', model_id: 'sherpa-default', state: 'queued' }),
+            )
+          }
+          return undefined
+        },
+        models([model({ model_id: 'turbo' }), speakers()]),
+        tasks([]),
+      )
+
+      render(<ModelManager />)
+
+      const section = (
+        await screen.findByRole('heading', { level: 2, name: 'Hablantes' })
+      ).closest('section') as HTMLElement
+      expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(1)
+      expect(section.textContent).toMatch(/Apache-2\.0/)
+      expect(section.textContent).not.toMatch(/Perfil/)
+      fireEvent.click(within(section).getByRole('button', { name: /descargar \(33\sMB\)/i }))
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toMatch(/GitHub/)
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Descargar' }))
+
+      await waitFor(() => {
+        expect(installUrl).toBe('/api/models/diarization%3Asherpa-default/install')
+      })
+    })
+
+    it('sin el extra diarization explica el requisito y no ofrece instalar', async () => {
+      stubApi(models([speakers({ runtime_available: false })]), tasks([]))
+
+      render(<ModelManager />)
+
+      const heading = await screen.findByRole('heading', { level: 3 })
+      const row = heading.closest('li') as HTMLElement
+      expect(row.textContent).toMatch(/requiere el extra diarization/i)
+      expect(within(row).queryByRole('button')).toBeNull()
+    })
+
+    it('instalado permite eliminarlo con confirmación por clave', async () => {
+      let deleteUrl = ''
+      stubApi(
+        (url, init) => {
+          if (init?.method === 'DELETE') {
+            deleteUrl = url
+            return jsonResponse(200, {
+              key: 'diarization:sherpa-default',
+              model_id: 'sherpa-default',
+              freed_bytes: 1,
+            })
+          }
+          return undefined
+        },
+        models([speakers({ installed: true, disk_bytes: 33_000_000 })]),
+        tasks([]),
+      )
+
+      render(<ModelManager />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Eliminar' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.change(within(dialog).getByLabelText(/escribe/i), {
+        target: { value: 'sherpa-default' },
+      })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Eliminar' }))
+
+      await waitFor(() => {
+        expect(deleteUrl).toBe(
+          '/api/models/diarization%3Asherpa-default?confirm=diarization%3Asherpa-default',
+        )
+      })
+    })
   })
 })

@@ -43,6 +43,7 @@ BIN = bytes(range(256)) * 32  # 8 KiB
 CFG = b'{"fixture": true}'
 VIEW_KEYS = {
     "id",
+    "key",
     "model_id",
     "method",
     "origin",
@@ -178,6 +179,7 @@ def test_install_returns_202_task_view_without_paths(
     assert response.status_code == 202
     body = response.json()
     assert set(body) == VIEW_KEYS
+    assert body["key"] == "faster-whisper:tiny"
     assert (body["model_id"], body["method"], body["origin"]) == (
         "tiny",
         "download",
@@ -408,3 +410,11 @@ def test_real_store_failure_surfaces_a_stable_code(tmp_path: Path, origin: str) 
         assert not store.is_installed(real)
     finally:
         runner.stop()
+
+
+def test_install_accepts_the_namespaced_key(api: httpx.Client) -> None:
+    response = install(api, "faster-whisper:tiny")
+
+    assert response.status_code == 202
+    assert response.json()["key"] == "faster-whisper:tiny"
+    assert install(api, "whisper-cpp:tiny").status_code == 404

@@ -5,6 +5,7 @@ independent of transport concerns.
 """
 
 from dataclasses import dataclass, field
+from importlib.util import find_spec
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -94,12 +95,17 @@ from voz.infrastructure.cloud.openai_limits import (
 from voz.infrastructure.cloud.openai_limits import openai_descriptors, openai_prices
 from voz.infrastructure.cloud.openai_transcription import OpenAITranscriptionProvider
 from voz.infrastructure.cloud.openai_transport import urllib_transport
+from voz.infrastructure.cloud.provider_info import (
+    CLOUD_PROVIDER_INFO,
+    CLOUD_PROVIDER_LABELS,
+)
 from voz.infrastructure.diarization.availability import SherpaDiarizationAvailability
 from voz.infrastructure.diarization.models import DiarizationModelStore
 from voz.infrastructure.diarization.sherpa import SherpaOnnxDiarizationProvider
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
+from voz.infrastructure.model_registry import ManagedModelCatalog, RoutingModelStore
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
@@ -243,11 +249,19 @@ def create_app(
         cache_root=resolved_paths.cache,
         disk_space=disk_space,
     )
+    whisper_cpp_probe = WhisperCppRuntimeProbe()
+    diarization_store = DiarizationModelStore(data_root=resolved_paths.data)
+    # The Model Manager lists every local engine under namespaced keys.
+    managed_catalog = ManagedModelCatalog(
+        whisper_cpp_available=lambda: whisper_cpp_probe.availability().available,
+        diarization_runtime_available=lambda: find_spec("sherpa_onnx") is not None,
+    )
+    managed_store = RoutingModelStore(model_store, diarization_store)
     model_catalog = FasterWhisperModelCatalog()
     buzz_cache = BuzzModelCache()
     model_tasks = ModelTaskRunner(
-        model_catalog,
-        model_store,
+        managed_catalog,
+        managed_store,
         ImportExternalModel(buzz_cache, model_store, model_catalog.entries()),
     )
     # Cloud providers exist only as explicit, key-gated options (ADR-0006);
@@ -255,13 +269,10 @@ def create_app(
     secrets = ProviderSecrets(resolved_paths.config)
     cloud_descriptors = (*openai_descriptors(), elevenlabs_scribe_descriptor())
     cloud_probe = CloudRuntimeProbe(secrets, cloud_descriptors)
-    whisper_cpp_probe = WhisperCppRuntimeProbe()
     if transcription_options is None:
         local_catalogs = (
             LocalTranscriptionModelCatalog(model_store),
-            # ponytail: whisper.cpp options appear only when whisper-cli exists;
-            # its model ids overlap faster-whisper's, so the Model Manager keeps
-            # listing faster-whisper only until ids are namespaced.
+            # ponytail: whisper.cpp options appear only when whisper-cli exists.
             *(
                 (WhisperCppTranscriptionModelCatalog(model_store),)
                 if whisper_cpp_probe.availability().available
@@ -270,7 +281,10 @@ def create_app(
         )
         transcription_options = GetTranscriptionOptions(
             CompositeCatalog(
-                (*local_catalogs, CloudTranscriptionCatalog(cloud_descriptors))
+                (
+                    *local_catalogs,
+                    CloudTranscriptionCatalog(cloud_descriptors, CLOUD_PROVIDER_LABELS),
+                )
             ),
             RoutingRuntimeProbe(
                 FasterWhisperRuntimeProbe(),
@@ -329,7 +343,6 @@ def create_app(
             resolved_paths.data, project_id, media_asset_id
         )
 
-    diarization_store = DiarizationModelStore(data_root=resolved_paths.data)
     diarization_availability = SherpaDiarizationAvailability(diarization_store)
     # ponytail: one cached sherpa engine (~30 MB of ONNX), released on shutdown.
     diarization_engines: list[SherpaOnnxDiarizationProvider] = []
@@ -493,19 +506,19 @@ def create_app(
     application.include_router(
         create_models_router(
             ListModels(
-                model_catalog,
-                model_store,
+                managed_catalog,
+                managed_store,
                 disk_space=disk_space,
                 external=buzz_cache,
             ),
-            RemoveModel(model_catalog, model_store, jobs, selections),
+            RemoveModel(managed_catalog, managed_store, jobs, selections),
         )
     )
     application.include_router(create_model_tasks_router(model_tasks))
     application.include_router(
         create_providers_router(
             secrets,
-            ("elevenlabs", "openai"),
+            CLOUD_PROVIDER_INFO,
             EstimateCloudTranscription(
                 media_assets,
                 {**openai_prices(), **ELEVENLABS_PRICES},

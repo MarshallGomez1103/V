@@ -7,7 +7,7 @@ enabled by that: a job must still select the option explicitly.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from voz.application.ports.provider_secrets import ProviderSecretsPort
 from voz.application.ports.transcription_options import (
@@ -23,12 +23,18 @@ from voz.domain.entities.model_descriptor import ModelCapability, ModelDescripto
 @dataclass(frozen=True, slots=True)
 class CloudTranscriptionCatalog:
     descriptors: tuple[ModelDescriptor, ...]
+    # provider_id -> visible name; the backend is the source of truth for the UI.
+    labels: Mapping[str, str] = field(default_factory=dict[str, str])
 
     def list_models(self) -> tuple[ModelRegistration, ...]:
         # Nothing to install: remote models are always "registered".
         return tuple(
             ModelRegistration(
-                descriptor, InstallationStatus.REGISTERED, True, cloud=True
+                descriptor,
+                InstallationStatus.REGISTERED,
+                True,
+                cloud=True,
+                provider_label=self.labels.get(descriptor.provider_id),
             )
             for descriptor in self.descriptors
         )

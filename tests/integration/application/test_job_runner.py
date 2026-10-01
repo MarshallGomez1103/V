@@ -820,3 +820,87 @@ def test_words_are_optional_the_job_completes_without_them(tmp_path: Path) -> No
     assert finished.state is TranscriptionJobState.COMPLETED
     assert [words for _, _, words in _word_snapshot(fixture)] == [[], [], []]
     fixture.engine.dispose()
+
+
+class FlaggedProvider(Provider):
+    """Whisper-like hallucination: confident-looking text with bad metrics."""
+
+    def transcribe(
+        self,
+        *,
+        audio: BinaryIO,
+        options: TranscriptionOptions,
+        cancellation: TranscriptionCancellationToken | None = None,
+    ) -> TranscriptionResult:
+        clean = super().transcribe(
+            audio=audio, options=options, cancellation=cancellation
+        )
+        (segment,) = clean.segments
+        return TranscriptionResult(
+            (
+                TranscriptionSegment(
+                    0,
+                    segment.end_ms,
+                    " Thank you.",
+                    avg_logprob=-1.5,
+                    no_speech_prob=0.9,
+                ),
+            ),
+            "en",
+        )
+
+
+def test_runner_persists_quality_flags_without_touching_the_text(
+    tmp_path: Path,
+) -> None:
+    fixture = harness(tmp_path, provider=FlaggedProvider())
+
+    finished = fixture.runner.run_job(fixture.job.id)
+
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.COMPLETED
+    segments = SqliteSegmentRepository(fixture.engine).list_by_transcript(
+        transcript_id_for(fixture.job.id)
+    )
+    assert len(segments) == 3
+    for segment in segments:
+        # S13.12: the literal ASR text (minus the boundary space) is intact.
+        assert segment.text == "Thank you."
+        assert segment.original_text is None and not segment.edited
+        assert segment.quality_flags == ("silence_hallucination", "low_confidence")
+        assert segment.avg_logprob == -1.5
+    fixture.engine.dispose()
+
+
+def test_persisting_flags_twice_is_idempotent_and_marks_overruns(
+    tmp_path: Path,
+) -> None:
+    fixture = harness(tmp_path)
+    job = fixture.persisted()
+    selection = fixture.runner.selections.get(job.id)
+    assert selection is not None
+    overrun = TranscriptionResult(
+        (TranscriptionSegment(0, 250, " Thank you.", exceeds_audio=True),), "en"
+    )
+
+    for _ in range(2):
+        fixture.runner._persist_transcript(job, selection, overrun, 250)  # pyright: ignore[reportPrivateUsage]
+
+    (segment,) = SqliteSegmentRepository(fixture.engine).list_by_transcript(
+        transcript_id_for(job.id)
+    )
+    assert segment.text == "Thank you."
+    assert segment.quality_flags == ("silence_hallucination", "out_of_bounds")
+    fixture.engine.dispose()
+
+
+def test_clean_segments_persist_without_quality_hints(tmp_path: Path) -> None:
+    fixture = harness(tmp_path)
+
+    fixture.runner.run_job(fixture.job.id)
+
+    segments = SqliteSegmentRepository(fixture.engine).list_by_transcript(
+        transcript_id_for(fixture.job.id)
+    )
+    assert all(s.quality_flags == () and s.avg_logprob is None for s in segments)
+    fixture.engine.dispose()

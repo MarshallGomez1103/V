@@ -135,6 +135,7 @@ def test_put_edits_text_and_preserves_literal_asr(harness: Harness) -> None:
         "edited": True,
         "revision": 1,
         "speaker_id": str(harness.speaker.id),
+        "quality": {"flags": [], "avg_logprob": None},
         "words": [],  # timings describe the ASR text, not the edited one
     }
     stored = harness.segments.get(segment.id)
@@ -203,3 +204,27 @@ def test_segment_view_refines_word_speakers_with_the_turn_timeline(
 
     # "hola" (midpoint 50) is outside the turn -> segment speaker; "mundo" -> turn
     assert [w["speaker_id"] for w in words] == [str(harness.speaker.id), str(other)]
+
+
+def test_segment_view_exposes_quality_beside_the_untouched_text(
+    harness: Harness,
+) -> None:
+    clean = segment_view(harness.segment)
+    assert clean["quality"] == {"flags": [], "avg_logprob": None}
+
+    flagged = Segment(
+        harness.segment.transcript_id,
+        0,
+        10,
+        "Thank you.",
+        quality_flags=("silence_hallucination", "out_of_bounds"),
+        avg_logprob=-1.5,
+    )
+    view = segment_view(flagged)
+    assert view["quality"] == {
+        "flags": ["silence_hallucination", "out_of_bounds"],
+        "avg_logprob": -1.5,
+    }
+    assert view["text"] == "Thank you."
+    # Editing keeps the hints: they describe the original ASR output.
+    assert segment_view(flagged.edit_text("Gracias."))["quality"] == view["quality"]

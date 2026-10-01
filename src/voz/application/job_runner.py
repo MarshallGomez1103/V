@@ -61,6 +61,7 @@ from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
 )
+from voz.application.quality_flags import quality_flags
 from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.domain.entities.segment import Segment
 from voz.domain.entities.transcript import Transcript
@@ -376,7 +377,9 @@ class JobRunner:
                 elif job.state is TranscriptionJobState.PERSISTING:
                     if result is None:
                         result = self._result_from_checkpoints(job.id)
-                    self._persist_transcript(job, selection, result)
+                    self._persist_transcript(
+                        job, selection, result, media_asset.duration_ms
+                    )
                     if _wants_diarization(selection):
                         if diarized is None:
                             # Resumed after a crash: the turns were in memory only.
@@ -497,6 +500,7 @@ class JobRunner:
         job: TranscriptionJob,
         selection: JobSelection,
         result: TranscriptionResult,
+        audio_duration_ms: int | None = None,
     ) -> None:
         transcript_id = transcript_id_for(job.id)
         # Identities are deterministic, so a crash between the transcript insert
@@ -527,6 +531,11 @@ class JobRunner:
                         text,
                         id=segment_id,
                         words=_domain_words(segment_id, item),
+                        # S13.04: hints only; ``text`` stays the literal ASR output.
+                        quality_flags=quality_flags(
+                            item, audio_duration_ms=audio_duration_ms
+                        ),
+                        avg_logprob=item.avg_logprob,
                     )
                 )
 

@@ -29,6 +29,11 @@ function stubFetch(response: Response) {
 }
 
 const MODEL = {
+  key: 'faster-whisper:tiny',
+  provider_id: 'faster-whisper',
+  kind: 'asr',
+  requires: null,
+  runtime_available: true,
   model_id: 'tiny',
   display_name: 'Faster Whisper Tiny (fast)',
   source: 'Systran/faster-whisper-tiny',
@@ -44,6 +49,7 @@ const MODEL = {
 
 const TASK = {
   id: 't1',
+  key: 'faster-whisper:tiny',
   model_id: 'tiny',
   method: 'download',
   origin: null,
@@ -67,6 +73,29 @@ describe('api/models', () => {
     )
   })
 
+  it('getModels acepta la entrada de diarización sin fuente ni perfil', async () => {
+    const diarization = {
+      ...MODEL,
+      key: 'diarization:sherpa-default',
+      provider_id: 'diarization',
+      kind: 'diarization',
+      requires: 'diarization',
+      runtime_available: false,
+      model_id: 'sherpa-default',
+      source: null,
+      revision: null,
+      profile: null,
+      external: [],
+    }
+    const payload = {
+      models: [diarization],
+      disk: { models_bytes: 0, free_bytes: null },
+    }
+    stubFetch(jsonResponse(200, payload))
+
+    await expect(getModels()).resolves.toEqual(payload)
+  })
+
   it('getModels rechaza un formato inesperado', async () => {
     stubFetch(jsonResponse(200, { models: [{ model_id: 1 }], disk: {} }))
 
@@ -78,21 +107,27 @@ describe('api/models', () => {
       jsonResponse(409, { detail: { code: 'model_in_use', message: 'in use' } }),
     )
 
-    const error = await deleteModel('tiny').catch((e: unknown) => e)
+    const error = await deleteModel('faster-whisper:tiny').catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ModelApiError)
     expect(error).toMatchObject({ code: 'model_in_use', status: 409 })
     expect((error as Error).message).toMatch(/en uso/i)
   })
 
-  it('deleteModel repite el id en confirm', async () => {
+  it('deleteModel repite la clave codificada en confirm', async () => {
     const fetchMock = stubFetch(
-      jsonResponse(200, { model_id: 'large-v3', freed_bytes: 5 }),
+      jsonResponse(200, {
+        key: 'whisper-cpp:small',
+        model_id: 'small',
+        freed_bytes: 5,
+      }),
     )
 
-    await expect(deleteModel('large-v3')).resolves.toMatchObject({ freed_bytes: 5 })
+    await expect(deleteModel('whisper-cpp:small')).resolves.toMatchObject({
+      freed_bytes: 5,
+    })
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      '/api/models/large-v3?confirm=large-v3',
+      '/api/models/whisper-cpp%3Asmall?confirm=whisper-cpp%3Asmall',
     )
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('DELETE')
   })
@@ -100,8 +135,8 @@ describe('api/models', () => {
   it('installModel envía confirm y origin solo al importar', async () => {
     const fetchMock = stubFetch(jsonResponse(202, TASK))
 
-    await installModel('tiny', 'download')
-    await installModel('tiny', 'import')
+    await installModel('faster-whisper:tiny', 'download')
+    await installModel('faster-whisper:tiny', 'import')
 
     const bodies = fetchMock.mock.calls.map((call) =>
       JSON.parse(call[1]?.body as string) as unknown,
@@ -110,7 +145,9 @@ describe('api/models', () => {
       { method: 'download', confirm: true },
       { method: 'import', origin: 'buzz', confirm: true },
     ])
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/models/tiny/install')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/models/faster-whisper%3Atiny/install',
+    )
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
   })
 

@@ -25,6 +25,7 @@ function seg(
     edited: false,
     revision: 1,
     speaker_id: null,
+    quality: { flags: [], avg_logprob: null },
     words: [],
   }
 }
@@ -383,4 +384,33 @@ describe('SegmentList', () => {
     rerender(<SegmentList transcriptId="big" currentMs={6200} renderText={renderText} />)
     expect(renderText).not.toHaveBeenCalled()
   }, 30_000)
+
+  it('S13.06: resalta filas con flags, entrega los segmentos y no toca el texto', async () => {
+    const flagged = {
+      ...seg('s2', 1000, 2000, 'Thank you.'),
+      quality: {
+        flags: ['silence_hallucination', 'out_of_bounds'],
+        avg_logprob: -1.4,
+      },
+    }
+    stubFetch({ segments: [seg('s1', 0, 1000, 'Hola.'), flagged] })
+    const onSegmentsLoaded = vi.fn()
+
+    render(<SegmentList transcriptId="tr-1" onSegmentsLoaded={onSegmentsLoaded} />)
+
+    const items = await screen.findAllByRole('listitem')
+    expect(items[0]?.classList.contains('has-flags')).toBe(false)
+    expect(items[1]?.classList.contains('has-flags')).toBe(true)
+    expect(
+      within(items[1]!).getByRole('img', {
+        name: 'Por revisar: Posible alucinación en silencio, Fuera del audio',
+      }),
+    ).toBeTruthy()
+    expect(items[1]?.querySelector('p')?.textContent).toBe('Thank you.')
+    expect(onSegmentsLoaded).toHaveBeenCalledTimes(1)
+    expect(onSegmentsLoaded).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 's1' }),
+      flagged,
+    ])
+  })
 })

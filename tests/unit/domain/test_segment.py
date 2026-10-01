@@ -190,3 +190,35 @@ def test_segment_validates_editing_fields() -> None:
         Segment(**base, edited=1)  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         Segment(**base, original_text="")  # type: ignore[arg-type]
+
+
+def test_quality_hints_default_to_none_and_never_change_the_text() -> None:
+    segment = make_segment()
+    assert segment.quality_flags == ()
+    assert segment.avg_logprob is None
+
+    flagged = Segment(
+        uuid4(),
+        0,
+        10,
+        "Thank you.",
+        quality_flags=("low_confidence",),
+        avg_logprob=-1.2,
+    )
+    assert flagged.text == "Thank you."
+    assert flagged.edit_text("Gracias.").quality_flags == ("low_confidence",)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"quality_flags": ["x"]},
+        {"quality_flags": ("",)},
+        {"avg_logprob": True},
+        {"avg_logprob": float("nan")},
+        {"avg_logprob": "bad"},
+    ],
+)
+def test_quality_hints_reject_malformed_values(bad: dict[str, object]) -> None:
+    with pytest.raises(TypeError):
+        Segment(uuid4(), 0, 10, "x", **bad)  # type: ignore[arg-type]

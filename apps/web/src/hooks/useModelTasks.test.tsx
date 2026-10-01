@@ -7,6 +7,7 @@ import { POLL_INTERVAL_MS, useModelTasks } from './useModelTasks'
 function task(overrides: Partial<TaskView> = {}): TaskView {
   return {
     id: 't1',
+    key: 'faster-whisper:turbo',
     model_id: 'turbo',
     method: 'download',
     origin: null,

@@ -2,8 +2,28 @@
 
 Sección 8 del roadmap. El catálogo canónico (`faster_whisper_catalog()`, S8.01)
 define seis modelos Faster Whisper con fuente y revisión fijadas. Este contrato
-solo consulta y borra; no descarga (eso lo hace el store por otra vía). Ninguna
-respuesta contiene rutas del host.
+consulta y borra; la descarga va como tarea en segundo plano (sección final).
+Ninguna respuesta contiene rutas del host.
+
+## Claves con espacio de nombres (MODELS-UI-002)
+
+El gestor reúne en un solo catálogo (`ManagedModelCatalog`) los modelos de
+faster-whisper, los de whisper.cpp (solo si existe `whisper-cli`) y la
+separación de hablantes (sherpa-onnx). Un `model_id` suelto puede repetirse entre
+proveedores (`small` existe en faster-whisper y en whisper.cpp), así que la API
+direcciona cada modelo por su **clave** `"<provider_id>:<model_id>"`:
+
+| Clave | Familia |
+| --- | --- |
+| `faster-whisper:turbo` | ASR faster-whisper |
+| `whisper-cpp:small` | ASR whisper.cpp (requiere `whisper-cli`) |
+| `diarization:sherpa-default` | Segmentación + embeddings de hablantes |
+
+Todos los endpoints de esta página (`DELETE /api/models/{clave}`,
+`POST /api/models/{clave}/install`) aceptan la clave en la ruta (los `:` son
+válidos; el cliente la codifica con `encodeURIComponent`). Por compatibilidad,
+un id **sin** `:` se interpreta como faster-whisper. En `DELETE`, `confirm` debe
+repetir exactamente lo enviado en la ruta.
 
 ## `GET /api/models`
 
@@ -13,6 +33,11 @@ HTTP 200. Una entrada por cada modelo del catálogo, instalado o no.
 {
   "models": [
     {
+      "key": "faster-whisper:tiny",
+      "provider_id": "faster-whisper",
+      "kind": "asr",
+      "requires": null,
+      "runtime_available": true,
       "model_id": "tiny",
       "display_name": "Faster Whisper Tiny (fast)",
       "source": "Systran/faster-whisper-tiny",
@@ -32,9 +57,13 @@ HTTP 200. Una entrada por cada modelo del catálogo, instalado o no.
 
 | Campo | Significado |
 | --- | --- |
-| `model_id` | Identificador del catálogo; el mismo que en `/api/transcription-options`. |
-| `source`, `revision` | Procedencia fijada (SHA de commit de 40 caracteres). |
-| `profile` | `fast` o `quality`. |
+| `key`, `provider_id` | Clave de la API (ver arriba) y proveedor. |
+| `kind` | `asr` o `diarization`. La UI agrupa "Hablantes" aparte. |
+| `requires` | Runtime que el modelo necesita para usarse: `whisper-cli` (whisper.cpp), `diarization` (extra opcional con sherpa-onnx) o `null`. |
+| `runtime_available` | `false` si falta ese runtime: el modelo se lista pero la UI no ofrece instalarlo ("requiere el extra diarization"). whisper.cpp ni se lista sin `whisper-cli`. |
+| `model_id` | Identificador dentro del proveedor; en faster-whisper, el mismo que en `/api/transcription-options`. |
+| `source`, `revision` | Procedencia fijada (SHA de commit de 40 caracteres). `null` en diarización: sus artefactos son assets de release verificados por SHA-256. |
+| `profile` | `fast` o `quality`; `null` en diarización. |
 | `size_bytes` | Suma de los archivos esperados del catálogo (lo que se descargaría). |
 | `installed` | `true` si hay un manifest VOZ válido para exactamente esa fuente y revisión. Una revisión distinta instalada antes no cuenta. |
 | `disk_bytes` | Bytes realmente ocupados en disco por la instalación; `null` si no está instalado. |
@@ -50,7 +79,7 @@ autenticación.
 
 | HTTP | `detail.code` | Cuándo |
 | --- | --- | --- |
-| 200 | (cuerpo) | `{ "model_id": "tiny", "freed_bytes": 77010000 }` |
+| 200 | (cuerpo) | `{ "key": "faster-whisper:tiny", "model_id": "tiny", "freed_bytes": 77010000 }` |
 | 400 | `model_delete_unconfirmed` | Falta `confirm` o no coincide con `model_id`. Se evalúa primero, sin tocar el disco. |
 | 404 | `model_not_installed` | El id no está en el catálogo o no está instalado. |
 | 409 | `model_in_use` | Un job no terminal (en cola, en proceso o cancelándose) tiene una selección con ese modelo y esa revisión. Termina o cancela el job y reintenta. |
@@ -115,6 +144,7 @@ terminó; 404 `model_task_not_found` si no existe.
 ```json
 {
   "id": "5f0c...e1",
+  "key": "faster-whisper:large-v3",
   "model_id": "large-v3",
   "method": "download",
   "origin": null,
@@ -129,6 +159,7 @@ terminó; 404 `model_task_not_found` si no existe.
 
 | Campo | Significado |
 | --- | --- |
+| `key` | Clave del modelo (`provider:model`). |
 | `state` | `queued`, `running`, `completed`, `failed` o `cancelled`. |
 | `done_bytes`, `total_bytes` | Progreso acumulado de todos los archivos. En cola valen 0 y la suma del catálogo; al completar, `done == total`. |
 | `origin` | `buzz` para `import`; `null` para `download`. |
@@ -137,3 +168,16 @@ terminó; 404 `model_task_not_found` si no existe.
 Flujo típico del cliente: `POST install` -> sondear `GET /api/model-tasks/{id}`
 mientras `state` sea `queued`/`running` -> al terminar refrescar `GET /api/models`
 (`installed: true`).
+
+### Separación de hablantes (`diarization:sherpa-default`)
+
+Se instala y borra como cualquier otro modelo: `POST install` con
+`method=download` encola una tarea que descarga los dos artefactos fijados
+(segmentación pyannote 3.0, 6 958 444 bytes, MIT; embeddings WeSpeaker, 26 530 550
+bytes, Apache-2.0), con progreso agregado, cancelación y reanudación desde
+`.part`. `DELETE` con `confirm=diarization:sherpa-default` los borra. No admite
+`method=import`. El runtime (`sherpa-onnx`, extra `diarization`) es independiente:
+sin él, `runtime_available` es `false` y la UI no ofrece instalar.
+
+Límite conocido: el borrado no comprueba jobs de diarización en curso (la
+selección de job solo registra el modelo ASR).

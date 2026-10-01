@@ -6,9 +6,10 @@ catálogo: `whisper_cpp_catalog.py`, política de sugerencia:
 
 > **Estado de verificación.** El adapter, la detección y el catálogo están
 > probados con un ejecutable **falso** (`tests/fixtures/whisper_cpp/fake_whisper_cli.py`)
-> que imita la CLI y escribe el JSON. Las instrucciones de compilación de abajo
-> están **documentadas, no verificadas en esta máquina** (no hay `whisper-cli`
-> ni `cmake` instalados). El benchmark real (S9.10) sigue pendiente.
+> que imita la CLI y escribe el JSON. 2026-09-30: compilación **solo CPU**
+> verificada con whisper.cpp v1.9.4 (`uvx cmake`, GCC 16.2.1); el JSON real de
+> `-ojf` coincide con el adapter (fixture `tests/fixtures/whisper_cpp/real_ojf_v1.9.4.json`).
+> Benchmark CPU/GPU (S9.10) en `docs/benchmarks.md`. CUDA/Vulkan sin verificar.
 
 ## Cómo encuentra VOZ el ejecutable
 
@@ -36,13 +37,14 @@ sudo dnf install -y git cmake gcc-c++ make
 # CUDA Toolkit: repositorio oficial de NVIDIA para Fedora, luego
 #   sudo dnf install cuda-toolkit
 git clone https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
-git checkout 5359861c739e955e79d9a303bcbc70fb988958b1   # misma revisión que el catálogo
+git checkout v1.9.4   # tag verificado (solo CPU); 5359861c… es la revisión del repo de modelos en HF, no de este repo
 cmake -B build -DGGML_CUDA=1
 cmake --build build -j --config Release
 # binario: build/bin/whisper-cli
 ```
 
-Alternativa sin toolbox: `brew install cmake` (Homebrew en Bazzite) para cmake,
+Solo CPU sin toolbox (verificado): `uvx cmake -B build && uvx cmake --build build -j --config Release`.
+Alternativa: `brew install cmake` (Homebrew en Bazzite) para cmake,
 pero el toolkit de CUDA y el compilador compatible siguen necesitándose.
 
 ## Compilar con Vulkan (AMD/Intel/NVIDIA sin CUDA)

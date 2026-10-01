@@ -1,0 +1,8 @@
+#!/bin/sh
+# AppRun de VOZ: CPython autocontenido + site-packages dentro del AppImage.
+# FFmpeg: si el AppImage lleva uno en usr/bin se usa; si no, el del host.
+here="$(dirname "$(readlink -f "$0")")"
+export PATH="$here/usr/bin:$PATH"
+export PYTHONNOUSERSITE=1 PYTHONPATH="$here/usr/lib/voz"
+# ponytail: sin PYTHONHOME; el CPython standalone localiza su stdlib respecto a su binario.
+exec "$here/usr/python/bin/python3" -c 'import sys; from voz.interfaces.cli.main import main; sys.argv[0] = "voz"; main()' "$@"

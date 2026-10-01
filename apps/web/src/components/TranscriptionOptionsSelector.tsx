@@ -8,7 +8,9 @@ import {
   type ProcessingProfile,
   type TranscriptionOption,
 } from '../api/transcriptionOptions'
+import { getEstimate, type CloudEstimate } from '../api/providers'
 import { compareModelIds } from '../lib/modelOrder'
+import { CloudBadge } from './CloudBadge'
 
 export interface TranscriptionOptionsSelectorProps {
   value: string | null
@@ -16,12 +18,37 @@ export interface TranscriptionOptionsSelectorProps {
   disabled?: boolean
   /** Al cambiar, vuelve a pedir las opciones (p. ej. tras instalar o borrar un modelo). */
   refreshKey?: number
+  /** Grabación importada: permite estimar el coste de las opciones cloud. */
+  mediaAssetId?: string
+  /**
+   * S11.09: `true` si el padre puede iniciar (la opción elegida es local, o es
+   * cloud y el usuario marcó «Entiendo que el audio sale de mi equipo»).
+   * El padre debe bloquear «Transcribir» mientras valga `false`.
+   */
+  onCloudConsentChange?: (ok: boolean) => void
 }
+
+// `cloud` y `provider_label` los añade el backend (docs/api/providers.md) y no
+// están en el tipo base.
+type CloudAwareOption = TranscriptionOption & {
+  cloud?: boolean
+  provider_label?: string | null
+}
+
+function providerName(option: CloudAwareOption): string {
+  return option.provider_label ?? option.provider_id
+}
+
+/** `key` identifica la consulta: si no coincide con la actual, sigue cargando. */
+type EstimateResult =
+  | { key: string; phase: 'error' }
+  | { key: string; phase: 'ready'; estimate: CloudEstimate }
+type EstimateState = { phase: 'loading' } | EstimateResult
 
 type LoadState =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; options: TranscriptionOption[] }
+  | { phase: 'ready'; options: CloudAwareOption[] }
 
 const BLOCKING_REASON_LABELS: Record<BlockingReasonCode, string> = {
   model_not_registered: 'Modelo no instalado',
@@ -59,11 +86,21 @@ function describeExecution(execution: ExecutionDecision): string {
 }
 
 /** Iniciables primero y, dentro de cada grupo, orden fijo del catálogo. */
-function sortOptions(options: TranscriptionOption[]): TranscriptionOption[] {
+function sortOptions(options: CloudAwareOption[]): CloudAwareOption[] {
   return [...options].sort(
     (a, b) =>
       Number(b.can_start) - Number(a.can_start) ||
       compareModelIds(a.model_id, b.model_id),
+  )
+}
+
+function formatEstimate(estimate: CloudEstimate): string {
+  return (
+    'Costo estimado: ' +
+    String(estimate.minutes).replace('.', ',') +
+    ' min · ≈ ' +
+    estimate.usd.toFixed(2).replace('.', ',') +
+    ' USD'
   )
 }
 
@@ -82,11 +119,19 @@ export function TranscriptionOptionsSelector({
   onChange,
   disabled = false,
   refreshKey = 0,
+  mediaAssetId,
+  onCloudConsentChange,
 }: TranscriptionOptionsSelectorProps) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
+  // Opción para la que se dio consentimiento: cambiar de opción lo invalida.
+  const [consentFor, setConsentFor] = useState<string | null>(null)
+  const [estimateResult, setEstimateResult] = useState<EstimateResult | null>(
+    null,
+  )
   const [attempt, setAttempt] = useState(0)
   const baseId = useId()
   const onChangeRef = useRef(onChange)
+  const onConsentRef = useRef(onCloudConsentChange)
 
   const retry = useCallback(() => {
     setState({ phase: 'loading' })
@@ -95,7 +140,54 @@ export function TranscriptionOptionsSelector({
 
   useEffect(() => {
     onChangeRef.current = onChange
-  }, [onChange])
+    onConsentRef.current = onCloudConsentChange
+  }, [onChange, onCloudConsentChange])
+
+  const selected =
+    state.phase === 'ready'
+      ? state.options.find((option) => option.option_id === value)
+      : undefined
+  const selectedCloud = selected?.cloud === true ? selected : undefined
+  const consentOk = selectedCloud === undefined || consentFor === value
+  const cloudProviderId = selectedCloud?.provider_id
+  const cloudModelId = selectedCloud?.model_id
+  const estimateKey =
+    cloudProviderId && mediaAssetId
+      ? [cloudProviderId, cloudModelId ?? '', mediaAssetId].join('|')
+      : null
+  const estimateState: EstimateState =
+    estimateResult !== null && estimateResult.key === estimateKey
+      ? estimateResult
+      : { phase: 'loading' }
+
+  useEffect(() => {
+    onConsentRef.current?.(consentOk)
+  }, [consentOk])
+
+  // Estimación del costo (no envía nada) al elegir una opción cloud.
+  useEffect(() => {
+    if (!cloudProviderId || !mediaAssetId || estimateKey === null) {
+      return
+    }
+    const controller = new AbortController()
+    void getEstimate(
+      cloudProviderId,
+      mediaAssetId,
+      cloudModelId,
+      controller.signal,
+    )
+      .then((estimate) => {
+        setEstimateResult({ key: estimateKey, phase: 'ready', estimate })
+      })
+      .catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          setEstimateResult({ key: estimateKey, phase: 'error' })
+        }
+      })
+    return () => {
+      controller.abort()
+    }
+  }, [cloudProviderId, cloudModelId, mediaAssetId, estimateKey])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -114,7 +206,8 @@ export function TranscriptionOptionsSelector({
   }, [attempt, refreshKey])
 
   // Mantiene coherente la selección del padre con el catálogo observado:
-  // descarta valores inexistentes o no iniciables y preselecciona la única viable.
+  // descarta valores inexistentes o no iniciables y preselecciona la única viable
+  // local: una opción cloud jamás se preselecciona.
   useEffect(() => {
     if (state.phase !== 'ready') {
       return
@@ -126,7 +219,9 @@ export function TranscriptionOptionsSelector({
       }
       return
     }
-    const only = startable.length === 1 ? startable[0] : undefined
+    const local = startable.filter((option) => option.cloud !== true)
+    const only =
+      local.length === 1 && startable.length === 1 ? local[0] : undefined
     if (only) {
       onChangeRef.current(only.option_id)
     }
@@ -156,6 +251,8 @@ export function TranscriptionOptionsSelector({
           <ul className="options-list">
             {state.options.map((option) => {
               const blocked = !option.can_start
+              const cloud = option.cloud === true
+              const provider = providerName(option)
               const checked = value === option.option_id
               const reasonsId = baseId + '-reasons-' + option.option_id
               const className = [
@@ -184,10 +281,16 @@ export function TranscriptionOptionsSelector({
                         <strong>
                           {option.display_name.trim() || option.model_id}
                         </strong>
-                        {option.recommendation?.recommended ? (
+                        {cloud ? <CloudBadge /> : null}
+                        {!cloud && option.recommendation?.recommended ? (
                           <span className="options-badge">Recomendado</span>
                         ) : null}
                       </span>
+                      {cloud ? (
+                        <span className="options-meta">
+                          <span>Tu audio se enviará a {provider}</span>
+                        </span>
+                      ) : null}
                       <span className="options-meta">
                         <span>Modelo: {option.model_id}</span>
                         {option.profile ? (
@@ -201,9 +304,13 @@ export function TranscriptionOptionsSelector({
                       </span>
                       {blocked ? (
                         <span className="options-reasons" id={reasonsId}>
-                          {option.blocking_reasons
-                            .map(describeBlockingReason)
-                            .join(' · ')}
+                          {cloud
+                            ? 'Sin clave de ' +
+                              provider +
+                              ': añádela en «Proveedores cloud (opcional)».'
+                            : option.blocking_reasons
+                                .map(describeBlockingReason)
+                                .join(' · ')}
                         </span>
                       ) : null}
                     </span>
@@ -216,6 +323,44 @@ export function TranscriptionOptionsSelector({
             <p className="options-notice">
               Instala un modelo para transcribir desde la sección «Modelos».
             </p>
+          ) : null}
+          {selectedCloud ? (
+            <div
+              className="cloud-warning"
+              role="group"
+              aria-label="Aviso de envío a la nube"
+            >
+              <p>
+                <CloudBadge /> Tu audio se enviará a{' '}
+                <strong>{providerName(selectedCloud)}</strong> y
+                saldrá de tu equipo.
+              </p>
+              {mediaAssetId ? (
+                <p className="cloud-warning-estimate" aria-live="polite">
+                  {estimateState.phase === 'ready'
+                    ? formatEstimate(estimateState.estimate)
+                    : estimateState.phase === 'error'
+                      ? 'No se pudo estimar el costo.'
+                      : 'Estimando el costo…'}
+                </p>
+              ) : null}
+              {estimateState.phase === 'ready' && mediaAssetId ? (
+                <p className="cloud-warning-note">
+                  Tarifa de referencia del {estimateState.estimate.price_date},
+                  no verificada en vivo: tu factura real puede diferir.
+                </p>
+              ) : null}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={consentOk}
+                  onChange={(event) => {
+                    setConsentFor(event.target.checked ? value : null)
+                  }}
+                />
+                Entiendo que el audio sale de mi equipo
+              </label>
+            </div>
           ) : null}
         </>
       )}

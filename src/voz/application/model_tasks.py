@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from voz.application.model_keys import model_key, normalize_key
 from voz.application.ports.external_models import ExternalModelError
 from voz.application.ports.model_installation import (
     CancelCheck,
@@ -53,7 +54,7 @@ class _Store(Protocol):
         *,
         progress: ProgressCallback | None = None,
         cancelled: CancelCheck | None = None,
-    ) -> ModelInstallation: ...
+    ) -> object: ...  # the result is ignored; stores return their own record
 
 
 class _ExternalImport(Protocol):
@@ -97,6 +98,7 @@ class ModelTaskView:
     """Immutable, path-free snapshot of a task."""
 
     id: str
+    key: str
     model_id: str
     method: str
     origin: str | None
@@ -126,6 +128,7 @@ class _Task:
     def view(self) -> ModelTaskView:
         return ModelTaskView(
             id=self.id,
+            key=model_key(self.descriptor),
             model_id=self.descriptor.model_id,
             method=self.method,
             origin=self.origin,
@@ -202,8 +205,9 @@ class ModelTaskRunner:
                 ModelTaskFailureCode.UNCONFIRMED,
                 "Installing a model must be confirmed explicitly.",
             )
+        key = normalize_key(model_id)
         entry = next(
-            (e for e in self._catalog.entries() if e.descriptor.model_id == model_id),
+            (e for e in self._catalog.entries() if model_key(e.descriptor) == key),
             None,
         )
         if entry is None:
@@ -215,7 +219,7 @@ class ModelTaskRunner:
                 (
                     t
                     for t in self._tasks.values()
-                    if t.state in _ACTIVE and t.descriptor.model_id == model_id
+                    if t.state in _ACTIVE and model_key(t.descriptor) == key
                 ),
                 None,
             )

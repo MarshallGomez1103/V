@@ -12,6 +12,7 @@ Es el mismo shape en `GET /api/transcripts/{transcript_id}/segments`
 {
   "id": "uuid", "start_ms": 0, "end_ms": 250, "text": "Hola, mundo.",
   "edited": true, "revision": 1, "speaker_id": "uuid | null",
+  "quality": {"flags": ["low_confidence"], "avg_logprob": -1.3},
   "words": [{"start_ms": 0, "end_ms": 120, "text": "Hola,", "speaker_id": "uuid | null"}]
 }
 ```
@@ -37,6 +38,38 @@ solapados gana el que empieza antes); si ningún turno la cubre, hereda el
 persistencia que migrar ni que mantener idempotente. Mientras el endpoint de
 listado no entregue los turnos a `segment_view`, todas las palabras heredan el
 hablante del segmento.
+
+## Calidad del segmento (S13.04, S13.05, S13.12)
+
+`quality.flags` son pistas **no destructivas** calculadas al persistir la
+transcripción (`application/quality_flags.py`, función pura) a partir de las
+métricas que reporta el motor (hoy solo faster-whisper; whisper.cpp y los
+proveedores cloud no las dan, así que sus segmentos salen sin flags salvo los
+que no necesitan métricas). `quality.avg_logprob` es `null` si el motor no la
+dio. Los flags tienen orden estable y códigos estables:
+
+| Flag | Cuándo |
+| --- | --- |
+| `repetition` | `compression_ratio > 2.4`, o un n-grama (1 a 4 palabras) repetido seguido: una palabra 5 o más veces, una frase 3 o más |
+| `silence_hallucination` | `no_speech_prob > 0.6` y `avg_logprob < -1.0`; o una frase típica de alucinación ("Thank you.", "Gracias por ver el video", "Suscríbete"...) con `no_speech_prob > 0.3` o fuera de los límites del audio |
+| `out_of_bounds` | el motor devolvió un tramo más allá del audio que recibió (tolerancia 500 ms); el tramo se recorta al guardar, pero se marca |
+| `low_confidence` | `avg_logprob < -1.0` (umbral de Whisper) |
+
+Ejemplo real: Whisper sobre un tono sin voz devolvió `" Thank you."` con
+`end = 29,98 s` en un clip de 0,25 s: se marca `out_of_bounds` y
+`silence_hallucination`.
+
+**Ningún postproceso reescribe texto (S13.12).** `text` es el ASR literal
+(sin espacios extremos) hasta que el usuario lo edita; los flags se guardan
+aparte (columna `segments.quality_json`) y no cambian, borran ni "corrigen"
+texto. Las ediciones del usuario son la única vía de cambiar lo que dice una
+transcripción, y conservan el literal en `original_text`. Editar un segmento no
+recalcula ni borra sus flags. El cálculo es idempotente: reanudar un job tras
+un fallo solo añade los segmentos que faltan.
+
+Flujo de revisión (S13.06): `ReviewQueue` (frontend) lista los segmentos con
+flags, filtra por tipo y permite marcarlos como revisados. Ese estado es local a
+la sesión (no se persiste; recargar la página lo reinicia).
 
 ## `PUT /api/segments/{segment_id}`
 
@@ -70,3 +103,11 @@ Migración `0004_segment_editing`: columnas en `segments` `speaker_id`
 `revision` (int, default 0) y `original_text` (nullable). Los segmentos
 existentes quedan como sin editar. Downgrade descarta las columnas (se pierden
 ediciones y asignaciones de hablante) pero conserva segmentos y palabras.
+
+Migración `0006_segment_quality`: columna `quality_json` (Text, nullable) en
+`segments`, con `ALTER TABLE ADD COLUMN` (sin recrear la tabla, para no
+arrastrar `words` como habría pasado en 0004). Contiene
+`{"flags": [...], "avg_logprob": x}` o `NULL` si no hay nada que señalar; los
+segmentos existentes quedan sin flags. Downgrade elimina la columna (las pistas
+se pueden recalcular) y conserva texto, ediciones y palabras. Un JSON dañado se
+lee como "sin pistas", nunca como error.

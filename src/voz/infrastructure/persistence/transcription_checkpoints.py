@@ -30,6 +30,12 @@ def _segment_json(segment: TranscriptionSegment) -> dict[str, object]:
     }
     if segment.speaker is not None:  # provider-side diarization label
         item["speaker"] = segment.speaker
+    for key in ("avg_logprob", "no_speech_prob", "compression_ratio"):
+        metric = getattr(segment, key)
+        if metric is not None:  # older checkpoints simply lack the keys
+            item[key] = metric
+    if segment.exceeds_audio:
+        item["exceeds_audio"] = True
     if segment.words:  # checkpoints without words keep their original shape
         item["words"] = [
             {
@@ -45,6 +51,12 @@ def _segment_json(segment: TranscriptionSegment) -> dict[str, object]:
 
 def _speaker_from_json(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _metric_from_json(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _words_from_json(value: object) -> tuple[TranscriptionWord, ...]:
@@ -94,6 +106,10 @@ def _segments_from_json(value: object) -> tuple[TranscriptionSegment, ...]:
                 text=cast(str, values.get("text")),
                 words=_words_from_json(values.get("words")),
                 speaker=_speaker_from_json(values.get("speaker")),
+                avg_logprob=_metric_from_json(values.get("avg_logprob")),
+                no_speech_prob=_metric_from_json(values.get("no_speech_prob")),
+                compression_ratio=_metric_from_json(values.get("compression_ratio")),
+                exceeds_audio=values.get("exceeds_audio") is True,
             )
         )
     return tuple(segments)

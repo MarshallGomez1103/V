@@ -40,6 +40,11 @@ def segment_view(
         "edited": segment.edited,
         "revision": segment.revision,
         "speaker_id": None if segment.speaker_id is None else str(segment.speaker_id),
+        # S13.04/S13.12: hints live beside the literal text and never alter it.
+        "quality": {
+            "flags": list(segment.quality_flags),
+            "avg_logprob": segment.avg_logprob,
+        },
         # Timings describe the ASR text; once the text is edited they no longer
         # match it, so they are withheld (kept in storage, not exposed).
         "words": []

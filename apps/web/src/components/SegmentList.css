@@ -81,3 +81,23 @@
   background: var(--lime);
   color: var(--ink);
 }
+
+/* S13.06: filas con pistas de calidad (el texto nunca se altera). */
+.segments .segment-row.has-flags {
+  position: relative;
+  background: rgb(255 156 116 / 7%);
+}
+
+.segments .segment-row.has-flags:not([aria-current='true']) {
+  border-left-color: var(--warning);
+}
+
+.segment-flag {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  color: var(--warning);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: help;
+}

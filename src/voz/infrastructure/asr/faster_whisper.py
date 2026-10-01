@@ -36,6 +36,7 @@ class _EngineSegment(Protocol):
     start: float
     end: float
     text: str
+    # Confidence metrics are read with getattr: word-less/older engines omit them.
 
 
 class _EngineInfo(Protocol):
@@ -117,6 +118,24 @@ def _preload_cuda_libraries() -> None:
         if len(failed) == len(pending):
             return
         pending = failed
+
+
+def _metric(
+    raw_segment: object,
+    name: str,
+    low: float | None = None,
+    high: float | None = None,
+) -> float | None:
+    """Optional finite engine metric; anything unusable becomes ``None``."""
+    value = getattr(raw_segment, name, None)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        return None
+    if (low is not None and number < low) or (high is not None and number > high):
+        return None
+    return number
 
 
 def _default_engine_factory(
@@ -395,6 +414,9 @@ class FasterWhisperProvider:
             end_ms=end_ms,
             text=raw_segment.text,
             words=words,
+            avg_logprob=_metric(raw_segment, "avg_logprob"),
+            no_speech_prob=_metric(raw_segment, "no_speech_prob", 0.0, 1.0),
+            compression_ratio=_metric(raw_segment, "compression_ratio", 0.0),
         )
 
     @staticmethod

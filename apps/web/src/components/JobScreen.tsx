@@ -3,6 +3,8 @@ import {
   type JobState,
   type JobView,
 } from '../api/jobs'
+import { useCloudProviders } from '../hooks/useCloudProviders'
+import { CloudBadge } from './CloudBadge'
 
 interface JobScreenProps {
   job: JobView | null
@@ -71,6 +73,8 @@ function readString(value: unknown): string | null {
 }
 
 export function JobScreen({ job, loading, error, onCancel }: JobScreenProps) {
+  const providerId = readString(job?.selection?.provider_id)
+  const providers = useCloudProviders(providerId !== null)
   if (job === null) {
     return (
       <article className="job-card" aria-labelledby="job-title">
@@ -108,6 +112,7 @@ export function JobScreen({ job, loading, error, onCancel }: JobScreenProps) {
   const modelId = readString(selection?.model_id)
   const profileName = readString(selection?.profile?.name)
   const device = readString(selection?.execution?.device)
+  const cloudProvider = providers.find((item) => item.id === providerId) ?? null
   const hasSelection = modelId !== null || profileName !== null || device !== null
 
   return (
@@ -131,6 +136,19 @@ export function JobScreen({ job, loading, error, onCancel }: JobScreenProps) {
           </button>
         ) : null}
       </div>
+
+      {cloudProvider !== null ? (
+        <p className="cloud-privacy" role="note">
+          <CloudBadge />
+          {showProgress
+            ? 'Tu audio se envía a ' +
+              cloudProvider.label +
+              ' mientras dura esta transcripción.'
+            : 'Esta transcripción usó ' +
+              cloudProvider.label +
+              ' (cloud): tu audio salió de tu equipo.'}
+        </p>
+      ) : null}
 
       <ol className="job-stepper" aria-label="Etapas">
         {PHASES.map((label, index) => (

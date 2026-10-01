@@ -241,3 +241,34 @@ def test_provider_speaker_label_survives_globalization_and_ownership() -> None:
     (globalized,) = globalize_chunk_result(chunk, local).segments
     (kept,) = owned_chunk_segments(chunk, (globalized,))
     assert (kept.start_ms, kept.speaker) == (35_000, "A")
+
+
+def test_quality_metrics_survive_globalization_and_ownership() -> None:
+    chunk = AudioChunk(1, 25_000, 65_000, 30_000, 60_000)
+    local = TranscriptionResult(
+        (
+            TranscriptionSegment(
+                5_000,
+                6_000,
+                "x",
+                avg_logprob=-1.3,
+                no_speech_prob=0.7,
+                compression_ratio=2.9,
+            ),
+            # Reaches past the 40 s of audio the chunk was given.
+            TranscriptionSegment(10_000, 50_000, "Thank you.", avg_logprob=-0.2),
+        ),
+        "es",
+    )
+
+    first, overrun = globalize_chunk_result(chunk, local).segments
+    (kept,) = owned_chunk_segments(chunk, (first,))
+
+    assert (kept.avg_logprob, kept.no_speech_prob, kept.compression_ratio) == (
+        -1.3,
+        0.7,
+        2.9,
+    )
+    assert not kept.exceeds_audio
+    assert overrun.exceeds_audio
+    assert owned_chunk_segments(chunk, (overrun,))[0].exceeds_audio

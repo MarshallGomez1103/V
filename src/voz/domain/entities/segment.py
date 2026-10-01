@@ -1,5 +1,6 @@
 """Segment-level transcript timing in the domain model."""
 
+import math
 from dataclasses import dataclass, field, replace
 from typing import cast
 from uuid import UUID, uuid4
@@ -42,6 +43,9 @@ class Segment:
     edited: bool = field(default=False, kw_only=True)
     revision: int = field(default=0, kw_only=True)
     original_text: str | None = field(default=None, kw_only=True)
+    # Non-destructive quality hints (S13.04/S13.05); they never change ``text``.
+    quality_flags: tuple[str, ...] = field(default=(), kw_only=True)
+    avg_logprob: float | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _validate_uuid(self.id, "id")
@@ -56,9 +60,26 @@ class Segment:
             raise ValueError("segment revision cannot be negative")
         if self.original_text is not None:
             _validate_text(self.original_text)
+        self._validate_quality()
         _validate_offsets(self.start_ms, self.end_ms)
         _validate_text(self.text)
         self._validate_words(self.words)
+
+    def _validate_quality(self) -> None:
+        flags = cast(object, self.quality_flags)
+        if not isinstance(flags, tuple) or not all(
+            isinstance(flag, str) and flag for flag in cast(tuple[object, ...], flags)
+        ):
+            raise TypeError(
+                "segment quality_flags must be a tuple of non-empty strings"
+            )
+        logprob = cast(object, self.avg_logprob)
+        if logprob is not None and (
+            isinstance(logprob, bool)
+            or not isinstance(logprob, (int, float))
+            or not math.isfinite(logprob)
+        ):
+            raise TypeError("segment avg_logprob must be a finite number or None")
 
     def edit_text(self, text: str) -> "Segment":
         """Return a copy with corrected text, keeping the literal ASR text once."""

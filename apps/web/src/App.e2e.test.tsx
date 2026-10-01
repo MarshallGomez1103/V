@@ -62,6 +62,7 @@ const SEGMENTS = [
   edited: false,
   revision: 0,
   speaker_id: null,
+  quality: { flags: [], avg_logprob: null },
   words: [],
 }))
 

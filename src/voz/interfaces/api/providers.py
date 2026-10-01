@@ -11,6 +11,7 @@ from voz.application.estimate_cloud_cost import (
     EstimateError,
     EstimateFailureCode,
 )
+from voz.application.ports.cloud_providers import CloudProviderInfo
 from voz.application.ports.provider_secrets import (
     ProviderSecretsPort,
     SecretsError,
@@ -32,6 +33,8 @@ _ESTIMATE_STATUS = {
 
 class ProviderView(BaseModel):
     id: str
+    label: str
+    privacy_url: str | None
     configured: bool
     cloud: bool = True
 
@@ -49,19 +52,30 @@ class EstimateView(BaseModel):
 
 def create_providers_router(
     secrets: ProviderSecretsPort,
-    provider_ids: Sequence[str],
+    providers: Sequence[CloudProviderInfo | str],
     estimate: EstimateCloudTranscription | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/providers", tags=["providers"])
-    known = tuple(provider_ids)
+    # ponytail: a bare id is accepted (label = id, no privacy link) so callers
+    # that only know ids keep working; the composition root passes full infos.
+    known = tuple(
+        CloudProviderInfo(item, item) if isinstance(item, str) else item
+        for item in providers
+    )
 
     def require_known(provider_id: str) -> None:
-        if provider_id not in known:
+        if provider_id not in {item.id for item in known}:
             raise _error(404, "provider_not_found", "Unknown cloud provider.")
 
     def list_providers() -> list[ProviderView]:
         return [
-            ProviderView(id=item, configured=secrets.configured(item)) for item in known
+            ProviderView(
+                id=item.id,
+                label=item.label,
+                privacy_url=item.privacy_url,
+                configured=secrets.configured(item.id),
+            )
+            for item in known
         ]
 
     def put_key(provider_id: str, body: ApiKeyBody) -> Response:

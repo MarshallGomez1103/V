@@ -8,14 +8,24 @@ export interface ExternalSource {
   origin: string
 }
 
+export type ModelKind = 'asr' | 'diarization'
+
 export interface ModelView {
+  /** Clave de la API: "<provider_id>:<model_id>" (los ids sueltos chocan entre proveedores). */
+  key: string
+  provider_id: string
+  kind: ModelKind
+  /** Runtime que necesita para usarse ("whisper-cli", "diarization") o null. */
+  requires: string | null
+  runtime_available: boolean
   model_id: string
   display_name: string
-  source: string
-  revision: string
+  /** null en diarización: sus artefactos son assets de release verificados por SHA-256. */
+  source: string | null
+  revision: string | null
   license: string
   multilingual: boolean
-  profile: string
+  profile: string | null
   size_bytes: number
   installed: boolean
   disk_bytes: number | null
@@ -41,6 +51,7 @@ export type TaskState =
 
 export interface TaskView {
   id: string
+  key: string
   model_id: string
   method: string
   origin: string | null
@@ -115,16 +126,25 @@ function isNullableNumber(value: unknown): value is number | null {
   return value === null || typeof value === 'number'
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string'
+}
+
 function isModelView(value: unknown): value is ModelView {
   return (
     isRecord(value) &&
+    typeof value.key === 'string' &&
+    typeof value.provider_id === 'string' &&
+    (value.kind === 'asr' || value.kind === 'diarization') &&
+    isNullableString(value.requires) &&
+    typeof value.runtime_available === 'boolean' &&
     typeof value.model_id === 'string' &&
     typeof value.display_name === 'string' &&
-    typeof value.source === 'string' &&
-    typeof value.revision === 'string' &&
+    isNullableString(value.source) &&
+    isNullableString(value.revision) &&
     typeof value.license === 'string' &&
     typeof value.multilingual === 'boolean' &&
-    typeof value.profile === 'string' &&
+    isNullableString(value.profile) &&
     typeof value.size_bytes === 'number' &&
     typeof value.installed === 'boolean' &&
     isNullableNumber(value.disk_bytes) &&
@@ -158,6 +178,7 @@ export function isTaskView(value: unknown): value is TaskView {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
+    typeof value.key === 'string' &&
     typeof value.model_id === 'string' &&
     typeof value.method === 'string' &&
     (value.origin === null || typeof value.origin === 'string') &&
@@ -201,8 +222,9 @@ async function call<T>(
 
 const isDeleteResult = (
   value: unknown,
-): value is { model_id: string; freed_bytes: number } =>
+): value is { key: string; model_id: string; freed_bytes: number } =>
   isRecord(value) &&
+  typeof value.key === 'string' &&
   typeof value.model_id === 'string' &&
   typeof value.freed_bytes === 'number'
 
@@ -210,8 +232,9 @@ export function getModels(signal?: AbortSignal): Promise<ModelsPayload> {
   return call('/api/models', signal ? { signal } : {}, isModelsPayload)
 }
 
-export function deleteModel(modelId: string): Promise<{ freed_bytes: number }> {
-  const id = encodeURIComponent(modelId)
+/** `key` es la clave "<proveedor>:<modelo>"; `confirm` repite exactamente lo enviado en la ruta. */
+export function deleteModel(key: string): Promise<{ freed_bytes: number }> {
+  const id = encodeURIComponent(key)
   return call(
     '/api/models/' + id + '?confirm=' + id,
     { method: 'DELETE' },
@@ -221,7 +244,7 @@ export function deleteModel(modelId: string): Promise<{ freed_bytes: number }> {
 
 /** Descarga (HuggingFace) o importación desde Buzz; el backend la ejecuta como tarea. */
 export function installModel(
-  modelId: string,
+  key: string,
   method: InstallMethod,
 ): Promise<TaskView> {
   const body =
@@ -229,7 +252,7 @@ export function installModel(
       ? { method, origin: 'buzz', confirm: true }
       : { method, confirm: true }
   return call(
-    '/api/models/' + encodeURIComponent(modelId) + '/install',
+    '/api/models/' + encodeURIComponent(key) + '/install',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

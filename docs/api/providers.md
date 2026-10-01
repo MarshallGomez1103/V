@@ -8,8 +8,15 @@ respuesta devuelve jamás una clave. Errores con
 ## `GET /api/providers`
 
 ```json
-[{"id": "openai", "configured": false, "cloud": true}]
+[{"id": "openai", "label": "OpenAI", "privacy_url": "https://openai.com/policies/privacy-policy", "configured": false, "cloud": true}]
 ```
+
+El backend es la fuente de verdad de la lista: la UI muestra exactamente estos
+proveedores (en este orden) y no conoce ids ni nombres propios. `label` es el
+nombre visible y `privacy_url` (o `null`) el enlace a la política de privacidad
+del proveedor; el composition root los toma de
+`infrastructure/cloud/provider_info.py` y se los pasa al router como
+`CloudProviderInfo`. Un proveedor nuevo solo se declara allí.
 
 `configured` es true si hay clave en el entorno (`VOZ_<ID>_API_KEY` o
 `<ID>_API_KEY`) o en `$XDG_CONFIG_HOME/voz/secrets.toml`. Un archivo de secretos
@@ -50,9 +57,18 @@ El precio es una constante fechada, no verificada en vivo.
 
 ## Campo `cloud` en las opciones
 
-`GET /api/transcription-options` añade `cloud: bool` a cada opción. Las opciones
+`GET /api/transcription-options` añade `cloud: bool` y `provider_label: string | null`
+(nombre visible del proveedor, solo en opciones cloud; `null` en las locales) a
+cada opción. La UI usa `cloud` para el aviso de envío y `provider_label` para
+nombrar al proveedor; no mantiene una lista de ids cloud. Las opciones
 cloud nunca llevan `recommendation`, `execution` ni `profile`, y `can_start`
 depende solo de que la clave esté configurada.
+
+## Aviso cloud en un trabajo
+
+La pantalla de un trabajo decide si es cloud buscando su `selection.provider_id`
+en `GET /api/providers` (todos los que devuelve son cloud) y usa su `label`. Si
+esa consulta falla no se muestra aviso; nunca se infiere de un id codificado.
 
 ## ElevenLabs (`elevenlabs`, Scribe)
 

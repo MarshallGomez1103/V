@@ -37,7 +37,25 @@ const PROFILE_LABELS: Record<string, string> = {
   quality: 'Calidad',
 }
 
-const RECOMMENDED_MODEL_ID = 'turbo'
+const RECOMMENDED_KEY = 'faster-whisper:turbo'
+
+/** Runtime externo que cada familia necesita, en lenguaje del usuario. */
+const REQUIRES_LABELS: Record<string, string> = {
+  'whisper-cli': 'whisper-cli',
+  diarization: 'el extra diarization',
+}
+
+function requiresLabel(requires: string): string {
+  return Object.hasOwn(REQUIRES_LABELS, requires)
+    ? (REQUIRES_LABELS[requires] ?? requires)
+    : requires
+}
+
+/** faster-whisper primero, luego el resto de proveedores; dentro, orden de catálogo. */
+function compareModels(a: ModelView, b: ModelView): number {
+  const home = (m: ModelView) => (m.provider_id === 'faster-whisper' ? 0 : 1)
+  return home(a) - home(b) || compareModelIds(a.model_id, b.model_id)
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof ModelApiError
@@ -69,13 +87,13 @@ function describeTask(task: TaskView): string {
         ')'
 }
 
-/** Tarea más reciente de cada modelo (por fecha de creación ISO). */
+/** Tarea más reciente de cada modelo, por clave (por fecha de creación ISO). */
 function latestByModel(tasks: TaskView[]): Map<string, TaskView> {
   const latest = new Map<string, TaskView>()
   for (const task of tasks) {
-    const current = latest.get(task.model_id)
+    const current = latest.get(task.key)
     if (!current || task.created_at >= current.created_at) {
-      latest.set(task.model_id, task)
+      latest.set(task.key, task)
     }
   }
   return latest
@@ -141,8 +159,15 @@ function DownloadDialog({
     <ModalDialog title={'Descargar ' + model.display_name} onClose={onClose}>
       <p>
         Se descargarán <strong>{formatBytes(model.size_bytes)}</strong> desde{' '}
-        <strong>HuggingFace</strong> ({model.source}). Es la única vez que VOZ
-        necesita Internet para este modelo: después funciona sin conexión.
+        {model.kind === 'diarization' ? (
+          <strong>GitHub</strong>
+        ) : (
+          <>
+            <strong>HuggingFace</strong> ({model.source})
+          </>
+        )}
+        . Es la única vez que VOZ necesita Internet para este modelo: después
+        funciona sin conexión.
       </p>
       {insufficient ? (
         <p className="model-dialog-warning" role="alert">
@@ -188,7 +213,7 @@ function DeleteDialog({
     }
     setBusy(true)
     setError(null)
-    deleteModel(model.model_id)
+    deleteModel(model.key)
       .then(onDeleted)
       .catch((failure: unknown) => {
         setError(errorMessage(failure))
@@ -265,6 +290,7 @@ function ModelRow({
   const titleId = useId()
   const helpId = useId()
   const hasBuzz = model.external.some((entry) => entry.origin === 'buzz')
+  const missingRuntime = !model.runtime_available && model.requires !== null
   const active = task && isActiveTask(task) ? task : undefined
   const failure =
     !model.installed && task?.state === 'failed'
@@ -285,7 +311,7 @@ function ModelRow({
     >
       <div className="model-head">
         <h3 id={titleId}>{model.display_name}</h3>
-        {model.model_id === RECOMMENDED_MODEL_ID ? (
+        {model.key === RECOMMENDED_KEY ? (
           <span className="model-badge model-badge--recommended">
             Recomendado
           </span>
@@ -300,10 +326,12 @@ function ModelRow({
       </div>
 
       <dl className="model-meta">
-        <div>
-          <dt>Perfil</dt>
-          <dd>{PROFILE_LABELS[model.profile] ?? model.profile}</dd>
-        </div>
+        {model.profile !== null ? (
+          <div>
+            <dt>Perfil</dt>
+            <dd>{PROFILE_LABELS[model.profile] ?? model.profile}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Tamaño</dt>
           <dd>{formatBytes(model.size_bytes)}</dd>
@@ -312,6 +340,12 @@ function ModelRow({
           <dt>Licencia</dt>
           <dd>{model.license}</dd>
         </div>
+        {model.requires !== null ? (
+          <div>
+            <dt>Requiere</dt>
+            <dd>{requiresLabel(model.requires)}</dd>
+          </div>
+        ) : null}
         {model.installed && model.disk_bytes !== null ? (
           <div>
             <dt>En disco</dt>
@@ -343,7 +377,7 @@ function ModelRow({
         </div>
       ) : (
         <div className="model-actions">
-          {!model.installed && hasBuzz ? (
+          {!model.installed && !missingRuntime && hasBuzz ? (
             <>
               <button
                 type="button"
@@ -360,7 +394,12 @@ function ModelRow({
               </p>
             </>
           ) : null}
-          {!model.installed ? (
+          {!model.installed && missingRuntime ? (
+            <p className="model-help">
+              Requiere {requiresLabel(model.requires ?? '')}: sin él no se puede
+              usar, así que no se ofrece instalarlo.
+            </p>
+          ) : !model.installed ? (
             <button type="button" disabled={busy} onClick={onDownload}>
               Descargar ({formatBytes(model.size_bytes)})
             </button>
@@ -401,6 +440,7 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set())
   const [notices, setNotices] = useState<Record<string, string>>({})
   const headingId = useId()
+  const speakersId = useId()
   const onModelsChangedRef = useRef(onModelsChanged)
 
   useEffect(() => {
@@ -435,13 +475,13 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
     setReload((current) => current + 1)
   }
 
-  const setNotice = (modelId: string, message: string | null) => {
+  const setNotice = (key: string, message: string | null) => {
     setNotices((current) => {
       const next = { ...current }
       if (message === null) {
-        delete next[modelId]
+        delete next[key]
       } else {
-        next[modelId] = message
+        next[key] = message
       }
       return next
     })
@@ -449,19 +489,19 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
 
   const install = (model: ModelView, method: InstallMethod) => {
     setDialog(null)
-    setNotice(model.model_id, null)
-    setBusyIds((current) => new Set(current).add(model.model_id))
-    installModel(model.model_id, method)
+    setNotice(model.key, null)
+    setBusyIds((current) => new Set(current).add(model.key))
+    installModel(model.key, method)
       .then(track)
       .catch((failure: unknown) => {
-        setNotice(model.model_id, errorMessage(failure))
+        setNotice(model.key, errorMessage(failure))
         // 409 model_already_installed / 404 external_model_not_found: la lista quedó vieja.
         setReload((current) => current + 1)
       })
       .finally(() => {
         setBusyIds((current) => {
           const next = new Set(current)
-          next.delete(model.model_id)
+          next.delete(model.key)
           return next
         })
       })
@@ -470,13 +510,40 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const cancel = (task: TaskView) => {
     cancelModelTask(task.id)
       .catch((failure: unknown) => {
-        setNotice(task.model_id, errorMessage(failure))
+        setNotice(task.key, errorMessage(failure))
       })
       .finally(refresh)
   }
 
   const latest = latestByModel(tasks)
   const polling = tasks.some(isActiveTask)
+  const models = state.phase === 'ready' ? state.payload.models : []
+  const asr = models.filter((m) => m.kind !== 'diarization').sort(compareModels)
+  const speakers = models.filter((m) => m.kind === 'diarization')
+
+  const renderList = (list: ModelView[]) => (
+    <ul className="model-list">
+      {list.map((model) => (
+        <ModelRow
+          key={model.key}
+          model={model}
+          task={latest.get(model.key)}
+          notice={notices[model.key]}
+          busy={busyIds.has(model.key)}
+          onImport={() => {
+            install(model, 'import')
+          }}
+          onDownload={() => {
+            setDialog({ kind: 'download', model })
+          }}
+          onDelete={() => {
+            setDialog({ kind: 'delete', model })
+          }}
+          onCancel={cancel}
+        />
+      ))}
+    </ul>
+  )
 
   return (
     <section className="model-manager" aria-labelledby={headingId}>
@@ -508,29 +575,17 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
               No se pudo actualizar el progreso; se sigue intentando.
             </p>
           ) : null}
-          <ul className="model-list">
-            {[...state.payload.models]
-              .sort((a, b) => compareModelIds(a.model_id, b.model_id))
-              .map((model) => (
-                <ModelRow
-                  key={model.model_id}
-                  model={model}
-                  task={latest.get(model.model_id)}
-                  notice={notices[model.model_id]}
-                  busy={busyIds.has(model.model_id)}
-                  onImport={() => {
-                    install(model, 'import')
-                  }}
-                  onDownload={() => {
-                    setDialog({ kind: 'download', model })
-                  }}
-                  onDelete={() => {
-                    setDialog({ kind: 'delete', model })
-                  }}
-                  onCancel={cancel}
-                />
-              ))}
-          </ul>
+          {renderList(asr)}
+          {speakers.length > 0 ? (
+            <section aria-labelledby={speakersId} className="model-speakers">
+              <h2 id={speakersId}>Hablantes</h2>
+              <p className="model-help">
+                Permite activar «Detectar quién habla» en las transcripciones.
+                Funciona sin conexión una vez instalado.
+              </p>
+              {renderList(speakers)}
+            </section>
+          ) : null}
         </>
       )}
 

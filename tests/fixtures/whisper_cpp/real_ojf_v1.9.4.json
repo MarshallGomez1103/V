@@ -1,0 +1,548 @@
+{
+ "systeminfo": "(redactado)",
+ "model": {
+  "type": "large",
+  "multilingual": true,
+  "vocab": 51866,
+  "audio": {
+   "ctx": 1500,
+   "state": 1280,
+   "head": 20,
+   "layer": 32
+  },
+  "text": {
+   "ctx": 448,
+   "state": 1280,
+   "head": 20,
+   "layer": 4
+  },
+  "mels": 128,
+  "ftype": 8
+ },
+ "params": {
+  "model": "(redactado)",
+  "language": "es",
+  "translate": false
+ },
+ "result": {
+  "language": "es"
+ },
+ "transcription": [
+  {
+   "timestamps": {
+    "from": "00:00:00,000",
+    "to": "00:00:04,440"
+   },
+   "offsets": {
+    "from": 0,
+    "to": 4440
+   },
+   "text": " Para preparar un buen café es importante empezar con granos recién molidos.",
+   "tokens": [
+    {
+     "text": "[_BEG_]",
+     "timestamps": {
+      "from": "00:00:00,000",
+      "to": "00:00:00,000"
+     },
+     "offsets": {
+      "from": 0,
+      "to": 0
+     },
+     "id": 50365,
+     "p": 0.668672,
+     "t_dtw": -1
+    },
+    {
+     "text": " Para",
+     "timestamps": {
+      "from": "00:00:00,040",
+      "to": "00:00:00,270"
+     },
+     "offsets": {
+      "from": 40,
+      "to": 270
+     },
+     "id": 11107,
+     "p": 0.963867,
+     "t_dtw": -1
+    },
+    {
+     "text": " prepar",
+     "timestamps": {
+      "from": "00:00:00,270",
+      "to": "00:00:00,660"
+     },
+     "offsets": {
+      "from": 270,
+      "to": 660
+     },
+     "id": 8231,
+     "p": 0.999636,
+     "t_dtw": -1
+    },
+    {
+     "text": "ar",
+     "timestamps": {
+      "from": "00:00:00,680",
+      "to": "00:00:00,790"
+     },
+     "offsets": {
+      "from": 680,
+      "to": 790
+     },
+     "id": 289,
+     "p": 0.999926,
+     "t_dtw": -1
+    },
+    {
+     "text": " un",
+     "timestamps": {
+      "from": "00:00:00,800",
+      "to": "00:00:00,910"
+     },
+     "offsets": {
+      "from": 800,
+      "to": 910
+     },
+     "id": 517,
+     "p": 0.999411,
+     "t_dtw": -1
+    },
+    {
+     "text": " buen",
+     "timestamps": {
+      "from": "00:00:00,950",
+      "to": "00:00:01,200"
+     },
+     "offsets": {
+      "from": 950,
+      "to": 1200
+     },
+     "id": 30037,
+     "p": 0.999478,
+     "t_dtw": -1
+    },
+    {
+     "text": " café",
+     "timestamps": {
+      "from": "00:00:01,200",
+      "to": "00:00:01,500"
+     },
+     "offsets": {
+      "from": 1200,
+      "to": 1500
+     },
+     "id": 25118,
+     "p": 0.994605,
+     "t_dtw": -1
+    },
+    {
+     "text": " es",
+     "timestamps": {
+      "from": "00:00:01,500",
+      "to": "00:00:01,630"
+     },
+     "offsets": {
+      "from": 1500,
+      "to": 1630
+     },
+     "id": 785,
+     "p": 0.979047,
+     "t_dtw": -1
+    },
+    {
+     "text": " importante",
+     "timestamps": {
+      "from": "00:00:01,630",
+      "to": "00:00:02,260"
+     },
+     "offsets": {
+      "from": 1630,
+      "to": 2260
+     },
+     "id": 9416,
+     "p": 0.994232,
+     "t_dtw": -1
+    },
+    {
+     "text": " empezar",
+     "timestamps": {
+      "from": "00:00:02,310",
+      "to": "00:00:02,750"
+     },
+     "offsets": {
+      "from": 2310,
+      "to": 2750
+     },
+     "id": 31168,
+     "p": 0.988983,
+     "t_dtw": -1
+    },
+    {
+     "text": " con",
+     "timestamps": {
+      "from": "00:00:02,750",
+      "to": "00:00:02,900"
+     },
+     "offsets": {
+      "from": 2750,
+      "to": 2900
+     },
+     "id": 416,
+     "p": 0.994383,
+     "t_dtw": -1
+    },
+    {
+     "text": " gran",
+     "timestamps": {
+      "from": "00:00:02,950",
+      "to": "00:00:03,200"
+     },
+     "offsets": {
+      "from": 2950,
+      "to": 3200
+     },
+     "id": 9370,
+     "p": 0.899986,
+     "t_dtw": -1
+    },
+    {
+     "text": "os",
+     "timestamps": {
+      "from": "00:00:03,210",
+      "to": "00:00:03,340"
+     },
+     "offsets": {
+      "from": 3210,
+      "to": 3340
+     },
+     "id": 329,
+     "p": 0.999983,
+     "t_dtw": -1
+    },
+    {
+     "text": " reci",
+     "timestamps": {
+      "from": "00:00:03,340",
+      "to": "00:00:03,600"
+     },
+     "offsets": {
+      "from": 3340,
+      "to": 3600
+     },
+     "id": 4214,
+     "p": 0.996616,
+     "t_dtw": -1
+    },
+    {
+     "text": "én",
+     "timestamps": {
+      "from": "00:00:03,600",
+      "to": "00:00:03,630"
+     },
+     "offsets": {
+      "from": 3600,
+      "to": 3630
+     },
+     "id": 3516,
+     "p": 0.998913,
+     "t_dtw": -1
+    },
+    {
+     "text": " mol",
+     "timestamps": {
+      "from": "00:00:03,730",
+      "to": "00:00:03,930"
+     },
+     "offsets": {
+      "from": 3730,
+      "to": 3930
+     },
+     "id": 8015,
+     "p": 0.992734,
+     "t_dtw": -1
+    },
+    {
+     "text": "idos",
+     "timestamps": {
+      "from": "00:00:03,930",
+      "to": "00:00:04,190"
+     },
+     "offsets": {
+      "from": 3930,
+      "to": 4190
+     },
+     "id": 7895,
+     "p": 0.999295,
+     "t_dtw": -1
+    },
+    {
+     "text": ".",
+     "timestamps": {
+      "from": "00:00:04,190",
+      "to": "00:00:04,390"
+     },
+     "offsets": {
+      "from": 4190,
+      "to": 4390
+     },
+     "id": 13,
+     "p": 0.977995,
+     "t_dtw": -1
+    },
+    {
+     "text": "[_TT_222]",
+     "timestamps": {
+      "from": "00:00:04,440",
+      "to": "00:00:04,440"
+     },
+     "offsets": {
+      "from": 4440,
+      "to": 4440
+     },
+     "id": 50587,
+     "p": 0.304669,
+     "t_dtw": -1
+    }
+   ]
+  },
+  {
+   "timestamps": {
+    "from": "00:00:04,900",
+    "to": "00:00:08,000"
+   },
+   "offsets": {
+    "from": 4900,
+    "to": 8000
+   },
+   "text": " Se calienta el agua hasta que esté justo antes de hervir.",
+   "tokens": [
+    {
+     "text": " Se",
+     "timestamps": {
+      "from": "00:00:04,900",
+      "to": "00:00:04,900"
+     },
+     "offsets": {
+      "from": 4900,
+      "to": 4900
+     },
+     "id": 1100,
+     "p": 0.999825,
+     "t_dtw": -1
+    },
+    {
+     "text": " cal",
+     "timestamps": {
+      "from": "00:00:04,900",
+      "to": "00:00:04,900"
+     },
+     "offsets": {
+      "from": 4900,
+      "to": 4900
+     },
+     "id": 2104,
+     "p": 0.999973,
+     "t_dtw": -1
+    },
+    {
+     "text": "ient",
+     "timestamps": {
+      "from": "00:00:04,940",
+      "to": "00:00:05,060"
+     },
+     "offsets": {
+      "from": 4940,
+      "to": 5060
+     },
+     "id": 1196,
+     "p": 0.998992,
+     "t_dtw": -1
+    },
+    {
+     "text": "a",
+     "timestamps": {
+      "from": "00:00:05,070",
+      "to": "00:00:05,120"
+     },
+     "offsets": {
+      "from": 5070,
+      "to": 5120
+     },
+     "id": 64,
+     "p": 0.999994,
+     "t_dtw": -1
+    },
+    {
+     "text": " el",
+     "timestamps": {
+      "from": "00:00:05,160",
+      "to": "00:00:05,280"
+     },
+     "offsets": {
+      "from": 5160,
+      "to": 5280
+     },
+     "id": 806,
+     "p": 0.999949,
+     "t_dtw": -1
+    },
+    {
+     "text": " agua",
+     "timestamps": {
+      "from": "00:00:05,280",
+      "to": "00:00:05,560"
+     },
+     "offsets": {
+      "from": 5280,
+      "to": 5560
+     },
+     "id": 19330,
+     "p": 0.999952,
+     "t_dtw": -1
+    },
+    {
+     "text": " hasta",
+     "timestamps": {
+      "from": "00:00:05,600",
+      "to": "00:00:05,930"
+     },
+     "offsets": {
+      "from": 5600,
+      "to": 5930
+     },
+     "id": 10764,
+     "p": 0.999931,
+     "t_dtw": -1
+    },
+    {
+     "text": " que",
+     "timestamps": {
+      "from": "00:00:05,930",
+      "to": "00:00:06,100"
+     },
+     "offsets": {
+      "from": 5930,
+      "to": 6100
+     },
+     "id": 631,
+     "p": 0.999973,
+     "t_dtw": -1
+    },
+    {
+     "text": " esté",
+     "timestamps": {
+      "from": "00:00:06,190",
+      "to": "00:00:06,430"
+     },
+     "offsets": {
+      "from": 6190,
+      "to": 6430
+     },
+     "id": 34584,
+     "p": 0.997204,
+     "t_dtw": -1
+    },
+    {
+     "text": " justo",
+     "timestamps": {
+      "from": "00:00:06,430",
+      "to": "00:00:06,760"
+     },
+     "offsets": {
+      "from": 6430,
+      "to": 6760
+     },
+     "id": 40534,
+     "p": 0.999836,
+     "t_dtw": -1
+    },
+    {
+     "text": " antes",
+     "timestamps": {
+      "from": "00:00:06,810",
+      "to": "00:00:07,140"
+     },
+     "offsets": {
+      "from": 6810,
+      "to": 7140
+     },
+     "id": 11014,
+     "p": 0.999968,
+     "t_dtw": -1
+    },
+    {
+     "text": " de",
+     "timestamps": {
+      "from": "00:00:07,150",
+      "to": "00:00:07,280"
+     },
+     "offsets": {
+      "from": 7150,
+      "to": 7280
+     },
+     "id": 368,
+     "p": 0.999588,
+     "t_dtw": -1
+    },
+    {
+     "text": " her",
+     "timestamps": {
+      "from": "00:00:07,280",
+      "to": "00:00:07,500"
+     },
+     "offsets": {
+      "from": 7280,
+      "to": 7500
+     },
+     "id": 720,
+     "p": 0.433468,
+     "t_dtw": -1
+    },
+    {
+     "text": "vir",
+     "timestamps": {
+      "from": "00:00:07,500",
+      "to": "00:00:07,710"
+     },
+     "offsets": {
+      "from": 7500,
+      "to": 7710
+     },
+     "id": 46551,
+     "p": 0.991597,
+     "t_dtw": -1
+    },
+    {
+     "text": ".",
+     "timestamps": {
+      "from": "00:00:07,710",
+      "to": "00:00:08,000"
+     },
+     "offsets": {
+      "from": 7710,
+      "to": 8000
+     },
+     "id": 13,
+     "p": 0.990295,
+     "t_dtw": -1
+    },
+    {
+     "text": "[_TT_400]",
+     "timestamps": {
+      "from": "00:00:08,000",
+      "to": "00:00:08,000"
+     },
+     "offsets": {
+      "from": 8000,
+      "to": 8000
+     },
+     "id": 50765,
+     "p": 0.990288,
+     "t_dtw": -1
+    }
+   ]
+  }
+ ]
+}

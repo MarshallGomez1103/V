@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from voz.application.model_keys import model_key, normalize_key
 from voz.application.ports.disk_space import DiskLocation, DiskSpacePort
 from voz.application.ports.external_models import ExternalModelSource
 from voz.application.ports.transcription_job_selection import JobSelection
@@ -30,6 +31,18 @@ class CatalogItem(Protocol):
     def license(self) -> str: ...
     @property
     def multilingual(self) -> bool: ...
+    @property
+    def kind(self) -> str:
+        """``asr`` or ``diarization``."""
+        ...
+
+    @property
+    def requires(self) -> str | None:
+        """Runtime the model needs to be usable (``whisper-cli``), if any."""
+        ...
+
+    @property
+    def runtime_available(self) -> bool: ...
 
 
 class ModelCatalog(Protocol):
@@ -77,6 +90,11 @@ class ExternalOrigin:
 
 @dataclass(frozen=True, slots=True)
 class ModelStatus:
+    key: str
+    provider_id: str
+    kind: str
+    requires: str | None
+    runtime_available: bool
     model_id: str
     display_name: str
     source: str | None
@@ -124,6 +142,11 @@ class ListModels:
             )
             models.append(
                 ModelStatus(
+                    key=model_key(descriptor),
+                    provider_id=descriptor.provider_id,
+                    kind=entry.kind,
+                    requires=entry.requires,
+                    runtime_available=entry.runtime_available,
                     model_id=descriptor.model_id,
                     display_name=descriptor.display_name,
                     source=descriptor.source,
@@ -151,6 +174,7 @@ class ListModels:
 
 @dataclass(frozen=True, slots=True)
 class RemovedModel:
+    key: str
     model_id: str
     freed_bytes: int
 
@@ -163,17 +187,22 @@ class RemoveModel:
     selections: SelectionLookup
 
     def execute(self, model_id: str, confirm: str | None) -> RemovedModel:
-        """Delete the pinned install after exact-id confirmation and an in-use check."""
+        """Delete the pinned install after exact-id confirmation and an in-use check.
+
+        ``model_id`` is a key (``provider:model``) or a bare faster-whisper id;
+        ``confirm`` must repeat it exactly as sent.
+        """
         if confirm != model_id:
             raise ModelManagementError(
                 ModelManagementFailureCode.DELETE_UNCONFIRMED,
                 "Repeat the exact model id to confirm deletion.",
             )
+        key = normalize_key(model_id)
         descriptor = next(
             (
                 entry.descriptor
                 for entry in self.catalog.entries()
-                if entry.descriptor.model_id == model_id
+                if model_key(entry.descriptor) == key
             ),
             None,
         )
@@ -201,7 +230,7 @@ class RemoveModel:
                 ModelManagementFailureCode.REMOVE_FAILED,
                 "The model could not be removed.",
             ) from error
-        return RemovedModel(model_id, freed)
+        return RemovedModel(key, descriptor.model_id, freed)
 
 
 __all__ = [

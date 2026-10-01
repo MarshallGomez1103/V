@@ -64,6 +64,9 @@ class Entry:
     files: tuple[Item, ...]
     license: str = "MIT"
     multilingual: bool = True
+    kind: str = "asr"
+    requires: str | None = None
+    runtime_available: bool = True
 
 
 class Catalog:
@@ -184,6 +187,11 @@ def test_get_models_serializes_the_documented_contract_without_paths() -> None:
     assert body["disk"] == {"models_bytes": 1000, "free_bytes": 777}
     models = cast(list[dict[str, object]], body["models"])
     assert models[0] == {
+        "key": "faster-whisper:tiny",
+        "provider_id": "faster-whisper",
+        "kind": "asr",
+        "requires": None,
+        "runtime_available": True,
         "model_id": "tiny",
         "display_name": "Tiny",
         "source": "publisher/tiny",
@@ -210,7 +218,10 @@ def test_delete_model_frees_bytes() -> None:
         )
     )
 
-    assert (status, body) == (200, {"model_id": "tiny", "freed_bytes": 1000})
+    assert (status, body) == (
+        200,
+        {"key": "faster-whisper:tiny", "model_id": "tiny", "freed_bytes": 1000},
+    )
     assert store.removed == [TINY]
 
 

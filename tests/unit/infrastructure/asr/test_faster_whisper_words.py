@@ -46,6 +46,9 @@ class _S:
     end: float
     text: str
     words: list[_W] | None = None
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    compression_ratio: float | None = None
 
 
 @dataclass
@@ -188,3 +191,40 @@ def test_failure_without_words_still_reports_a_safe_provider_error(
 
     assert raised.value.code is TranscriptionFailureCode.PROVIDER_FAILED
     assert "/private" not in raised.value.user_message
+
+
+def test_engine_confidence_metrics_are_mapped_and_junk_becomes_none(
+    tmp_path: Path,
+) -> None:
+    engine = _Engine(
+        [
+            _S(
+                0.0,
+                1.0,
+                " a",
+                avg_logprob=-0.4,
+                no_speech_prob=0.1,
+                compression_ratio=1.2,
+            ),
+            _S(1.0, 2.0, " b", avg_logprob=float("nan"), no_speech_prob=1.7),
+            _S(2.0, 3.0, " c"),  # an engine without metrics
+        ]
+    )
+
+    first, junk, bare = _run(_provider(tmp_path, engine))
+
+    assert (first.avg_logprob, first.no_speech_prob, first.compression_ratio) == (
+        -0.4,
+        0.1,
+        1.2,
+    )
+    assert (junk.avg_logprob, junk.no_speech_prob, junk.compression_ratio) == (
+        None,
+        None,
+        None,
+    )
+    assert (bare.avg_logprob, bare.no_speech_prob, bare.compression_ratio) == (
+        None,
+        None,
+        None,
+    )

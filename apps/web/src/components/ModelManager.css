@@ -195,3 +195,9 @@
   outline: 2px solid var(--lime);
   outline-offset: 2px;
 }
+
+.model-speakers {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}

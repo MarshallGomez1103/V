@@ -18,6 +18,9 @@ from voz.application.ports.transcription import (
     clamp_words,
 )
 
+# Engines round span ends, so a small overshoot is not a hallucinated span.
+_OVERRUN_TOLERANCE_MS = 500
+
 
 @dataclass(frozen=True, slots=True)
 class AudioChunk:
@@ -128,6 +131,10 @@ def owned_chunk_segments(
                     text=segment.text,
                     words=clamp_words(segment.words, start_ms, end_ms),
                     speaker=segment.speaker,
+                    avg_logprob=segment.avg_logprob,
+                    no_speech_prob=segment.no_speech_prob,
+                    compression_ratio=segment.compression_ratio,
+                    exceeds_audio=segment.exceeds_audio,
                 )
             )
     return tuple(owned)
@@ -145,6 +152,11 @@ def globalize_chunk_result(
                 end_ms=segment.end_ms + chunk.process_start_ms,
                 text=segment.text,
                 speaker=segment.speaker,
+                avg_logprob=segment.avg_logprob,
+                no_speech_prob=segment.no_speech_prob,
+                compression_ratio=segment.compression_ratio,
+                exceeds_audio=segment.end_ms
+                > chunk.process_end_ms - chunk.process_start_ms + _OVERRUN_TOLERANCE_MS,
                 words=tuple(
                     replace(
                         word,

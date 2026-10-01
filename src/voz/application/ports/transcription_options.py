@@ -19,6 +19,7 @@ class ModelRegistration:
     installation_status: InstallationStatus
     files_available: bool = False
     cloud: bool = False  # audio leaves the machine; never installable or recommended
+    provider_label: str | None = None  # visible provider name, cloud options only
 
 
 @dataclass(frozen=True, slots=True)

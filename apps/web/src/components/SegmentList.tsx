@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { getSegments, type TranscriptSegment } from '../api/jobs'
+import { flagLabel } from '../lib/qualityFlags'
 import { findActiveIndex } from '../lib/activeSegment'
 import { scrollDelta } from '../lib/scrollDelta'
 import {
@@ -31,6 +32,9 @@ interface SegmentListProps {
   // Cambiarlo recarga los segmentos (p. ej. tras reasignar speakers) sin
   // perder búsqueda ni scroll: se conserva la lista vieja hasta que llega la nueva.
   reloadKey?: number
+  // S13.06: entrega los segmentos cargados (p. ej. a la cola de revisión).
+  // Se llama cada vez que llega una lista nueva; no necesita ser estable.
+  onSegmentsLoaded?: (segments: TranscriptSegment[]) => void
 }
 
 type Outcome =
@@ -128,9 +132,11 @@ const SegmentRow = memo(function SegmentRow({
         formatTimestamp(segment.end_ms)}
     </time>
   )
+  const flags = segment.quality.flags
+  const flagged = flags.length > 0
   return (
     <li
-      className="segment-row"
+      className={flagged ? 'segment-row has-flags' : 'segment-row'}
       data-segment-index={index}
       aria-current={active ? 'true' : undefined}
     >
@@ -148,6 +154,16 @@ const SegmentRow = memo(function SegmentRow({
       ) : (
         timestamp
       )}
+      {flagged ? (
+        <span
+          className="segment-flag"
+          role="img"
+          aria-label={'Por revisar: ' + flags.map(flagLabel).join(', ')}
+          title={flags.map(flagLabel).join(', ')}
+        >
+          ⚠
+        </span>
+      ) : null}
       {renderText ? (
         <div className="segment-text">{renderText(segment, query)}</div>
       ) : (
@@ -360,10 +376,15 @@ export function SegmentList({
   currentMs,
   renderText,
   reloadKey = 0,
+  onSegmentsLoaded,
 }: SegmentListProps) {
   // El estado se asocia al id cargado; si no coincide con la prop, seguimos
   // cargando. Así el efecto nunca llama a setState de forma sincrónica.
   const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const onLoadedRef = useRef(onSegmentsLoaded)
+  useEffect(() => {
+    onLoadedRef.current = onSegmentsLoaded
+  })
 
   useEffect(() => {
     if (transcriptId === null) {
@@ -375,6 +396,7 @@ export function SegmentList({
     void getSegments(transcriptId, controller.signal)
       .then((segments) => {
         setLoaded({ transcriptId, outcome: { phase: 'ready', segments } })
+        onLoadedRef.current?.(segments)
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') {

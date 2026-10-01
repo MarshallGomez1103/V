@@ -18,6 +18,7 @@ import uvicorn
 
 from voz.bootstrap import create_app
 from voz.infrastructure.paths import resolve_voz_paths
+from voz.interfaces.cli.bench import bench_command
 from voz.interfaces.cli.diagnostics_bundle import build_bundle, write_bundle
 from voz.interfaces.cli.doctor import exit_code, render, run_doctor
 
@@ -221,6 +222,9 @@ def doctor(
             raise typer.Exit(code=2) from error
         typer.echo(f"Bundle de diagnóstico escrito en {bundle}", err=json_output)
     raise typer.Exit(code=exit_code(report))
+
+
+app.command(name="bench")(bench_command)
 
 
 def main() -> None:

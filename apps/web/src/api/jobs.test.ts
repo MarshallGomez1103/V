@@ -126,6 +126,7 @@ describe('api/jobs', () => {
       edited: false,
       revision: 1,
       speaker_id: null,
+      quality: { flags: [], avg_logprob: null },
       words: [],
     }
     stubFetch({ segments: [segment, { ...segment, id: 's2', speaker_id: 'S1' }] })
@@ -143,6 +144,16 @@ describe('api/jobs', () => {
     stubFetch({ segments: [{ ...segment, words: [{ start_ms: 0, end_ms: 5, text: 'a' }] }] })
     const noSpeaker = await getSegments('tr-1').catch((caught: unknown) => caught)
     expect((noSpeaker as JobApiError).code).toBe('invalid_response')
+
+    // S13.04: quality es obligatorio y bien formado.
+    stubFetch({ segments: [{ ...segment, quality: undefined }] })
+    const missing = await getSegments('tr-1').catch((caught: unknown) => caught)
+    expect((missing as JobApiError).code).toBe('invalid_response')
+    stubFetch({ segments: [{ ...segment, quality: { flags: [1], avg_logprob: null } }] })
+    const badFlags = await getSegments('tr-1').catch((caught: unknown) => caught)
+    expect((badFlags as JobApiError).code).toBe('invalid_response')
+    stubFetch({ segments: [{ ...segment, quality: { flags: ['low_confidence'], avg_logprob: -1.2 } }] })
+    expect((await getSegments('tr-1'))[0]?.quality.flags).toEqual(['low_confidence'])
 
     // Contrato nuevo: sin edited/revision/speaker_id el segmento es inválido.
     stubFetch({ segments: [{ id: 's1', start_ms: 0, end_ms: 10, text: 'a' }] })

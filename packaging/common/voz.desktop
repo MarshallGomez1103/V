@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=VOZ
+GenericName=Transcriber
+Comment=Local-first workspace for long-form transcription
+Exec=voz
+Icon=voz
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=transcription;speech;whisper;

@@ -6,7 +6,24 @@ import { JobScreen } from './JobScreen'
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
 })
+
+// El backend dice qué proveedores son cloud y cómo se llaman.
+const PROVIDERS = [
+  { id: 'openai', label: 'OpenAI', privacy_url: null, configured: true, cloud: true },
+  { id: 'acme', label: 'Acme Cloud', privacy_url: null, configured: false, cloud: true },
+]
+
+function stubProviders(body: unknown = PROVIDERS, ok = true) {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+    ok,
+    status: ok ? 200 : 500,
+    json: () => Promise.resolve(body),
+  } as unknown as Response)
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
 
 function makeJob(state: JobState, overrides: Partial<JobView> = {}): JobView {
   return {
@@ -127,5 +144,84 @@ describe('JobScreen', () => {
 
     expect(screen.getByRole('status').textContent).toMatch(/cancelaste/i)
     expect(screen.queryByRole('button', { name: 'Cancelar' })).toBeNull()
+  })
+
+  it('muestra el badge CLOUD y el aviso de privacidad mientras corre un job cloud', async () => {
+    stubProviders()
+    render(
+      <JobScreen
+        job={makeJob('TRANSCRIBING', {
+          progress: 0.3,
+          selection: {
+            option_id: 'opt-c',
+            provider_id: 'openai',
+            model_id: 'whisper-1',
+          },
+        })}
+      />,
+    )
+
+    const note = await screen.findByRole('note')
+    expect(within(note).getByText('CLOUD')).toBeDefined()
+    expect(note.textContent).toMatch(/se envía a openai mientras dura/i)
+  })
+
+  it('conserva el badge CLOUD al terminar, en pasado y con el nombre del backend', async () => {
+    stubProviders()
+    render(
+      <JobScreen
+        job={makeJob('COMPLETED', {
+          progress: 1,
+          transcript_id: 'tr-1',
+          selection: {
+            option_id: 'o',
+            provider_id: 'acme',
+            model_id: 'scribe',
+          },
+        })}
+      />,
+    )
+
+    expect((await screen.findByRole('note')).textContent).toMatch(
+      /usó acme cloud \(cloud\): tu audio salió de tu equipo/i,
+    )
+  })
+
+  it('un job local no muestra badge CLOUD', async () => {
+    const fetchMock = stubProviders()
+    render(
+      <JobScreen
+        job={makeJob('TRANSCRIBING', {
+          selection: {
+            option_id: 'o',
+            provider_id: 'faster-whisper',
+            model_id: 'turbo',
+          },
+        })}
+      />,
+    )
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled()
+    })
+    expect(screen.queryByText('CLOUD')).toBeNull()
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('si no se pueden consultar los proveedores no rompe ni inventa el aviso', async () => {
+    const fetchMock = stubProviders({}, false)
+    render(
+      <JobScreen
+        job={makeJob('TRANSCRIBING', {
+          selection: { option_id: 'o', provider_id: 'openai', model_id: 'm' },
+        })}
+      />,
+    )
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.getByRole('heading', { name: /transcribiendo/i })).toBeDefined()
   })
 })

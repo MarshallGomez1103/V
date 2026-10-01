@@ -72,6 +72,11 @@ export interface TranscriptWord {
   speaker_id: string | null
 }
 
+export interface SegmentQuality {
+  flags: string[]
+  avg_logprob: number | null
+}
+
 export interface TranscriptSegment {
   id: string
   start_ms: number
@@ -80,6 +85,8 @@ export interface TranscriptSegment {
   edited: boolean
   revision: number
   speaker_id: string | null
+  // S13.04/S13.12: pistas de calidad no destructivas; el texto no cambia.
+  quality: SegmentQuality
   // S7.04/S7.05: vacío si el segmento se editó o el modelo no dio palabras.
   words: TranscriptWord[]
 }
@@ -160,6 +167,15 @@ function isWord(value: unknown): value is TranscriptWord {
   )
 }
 
+function isQuality(value: unknown): value is SegmentQuality {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.flags) &&
+    value.flags.every((flag) => typeof flag === 'string') &&
+    (value.avg_logprob === null || typeof value.avg_logprob === 'number')
+  )
+}
+
 function isSegment(value: unknown): value is TranscriptSegment {
   return (
     isRecord(value) &&
@@ -170,6 +186,7 @@ function isSegment(value: unknown): value is TranscriptSegment {
     typeof value.edited === 'boolean' &&
     typeof value.revision === 'number' &&
     isNullableString(value.speaker_id) &&
+    isQuality(value.quality) &&
     Array.isArray(value.words) &&
     value.words.every(isWord)
   )

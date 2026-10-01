@@ -103,6 +103,8 @@ segments = Table(
     Column("edited", Boolean, nullable=False, server_default=false()),
     Column("revision", Integer, nullable=False, server_default="0"),
     Column("original_text", Text, nullable=True),
+    # JSON {"flags": [...], "avg_logprob": x}; NULL when nothing was flagged.
+    Column("quality_json", Text, nullable=True),
     CheckConstraint("start_ms >= 0", name="start_ms_non_negative"),
     CheckConstraint("end_ms > start_ms", name="offsets_increasing"),
 )

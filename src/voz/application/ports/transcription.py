@@ -126,6 +126,13 @@ class TranscriptionSegment:
     text: str
     words: tuple[TranscriptionWord, ...] = ()
     speaker: str | None = None  # opaque provider label when it diarizes
+    # Engine confidence metrics (S13.04/S13.05); None when the engine has none.
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    compression_ratio: float | None = None
+    # Set when the engine reported a span beyond the audio it was given, before
+    # the span is clipped to the chunk (S13.04 ``out_of_bounds``).
+    exceeds_audio: bool = False
 
     def __post_init__(self) -> None:
         if type(self.start_ms) is not int or type(self.end_ms) is not int:

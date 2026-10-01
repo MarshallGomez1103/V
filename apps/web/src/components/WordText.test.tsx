@@ -16,6 +16,7 @@ function segment(overrides: Partial<TranscriptSegment> = {}): TranscriptSegment 
     edited: false,
     revision: 0,
     speaker_id: null,
+    quality: { flags: [], avg_logprob: null },
     words: [
       { start_ms: 1000, end_ms: 1300, text: 'hola', speaker_id: null },
       { start_ms: 1300, end_ms: 1600, text: 'mundo', speaker_id: null },

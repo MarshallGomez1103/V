@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -62,6 +62,9 @@ class Entry:
     files: tuple[Item, ...]
     license: str = "MIT"
     multilingual: bool = True
+    kind: str = "asr"
+    requires: str | None = None
+    runtime_available: bool = True
 
 
 TINY = descriptor("tiny", "a" * 40)
@@ -147,6 +150,11 @@ def test_list_reports_catalog_state_sizes_disk_and_external_origins() -> None:
         "MIT",
         True,
     )
+    assert (tiny.key, tiny.provider_id, tiny.kind) == (
+        "faster-whisper:tiny",
+        "faster-whisper",
+        "asr",
+    )
     assert (tiny.size_bytes, tiny.installed, tiny.disk_bytes) == (15, True, 1000)
     assert [item.origin for item in tiny.external] == ["hf-cache"]
     assert (base.size_bytes, base.installed, base.disk_bytes) == (100, False, None)
@@ -223,3 +231,58 @@ def test_remove_translates_io_errors_without_leaking_paths() -> None:
 
     assert raised.value.code == "model_remove_failed"
     assert "/private" not in raised.value.user_message
+
+
+def test_models_with_the_same_id_in_two_providers_are_addressed_by_key() -> None:
+    cpp = replace(TINY, provider_id="whisper-cpp", revision="d" * 40)
+
+    class Both:
+        def entries(self) -> tuple[Entry, ...]:
+            return (
+                Entry(TINY, (Item(10),)),
+                Entry(cpp, (Item(20),), requires="whisper-cli"),
+            )
+
+    store = Store(cpp)
+    listed = ListModels(Both(), store).execute().models
+    assert [m.key for m in listed] == ["faster-whisper:tiny", "whisper-cpp:tiny"]
+    assert [m.installed for m in listed] == [False, True]
+    assert listed[1].requires == "whisper-cli"
+
+    with pytest.raises(ModelManagementError) as raised:  # bare id = faster-whisper
+        RemoveModel(Both(), store, Jobs(), Selections()).execute("tiny", "tiny")
+    assert raised.value.code == "model_not_installed"
+
+    key = "whisper-cpp:tiny"
+    removed = RemoveModel(Both(), store, Jobs(), Selections()).execute(key, key)
+    assert (removed.key, removed.model_id, store.removed) == (key, "tiny", [cpp])
+
+
+def test_diarization_entry_reports_kind_and_missing_runtime() -> None:
+    diar = ModelDescriptor(
+        provider_id="diarization",
+        model_id="sherpa-default",
+        display_name="Hablantes",
+        capabilities=frozenset({ModelCapability.DIARIZATION}),
+    )
+
+    class Catalog1:
+        def entries(self) -> tuple[Entry, ...]:
+            return (
+                Entry(
+                    diar,
+                    (Item(7),),
+                    kind="diarization",
+                    requires="diarization",
+                    runtime_available=False,
+                ),
+            )
+
+    (item,) = ListModels(Catalog1(), Store()).execute().models
+    assert (item.key, item.kind, item.requires, item.runtime_available) == (
+        "diarization:sherpa-default",
+        "diarization",
+        "diarization",
+        False,
+    )
+    assert (item.source, item.revision, item.profile) == (None, None, None)

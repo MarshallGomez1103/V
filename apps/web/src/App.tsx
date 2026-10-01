@@ -14,6 +14,8 @@ import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
 import { ModelManager } from './components/ModelManager'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
+import { ProvidersSettings } from './components/ProvidersSettings'
+import { ReviewQueue } from './components/ReviewQueue'
 import { SegmentEditor } from './components/SegmentEditor'
 import { SegmentList } from './components/SegmentList'
 import { SegmentSpeakerSelect } from './components/SegmentSpeakerSelect'
@@ -66,6 +68,7 @@ function describeJobError(error: unknown): string {
 export function App() {
   const [imported, setImported] = useState<ImportResult | null>(null)
   const [optionId, setOptionId] = useState<string | null>(null)
+  const [cloudConsent, setCloudConsent] = useState(true)
   const [jobId, setJobId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
@@ -84,6 +87,13 @@ export function App() {
   const [mode, setMode] = useState<'read' | 'edit'>('read')
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [speakersVersion, setSpeakersVersion] = useState(0)
+  const [loadedSegments, setLoadedSegments] = useState<TranscriptSegment[]>([])
+  const reviewSegment = useCallback(
+    (segment: TranscriptSegment) => {
+      seek(segment.start_ms)
+    },
+    [seek],
+  )
   const reloadSpeakers = useCallback(() => {
     setSpeakersVersion((version) => version + 1)
   }, [])
@@ -124,7 +134,7 @@ export function App() {
   )
 
   const startJob = useCallback(async () => {
-    if (!imported || !optionId) {
+    if (!imported || !optionId || !cloudConsent) {
       return
     }
     setCreating(true)
@@ -143,7 +153,7 @@ export function App() {
     } finally {
       setCreating(false)
     }
-  }, [diarization, imported, optionId])
+  }, [cloudConsent, diarization, imported, optionId])
 
   const job = events.job
   const transcriptId = job?.state === 'COMPLETED' ? job.transcript_id : null
@@ -209,8 +219,10 @@ export function App() {
                 </div>
                 <TranscriptionOptionsSelector
                   refreshKey={modelsVersion}
+                  mediaAssetId={imported.media.media_asset_id}
                   value={optionId}
                   onChange={setOptionId}
+                  onCloudConsentChange={setCloudConsent}
                   disabled={creating || jobId !== null}
                 />
                 <DiarizationOptions
@@ -227,7 +239,9 @@ export function App() {
                   <button
                     type="button"
                     className="import-submit"
-                    disabled={!optionId || creating || jobId !== null}
+                    disabled={
+                      !optionId || !cloudConsent || creating || jobId !== null
+                    }
                     onClick={() => void startJob()}
                   >
                     {creating ? 'Creando…' : 'Transcribir'}
@@ -310,12 +324,19 @@ export function App() {
                     onChanged={reloadSpeakers}
                   />
                 ) : null}
+                {transcriptId ? (
+                  <ReviewQueue
+                    segments={loadedSegments}
+                    onSelect={reviewSegment}
+                  />
+                ) : null}
                 <SegmentList
                   transcriptId={transcriptId}
                   onSeek={seek}
                   currentMs={currentMs}
                   renderText={renderSegmentText}
                   reloadKey={speakersVersion}
+                  onSegmentsLoaded={setLoadedSegments}
                 />
               </>
             ) : null}
@@ -350,6 +371,9 @@ export function App() {
 
           <div id="modelos" className="models-slot">
             <ModelManager onModelsChanged={refreshModels} />
+          </div>
+          <div id="proveedores-cloud" className="models-slot">
+            <ProvidersSettings onChanged={refreshModels} />
           </div>
         </section>
       </main>

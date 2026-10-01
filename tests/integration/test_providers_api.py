@@ -10,6 +10,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from voz.application.ports.cloud_providers import CloudProviderInfo
+from voz.infrastructure.cloud.provider_info import CLOUD_PROVIDER_INFO
 from voz.infrastructure.secrets import SECRETS_FILENAME, ProviderSecrets
 from voz.interfaces.api.providers import create_providers_router
 
@@ -21,7 +23,7 @@ def _client(tmp_path: Path, **environ: str) -> httpx.Client:
     app.include_router(
         create_providers_router(
             ProviderSecrets(tmp_path / "voz", environ=environ),
-            ("elevenlabs", "openai"),
+            CLOUD_PROVIDER_INFO,
         )
     )
     # TestClient is an httpx.Client; its own stubs resolve to Unknown under pyright.
@@ -32,9 +34,44 @@ def test_lists_providers_as_cloud_and_unconfigured(tmp_path: Path) -> None:
     response = _client(tmp_path).get("/api/providers")
     assert response.status_code == 200
     assert response.json() == [
-        {"id": "elevenlabs", "configured": False, "cloud": True},
-        {"id": "openai", "configured": False, "cloud": True},
+        {
+            "id": "openai",
+            "label": "OpenAI",
+            "privacy_url": "https://openai.com/policies/privacy-policy",
+            "configured": False,
+            "cloud": True,
+        },
+        {
+            "id": "elevenlabs",
+            "label": "ElevenLabs",
+            "privacy_url": "https://elevenlabs.io/privacy",
+            "configured": False,
+            "cloud": True,
+        },
     ]
+
+
+def test_lists_whatever_providers_the_composition_root_gives(tmp_path: Path) -> None:
+    app = FastAPI()
+    app.include_router(
+        create_providers_router(
+            ProviderSecrets(tmp_path / "voz", environ={}),
+            (
+                CloudProviderInfo("acme", "Acme Cloud", "https://acme.example/privacy"),
+                "bare",
+            ),
+        )
+    )
+    client = cast(httpx.Client, TestClient(app))  # pyright: ignore[reportUnknownArgumentType]
+    assert [
+        (p["id"], p["label"], p["privacy_url"])
+        for p in client.get("/api/providers").json()
+    ] == [
+        ("acme", "Acme Cloud", "https://acme.example/privacy"),
+        ("bare", "bare", None),
+    ]
+    assert client.put("/api/providers/acme/key", json={"key": "k"}).status_code == 204
+    assert client.put("/api/providers/nope/key", json={"key": "k"}).status_code == 404
 
 
 def test_put_then_get_then_delete_never_echoes_the_key(
@@ -47,7 +84,7 @@ def test_put_then_get_then_delete_never_echoes_the_key(
     assert put.content == b""
     listing = client.get("/api/providers")
     assert KEY not in listing.text
-    assert {"id": "openai", "configured": True, "cloud": True} in listing.json()
+    assert any(p["id"] == "openai" and p["configured"] for p in listing.json())
     assert (tmp_path / "voz" / SECRETS_FILENAME).stat().st_mode & 0o777 == 0o600
     assert client.delete("/api/providers/openai/key").status_code == 204
     assert client.get("/api/providers").json()[1]["configured"] is False
@@ -83,7 +120,10 @@ def test_insecure_file_is_409_with_stable_code(tmp_path: Path) -> None:
 
 def test_environment_key_counts_as_configured(tmp_path: Path) -> None:
     listing = _client(tmp_path, OPENAI_API_KEY=KEY).get("/api/providers").json()
-    assert {"id": "openai", "configured": True, "cloud": True} in listing
+    assert [(p["id"], p["configured"]) for p in listing] == [
+        ("openai", True),
+        ("elevenlabs", False),
+    ]
 
 
 def test_key_is_never_written_to_a_database(tmp_path: Path) -> None:

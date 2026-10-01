@@ -158,15 +158,15 @@ alterar los IDs.
 | ROBUST-002 | S14.02, S14.13 | `robustness2` | verificado | 18 escrituras críticas auditadas (synchronous=FULL, fsync antes de replace) y cierre/reapertura a mitad de job sin repetir chunks. |
 | PKG-004 | S15.10 | `robustness2` | verificado | Clone limpio en Bazzite: uv tool install, extra asr-local con CUDA float16 y servidor verificados; docs corregidas. |
 | OSS-AUDIT-001 | S16.19 | `robustness2` | verificado | scripts/audit-secrets.sh sobre árbol e historial: 0 HIGH; decisión de correo de autor pendiente antes de publicar. |
-| QUALITY-FLAGS-001 | S13.04, S13.05, S13.12 | `quality_flags` | en curso | Oleada 5c-1: flags no destructivos de alucinación/baja confianza, separados del texto literal. |
-| QUALITY-REVIEW-001 | S13.06 | `quality_flags` | en curso | Oleada 5c-1: cola de revisión de segmentos marcados. |
-| BENCH-001 | S13.08-S13.10 | `benchmark` | en curso | Oleada 5c-1: voz bench: tiempo, RTF, RAM/VRAM, dataset fuera de Git y WER/CER. |
-| BENCH-002 | S13.07 | `benchmark` | en curso | Oleada 5c-1: A/B turbo vs large-v3 medido sobre el mismo fixture. |
-| WCPP-004 | S9.10 | `benchmark` | en curso | Oleada 5c-1: stretch: whisper.cpp compilado y comparado CPU/GPU. |
-| CLOUD-UI-001 | S11.09 | `cloud_ui` | en curso | Oleada 5c-1: badge CLOUD, consentimiento, costo previo y claves desde la UI. |
-| MODELS-UI-002 | (completa S8) | `models_ui2` | en curso | Oleada 5c-1: ids con namespace, whisper.cpp y modelos de diarización en el Model Manager. |
-| PKG-005 | S15.06 | `packaging2` | en curso | Oleada 5c-1: workflow de release de prueba sin publicar. |
-| PKG-006 | S15.12, S15.13 | `packaging2` | en curso | Oleada 5c-1: prototipos AppImage/Flatpak medidos. |
+| QUALITY-FLAGS-001 | S13.04, S13.05, S13.12 | `quality_flags` | verificado | Métricas avg_logprob/no_speech/compression desde faster-whisper; flags repetition, silence_hallucination, out_of_bounds, low_confidence (puros, nunca tocan el texto); migración 0006 quality_json; API `quality`; regla S13.12 en docs/api/segments.md. |
+| QUALITY-REVIEW-001 | S13.06 | `quality_flags` | verificado | ReviewQueue: "N segmentos por revisar", filtro por tipo, anterior/siguiente con seek, marcar revisado (local a la sesión); filas con ⚠ accesible. |
+| BENCH-001 | S13.08-S13.10 | `benchmark` | verificado | `voz bench`: carga, RTF, pico RSS y VRAM (nvidia-smi), --json; dataset solo en XDG (rechaza dentro del checkout); WER/CER stdlib con normalización documentada. |
+| BENCH-002 | S13.07 | `benchmark` | verificado | Medido en RTX 4060: turbo CUDA RTF 0,025 WER 1,66 %; large-v3 RTF 0,073 WER 1,99 % (8,14 % en clip largo); ver docs/benchmarks.md (audio sintético). |
+| WCPP-004 | S9.10 | `benchmark` | verificado | whisper.cpp v1.9.4 compilado (CPU), ggml q5_0 con sha256 verificado: RTF 0,80 WER 1,83 %; JSON real de -ojf como fixture y test del adapter. |
+| CLOUD-UI-001 | S11.09 | `cloud_ui` | verificado | Badge CLOUD antes/durante/después, consentimiento obligatorio, estimación de costo, claves desde la UI sin mostrarlas; nombres/privacidad vienen del backend (S12.11 intacto). |
+| MODELS-UI-002 | (completa S8) | `models_ui2` | verificado | Claves `proveedor:modelo`; ManagedModelCatalog + RoutingModelStore: faster-whisper, whisper.cpp (si hay whisper-cli) y diarization:sherpa-default con descarga/borrado; smoke HTTP real OK. |
+| PKG-005 | S15.06 | `packaging2` | verificado | .github/workflows/release-dry-run.yml: build reproducible, checksums, install check, artifact 7 días, contents: read, sin publicar (no ejecutado: requiere push). |
+| PKG-006 | S15.12, S15.13 | `packaging2` | verificado | Prototipos medidos: AppImage base 46 MiB (arranque ~1 s), asr-local 1,42 GiB con CUDA; Flatpak base 52,6 MB instalado, asr-local 2,8 GB; recomendación en docs/packaging/appimage-flatpak.md. |
 
 ### Retomar en una sesión nueva
 
@@ -389,7 +389,7 @@ manualmente.
 - [x] **S9.07** Mapear fallos/cancelación a errores comunes.
 - [x] **S9.08** Pasar la suite completa de contract tests.
 - [x] **S9.09** Implementar fallback automático solo cuando sea seguro y visible.
-- [ ] **S9.10** Comparar rendimiento CPU/GPU con fixtures controlados.
+- [x] **S9.10** Comparar rendimiento CPU/GPU con fixtures controlados.
 
 **Criterio de salida:** existe una segunda implementación local completa bajo el
 mismo contrato.
@@ -424,7 +424,7 @@ el MVP junto con las Secciones 1–6.
 - [x] **S11.06** Reconstruir offsets globales sin solapamientos inválidos.
 - [x] **S11.07** Implementar retries/backoff solo para fallos recuperables.
 - [x] **S11.08** Estimar coste antes de enviar.
-- [ ] **S11.09** Mostrar indicador `CLOUD` antes y durante el job.
+- [x] **S11.09** Mostrar indicador `CLOUD` antes y durante el job.
 - [x] **S11.10** Añadir fake client sin llamadas facturables.
 - [x] **S11.11** Pasar contract tests con el fake client.
 - [x] **S11.12** Documentar privacidad y datos enviados.
@@ -455,15 +455,15 @@ en dependencia del producto.
 - [ ] **S13.01** Modelar glossary/keyterms por proyecto.
 - [ ] **S13.02** Crear perfil académico explícito y reproducible.
 - [ ] **S13.03** Hacer VAD configurable por perfil.
-- [ ] **S13.04** Implementar heurísticas no destructivas contra alucinaciones.
-- [ ] **S13.05** Señalar segmentos de baja confianza.
-- [ ] **S13.06** Crear flujo de revisión de baja confianza.
-- [ ] **S13.07** Ejecutar comparación A/B de modelos sobre el mismo fixture.
-- [ ] **S13.08** Medir tiempo, realtime factor, RAM y VRAM.
-- [ ] **S13.09** Mantener dataset personal fuera de Git.
-- [ ] **S13.10** Añadir herramienta opcional de WER/CER.
+- [x] **S13.04** Implementar heurísticas no destructivas contra alucinaciones.
+- [x] **S13.05** Señalar segmentos de baja confianza.
+- [x] **S13.06** Crear flujo de revisión de baja confianza.
+- [x] **S13.07** Ejecutar comparación A/B de modelos sobre el mismo fixture.
+- [x] **S13.08** Medir tiempo, realtime factor, RAM y VRAM.
+- [x] **S13.09** Mantener dataset personal fuera de Git.
+- [x] **S13.10** Añadir herramienta opcional de WER/CER.
 - [ ] **S13.11** Recomendar perfil por idioma usando resultados medidos.
-- [ ] **S13.12** Separar transcript literal de cualquier postprocesamiento.
+- [x] **S13.12** Separar transcript literal de cualquier postprocesamiento.
 
 **Criterio de salida:** el usuario puede medir qué configuración funciona mejor
 con sus grabaciones sin presentar intuiciones como resultados.
@@ -495,14 +495,14 @@ los fallos dan acciones recuperables.
 - [x] **S15.03** Verificar instalación con `uv tool install`.
 - [x] **S15.04** Incluir el bundle frontend en el paquete.
 - [x] **S15.05** Verificar ejecución sin checkout de desarrollo.
-- [ ] **S15.06** Crear workflow de release privado/de prueba.
+- [x] **S15.06** Crear workflow de release privado/de prueba.
 - [x] **S15.07** Generar checksums de artefactos.
 - [x] **S15.08** Mantener changelog.
 - [x] **S15.09** Adoptar versionado semántico.
 - [x] **S15.10** Verificar instalación documentada en Bazzite.
 - [x] **S15.11** Documentar instalación Linux genérica.
-- [ ] **S15.12** Evaluar AppImage con prototipo medido.
-- [ ] **S15.13** Evaluar Flatpak con prototipo medido.
+- [x] **S15.12** Evaluar AppImage con prototipo medido.
+- [x] **S15.13** Evaluar Flatpak con prototipo medido.
 - [ ] **S15.14** Publicar una release solo con autorización explícita.
 
 **Criterio de salida:** un tercero puede instalar un artefacto siguiendo solo el

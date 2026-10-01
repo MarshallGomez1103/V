@@ -1,0 +1,57 @@
+name: Release dry run
+
+# S15.06: ensayo de release. Construye los artefactos reproducibles, genera
+# SHA256SUMS, comprueba la instalación y los sube como *workflow artifacts*
+# (retención corta). NUNCA crea una GitHub Release ni publica en PyPI: por eso el
+# único permiso es `contents: read` y no hay ningún paso de publicación.
+#
+# Disparadores:
+#   - workflow_dispatch: manual desde la pestaña Actions.
+#   - push de tags `v*`: ensaya el mismo proceso al etiquetar. Sigue sin publicar
+#     nada; publicar es una decisión manual del mantenedor (docs/release.md).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    name: Dry run / wheel + sdist + checksums
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Reproducible build (3 builds, same SHA-256)
+        run: scripts/check-reproducible-build.sh
+      - name: Build artifacts
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          uv build --out-dir dist
+      - name: Checksums (SHA256SUMS)
+        run: scripts/checksums.sh dist
+      - name: Install the wheel with uv tool and run outside the checkout
+        run: scripts/check-install.sh dist/*.whl
+      - name: Upload workflow artifacts (not a release)
+        uses: actions/upload-artifact@v7
+        with:
+          name: voz-dry-run-${{ github.sha }}
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7

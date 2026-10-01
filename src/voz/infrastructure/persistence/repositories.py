@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import (
@@ -204,10 +206,44 @@ def _segment_values(segment: Segment) -> dict[str, object]:
         "edited": segment.edited,
         "revision": segment.revision,
         "original_text": segment.original_text,
+        "quality_json": _quality_json(segment),
     }
 
 
+def _quality_json(segment: Segment) -> str | None:
+    if not segment.quality_flags and segment.avg_logprob is None:
+        return None
+    return json.dumps(
+        {"flags": list(segment.quality_flags), "avg_logprob": segment.avg_logprob},
+        separators=(",", ":"),
+    )
+
+
+def _quality_from_json(value: object) -> tuple[tuple[str, ...], float | None]:
+    """Decode ``quality_json``; a damaged value means "no hints", never a crash."""
+    if not isinstance(value, str):
+        return (), None
+    try:
+        raw: object = json.loads(value)
+    except ValueError:
+        return (), None
+    if not isinstance(raw, dict):
+        return (), None
+    data = cast(dict[str, object], raw)
+    raw_flags = data.get("flags")
+    flags = (
+        tuple(f for f in cast(list[object], raw_flags) if isinstance(f, str) and f)
+        if isinstance(raw_flags, list)
+        else ()
+    )
+    logprob = data.get("avg_logprob")
+    if isinstance(logprob, bool) or not isinstance(logprob, (int, float)):
+        return flags, None
+    return flags, float(logprob)
+
+
 def _segment_from_row(row: RowMapping, segment_words: Sequence[Word]) -> Segment:
+    flags, avg_logprob = _quality_from_json(row["quality_json"])
     return Segment(
         id=_uuid(row, "id"),
         transcript_id=_uuid(row, "transcript_id"),
@@ -219,6 +255,8 @@ def _segment_from_row(row: RowMapping, segment_words: Sequence[Word]) -> Segment
         edited=bool(row["edited"]),
         revision=_integer(row, "revision"),
         original_text=_optional_text(row, "original_text"),
+        quality_flags=flags,
+        avg_logprob=avg_logprob,
     )
 
 

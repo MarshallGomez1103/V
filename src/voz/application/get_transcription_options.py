@@ -58,6 +58,7 @@ class TranscriptionOption:
     recommendation: Recommendation | None
     blocking_reasons: tuple[BlockingReason, ...]
     cloud: bool = False
+    provider_label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +176,7 @@ class GetTranscriptionOptions:
                     recommendation=recommendation,
                     blocking_reasons=tuple(reasons),
                     cloud=registration.cloud,
+                    provider_label=registration.provider_label,
                 )
             )
         return TranscriptionOptions(

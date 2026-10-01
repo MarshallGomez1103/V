@@ -1,0 +1,91 @@
+.providers-settings {
+  display: grid;
+  gap: 16px;
+}
+
+.providers-settings h2,
+.providers-settings h3,
+.providers-settings p {
+  margin: 0;
+}
+
+.provider-intro,
+.provider-note {
+  color: var(--muted);
+}
+
+.provider-note {
+  font-size: 0.875rem;
+}
+
+.provider-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provider-row {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.provider-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-status {
+  padding: 2px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.provider-status--configured {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.provider-form {
+  display: grid;
+  gap: 6px;
+}
+
+.provider-form label {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.provider-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.provider-controls input {
+  flex: 1 1 16em;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+}
+
+.provider-error {
+  color: var(--warning);
+}
+
+.provider-done {
+  color: var(--lime);
+}
