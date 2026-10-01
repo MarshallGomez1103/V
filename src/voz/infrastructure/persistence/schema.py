@@ -263,11 +263,29 @@ transcription_job_selections = Table(
     Column("created_at", String(40), nullable=False),
     Column("diarization_json", Text, nullable=True),
     Column("diarization_error_code", Text, nullable=True),
+    # Full QualityProfile JSON and the frozen glossary list (S13.01/S13.02);
+    # NULL for jobs created before profiles existed.
+    Column("profile_json", Text, nullable=True),
+    Column("glossary_json", Text, nullable=True),
+)
+
+project_glossaries = Table(
+    "project_glossaries",
+    metadata,
+    Column(
+        "project_id",
+        String(36),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("terms_json", Text, nullable=False),
+    Column("updated_at", String(40), nullable=False),
 )
 
 __all__ = [
     "media_assets",
     "metadata",
+    "project_glossaries",
     "projects",
     "segments",
     "speaker_turns",

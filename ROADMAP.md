@@ -167,10 +167,10 @@ alterar los IDs.
 | MODELS-UI-002 | (completa S8) | `models_ui2` | verificado | Claves `proveedor:modelo`; ManagedModelCatalog + RoutingModelStore: faster-whisper, whisper.cpp (si hay whisper-cli) y diarization:sherpa-default con descarga/borrado; smoke HTTP real OK. |
 | PKG-005 | S15.06 | `packaging2` | verificado | .github/workflows/release-dry-run.yml: build reproducible, checksums, install check, artifact 7 días, contents: read, sin publicar (no ejecutado: requiere push). |
 | PKG-006 | S15.12, S15.13 | `packaging2` | verificado | Prototipos medidos: AppImage base 46 MiB (arranque ~1 s), asr-local 1,42 GiB con CUDA; Flatpak base 52,6 MB instalado, asr-local 2,8 GB; recomendación en docs/packaging/appimage-flatpak.md. |
-| QUALITY-CORE-001 | S13.01 | `quality_core` | en curso | Oleada 5c-2: glosario/keyterms por proyecto (migración 0007) hacia hotwords/keyterms. |
-| QUALITY-CORE-002 | S13.02, S13.03, S13.11 | `quality_core` | en curso | Oleada 5c-2: perfiles reproducibles con VAD y recomendación por idioma desde mediciones. |
-| INTEGRITY-001 | (riesgos) | `integrity` | en curso | Oleada 5c-2: speakers cloud como entidades y job+selección atómicos. |
-| DOCS-DEMO-001 | S16.02 | `docs_demo` | en curso | Oleada 5c-2: capturas reales reproducibles con Chrome headless. |
+| QUALITY-CORE-001 | S13.01 | `quality_core` | verificado | Glosario por proyecto (≤50 términos; migración 0007) congelado en la selección del job; a faster-whisper como `hotwords` y a keyterms del proveedor cloud; smoke real en RTX 4060 con "VOZ"/"presupuesto" transcritos. |
+| QUALITY-CORE-002 | S13.02, S13.03, S13.11 | `quality_core` | verificado | Perfiles `default`/`academic` v1 inmutables guardados completos en la selección; VAD por perfil (smoke real con academic+VAD OK); `GET /api/quality-profiles?language=` recomienda solo con mediciones (es/default, sintético) y dice "sin medición" en lo demás. |
+| INTEGRITY-001 | (riesgos) | `integrity` | verificado | Etiquetas `speaker` de proveedores cloud → entidades Speaker idempotentes (la diarización local gana); job y selección en una transacción (`add_with_selection`) con test de rollback. |
+| DOCS-DEMO-001 | S16.02 | `docs_demo` | verificado | `scripts/capture-screenshots.sh`: XDG temporal, turbo importado de Buzz, transcripción real en GPU y 7 capturas por CDP con Chrome flatpak headless; docs/demo.md y README. |
 
 ### Retomar en una sesión nueva
 
@@ -456,9 +456,9 @@ en dependencia del producto.
 
 ## Sección 13 — Calidad de transcripción
 
-- [ ] **S13.01** Modelar glossary/keyterms por proyecto.
-- [ ] **S13.02** Crear perfil académico explícito y reproducible.
-- [ ] **S13.03** Hacer VAD configurable por perfil.
+- [x] **S13.01** Modelar glossary/keyterms por proyecto.
+- [x] **S13.02** Crear perfil académico explícito y reproducible.
+- [x] **S13.03** Hacer VAD configurable por perfil.
 - [x] **S13.04** Implementar heurísticas no destructivas contra alucinaciones.
 - [x] **S13.05** Señalar segmentos de baja confianza.
 - [x] **S13.06** Crear flujo de revisión de baja confianza.
@@ -466,7 +466,7 @@ en dependencia del producto.
 - [x] **S13.08** Medir tiempo, realtime factor, RAM y VRAM.
 - [x] **S13.09** Mantener dataset personal fuera de Git.
 - [x] **S13.10** Añadir herramienta opcional de WER/CER.
-- [ ] **S13.11** Recomendar perfil por idioma usando resultados medidos.
+- [x] **S13.11** Recomendar perfil por idioma usando resultados medidos.
 - [x] **S13.12** Separar transcript literal de cualquier postprocesamiento.
 
 **Criterio de salida:** el usuario puede medir qué configuración funciona mejor
@@ -515,7 +515,7 @@ README, sin depender del checkout.
 ## Sección 16 — Open source readiness
 
 - [x] **S16.01** Crear README profesional y honesto sobre el estado actual.
-- [ ] **S16.02** Añadir demo y capturas correspondientes a funciones reales.
+- [x] **S16.02** Añadir demo y capturas correspondientes a funciones reales.
 - [x] **S16.03** Crear `CONTRIBUTING.md`.
 - [x] **S16.04** Crear `CODE_OF_CONDUCT.md`.
 - [x] **S16.05** Crear `SECURITY.md` con canal de reporte.

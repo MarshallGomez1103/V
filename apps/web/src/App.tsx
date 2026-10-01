@@ -10,10 +10,12 @@ import {
   type DiarizationRequest,
 } from './components/DiarizationOptions'
 import { ExportMenu } from './components/ExportMenu'
+import { GlossaryEditor } from './components/GlossaryEditor'
 import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
 import { ModelManager } from './components/ModelManager'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
+import { ProfileSelector } from './components/ProfileSelector'
 import { ProvidersSettings } from './components/ProvidersSettings'
 import { ReviewQueue } from './components/ReviewQueue'
 import { SegmentEditor } from './components/SegmentEditor'
@@ -69,6 +71,7 @@ export function App() {
   const [imported, setImported] = useState<ImportResult | null>(null)
   const [optionId, setOptionId] = useState<string | null>(null)
   const [cloudConsent, setCloudConsent] = useState(true)
+  const [profile, setProfile] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
@@ -146,6 +149,7 @@ export function App() {
         option_id: optionId,
         language: null, // ponytail: idioma autodetectado; selector de idioma en un corte posterior
         diarization,
+        ...(profile ? { profile } : {}),
       })
       setJobId(job.id)
     } catch (error: unknown) {
@@ -153,7 +157,7 @@ export function App() {
     } finally {
       setCreating(false)
     }
-  }, [cloudConsent, diarization, imported, optionId])
+  }, [cloudConsent, diarization, imported, optionId, profile])
 
   const job = events.job
   const transcriptId = job?.state === 'COMPLETED' ? job.transcript_id : null
@@ -223,6 +227,16 @@ export function App() {
                   value={optionId}
                   onChange={setOptionId}
                   onCloudConsentChange={setCloudConsent}
+                  disabled={creating || jobId !== null}
+                />
+                <ProfileSelector
+                  value={profile}
+                  onChange={setProfile}
+                  language={null}
+                  disabled={creating || jobId !== null}
+                />
+                <GlossaryEditor
+                  projectId={imported.project.id}
                   disabled={creating || jobId !== null}
                 />
                 <DiarizationOptions

@@ -17,6 +17,7 @@ from voz.application.get_transcription_options import (
 )
 from voz.application.ports.diarization import DiarizationOptions
 from voz.application.ports.diarization_availability import DiarizationAvailability
+from voz.application.ports.project_glossary import ProjectGlossaryRepository
 from voz.application.ports.repositories import (
     MediaAssetRepository,
     ProjectRepository,
@@ -24,8 +25,10 @@ from voz.application.ports.repositories import (
 )
 from voz.application.ports.transcription_job_selection import (
     JobSelection,
+    JobWithSelectionWriter,
     TranscriptionJobSelectionRepository,
 )
+from voz.application.quality_profiles import DEFAULT_PROFILE_NAME, get_profile
 from voz.application.resource_requirements import find_shortfall
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
@@ -42,6 +45,7 @@ class CreateJobFailureCode(StrEnum):
     INSUFFICIENT_VRAM = "insufficient_vram"
     INSUFFICIENT_RAM = "insufficient_ram"
     DIARIZATION_UNAVAILABLE = "diarization_unavailable"
+    QUALITY_PROFILE_UNKNOWN = "quality_profile_unknown"
 
 
 class CreateJobError(RuntimeError):
@@ -81,6 +85,10 @@ class CreateTranscriptionJob:
     selections: TranscriptionJobSelectionRepository
     diarization_availability: DiarizationAvailability | None = None
     """``None`` means diarization is not wired, so requesting it is refused."""
+    glossaries: ProjectGlossaryRepository | None = None
+    """``None`` means no glossary is wired: jobs get an empty one."""
+    job_writer: JobWithSelectionWriter | None = None
+    """Writes job and selection in one transaction; ``None`` falls back to two."""
     id_factory: Callable[[], UUID] = uuid4
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
@@ -92,6 +100,7 @@ class CreateTranscriptionJob:
         option_id: str,
         language: str | None = None,
         diarization: DiarizationOptions | None = None,
+        profile: str | None = None,
     ) -> CreatedJob:
         if self.projects.get(project_id) is None:
             raise CreateJobError(
@@ -103,6 +112,12 @@ class CreateTranscriptionJob:
             raise CreateJobError(
                 CreateJobFailureCode.MEDIA_ASSET_NOT_FOUND,
                 "The media asset does not exist in this project.",
+            )
+        quality_profile = get_profile(profile or DEFAULT_PROFILE_NAME)
+        if quality_profile is None:
+            raise CreateJobError(
+                CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN,
+                "The quality profile is not known.",
             )
         option = self._current_option(option_id)
         model = self._descriptor_for(option_id)
@@ -140,9 +155,16 @@ class CreateTranscriptionJob:
             language=language,
             created_at=now,
             diarization=diarization,
+            quality_profile=quality_profile,
+            glossary=(
+                () if self.glossaries is None else self.glossaries.get(project_id)
+            ),
         )
-        self.jobs.add(job)
-        self.selections.add(selection)
+        if self.job_writer is None:
+            self.jobs.add(job)
+            self.selections.add(selection)
+        else:
+            self.job_writer.add_with_selection(job, selection)
         return CreatedJob(job, selection)
 
     def _check_memory(

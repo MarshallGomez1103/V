@@ -648,3 +648,27 @@ def test_default_transport_rejects_non_http_urls() -> None:
                 timeout_s=1,
             )
         )
+
+
+# --- S13.01: project glossary -------------------------------------------------
+
+
+def test_glossary_is_sent_as_keyterms_after_the_constructor_ones() -> None:
+    transport = _FakeTransport()
+
+    _run(
+        _provider(transport, keyterms=["VOZ"]),
+        _options(glossary=("Mitocondria", "VOZ")),
+    )
+
+    terms = [v for k, v in _fields(transport.bodies[0]) if k == "keyterms"]
+    assert terms == ["VOZ", "Mitocondria"]
+
+
+def test_glossary_over_the_provider_limit_fails_typed() -> None:
+    transport = _FakeTransport()
+    glossary = tuple(f"t{i}" for i in range(101))
+
+    with pytest.raises(TranscriptionError, match="glossary"):
+        _run(_provider(transport), _options(glossary=glossary))
+    assert not transport.bodies

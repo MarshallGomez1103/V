@@ -20,7 +20,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID, uuid5
 
-from voz.application.assign_speakers import AssignSpeakers
+from voz.application.assign_speakers import AssignProviderSpeakers, AssignSpeakers
 from voz.application.chunked_transcription import (
     ChunkProgress,
     merge_transcription_language,
@@ -199,6 +199,8 @@ class JobRunner:
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     diarization_provider_for: DiarizationProviderFactory | None = None
     assign_speakers: AssignSpeakers | None = None
+    assign_provider_speakers: AssignProviderSpeakers | None = None
+    """Speakers from cloud ASR labels; only used when no local diarization is asked."""
     release_asr: ReleaseAsr = lambda selection: None
     """Free the ASR engine before diarizing (S6.15/S14.07); must be idempotent."""
     chunk_duration_ms: int = DEFAULT_CHUNK_DURATION_MS
@@ -358,7 +360,10 @@ class JobRunner:
                         job=job,
                         duration_ms=media_asset.duration_ms,
                         options=TranscriptionOptions(
-                            model=selection.model, language=selection.language
+                            model=selection.model,
+                            language=selection.language,
+                            glossary=selection.glossary,
+                            quality_profile=selection.quality_profile,
                         ),
                         chunk_duration_ms=self.chunk_duration_ms,
                         overlap_ms=self.overlap_ms,
@@ -380,7 +385,11 @@ class JobRunner:
                     self._persist_transcript(
                         job, selection, result, media_asset.duration_ms
                     )
-                    if _wants_diarization(selection):
+                    if selection.diarization is None:
+                        selection = self._assign_provider_speakers(
+                            job, selection, result
+                        )
+                    elif _wants_diarization(selection):
                         if diarized is None:
                             # Resumed after a crash: the turns were in memory only.
                             diarized, selection = self._diarize(
@@ -447,6 +456,29 @@ class JobRunner:
                     "Speaker assignment is not wired.",
                 )
             self.assign_speakers.execute(transcript_id_for(job.id), diarized)
+        except Exception as error:
+            return self._record_diarization_error(job, selection, error)
+        return selection
+
+    def _assign_provider_speakers(
+        self,
+        job: TranscriptionJob,
+        selection: JobSelection,
+        result: TranscriptionResult,
+    ) -> JobSelection:
+        """Entities for the labels a cloud ASR already gave; idempotent on resume."""
+        if self.assign_provider_speakers is None:
+            return selection
+        transcript_id = transcript_id_for(job.id)
+        labels = {
+            uuid5(transcript_id, f"segment:{index}"): item.speaker
+            for index, item in enumerate(result.segments)
+            if item.speaker and item.text.strip()
+        }
+        if not labels:
+            return selection
+        try:
+            self.assign_provider_speakers.execute(transcript_id, job.project_id, labels)
         except Exception as error:
             return self._record_diarization_error(job, selection, error)
         return selection

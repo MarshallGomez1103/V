@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 import importlib
 import math
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 from pathlib import Path
 from threading import RLock
 from traceback import clear_frames
@@ -136,6 +136,33 @@ def _metric(
     if (low is not None and number < low) or (high is not None and number > high):
         return None
     return number
+
+
+def _decoding_arguments(options: TranscriptionOptions) -> dict[str, object]:
+    """Engine keyword arguments for the quality profile and glossary (S13.01-03).
+
+    No profile and no glossary add nothing, so the engine keeps its own defaults.
+    The glossary goes in ``hotwords`` rather than ``initial_prompt``: Faster
+    Whisper prepends hotwords to the prompt of *every* decoding window, while
+    ``initial_prompt`` only seeds the first one, and it leaves ``initial_prompt``
+    free. The library truncates oversized hotwords itself. VAD is ignored by the
+    library when explicit ``clip_timestamps`` are used (``options.clip``).
+    """
+    arguments: dict[str, object] = {}
+    profile = options.quality_profile
+    if profile is not None:
+        arguments.update(
+            beam_size=profile.beam_size,
+            temperature=list(profile.temperature),
+            condition_on_previous_text=profile.condition_on_previous_text,
+            no_speech_threshold=profile.no_speech_threshold,
+            vad_filter=profile.vad is not None,
+        )
+        if profile.vad is not None:
+            arguments["vad_parameters"] = profile.vad.to_dict()
+    if options.glossary:
+        arguments["hotwords"] = ", ".join(options.glossary)
+    return arguments
 
 
 def _default_engine_factory(
@@ -311,7 +338,13 @@ class FasterWhisperProvider:
         word_timestamps: bool,
         cancellation: TranscriptionCancellationToken | None,
     ) -> tuple[list[TranscriptionSegment], str | None]:
-        raw_segments, info = engine.transcribe(
+        # Profile/glossary arguments are optional engine keywords; the minimal
+        # protocol above stays unchanged, so call through a loose signature.
+        transcribe = cast(
+            "Callable[..., tuple[Iterable[_EngineSegment], _EngineInfo]]",
+            engine.transcribe,
+        )
+        raw_segments, info = transcribe(
             audio,
             language=options.language,
             word_timestamps=word_timestamps,
@@ -323,6 +356,7 @@ class FasterWhisperProvider:
                     options.clip.end_ms / 1_000,
                 ]
             ),
+            **_decoding_arguments(options),
         )
         try:
             self._raise_if_cancelled(cancellation)

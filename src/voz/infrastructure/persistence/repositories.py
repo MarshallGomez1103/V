@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql.elements import ColumnElement
 
+from voz.application.ports.transcription_job_selection import JobSelection
 from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.entities.project import Project
 from voz.domain.entities.segment import Segment
@@ -39,9 +40,13 @@ from voz.infrastructure.persistence.schema import (
     segments,
     speaker_turns,
     speakers,
+    transcription_job_selections,
     transcription_jobs,
     transcripts,
     words,
+)
+from voz.infrastructure.persistence.transcription_job_selections import (
+    selection_values,
 )
 
 
@@ -790,6 +795,16 @@ class SqliteTranscriptionJobRepository:
     def add(self, job: TranscriptionJob) -> None:
         with self._engine.begin() as connection:
             connection.execute(insert(transcription_jobs).values(_job_values(job)))
+
+    def add_with_selection(
+        self, job: TranscriptionJob, selection: JobSelection
+    ) -> None:
+        """Insert the job and its selection snapshot in one transaction."""
+        with self._engine.begin() as connection:
+            connection.execute(insert(transcription_jobs).values(_job_values(job)))
+            connection.execute(
+                insert(transcription_job_selections).values(selection_values(selection))
+            )
 
     def save(self, job: TranscriptionJob) -> None:
         _save(

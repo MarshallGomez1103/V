@@ -8,8 +8,12 @@ set -euo pipefail
 
 work="$(mktemp -d)"
 pid=""
+flatpak_app=""
+[[ "${1:-}" == flatpak ]] && flatpak_app="${*: -1}"
 cleanup() {
   [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+  # matar `flatpak run` no termina la app del sandbox (quedaban instancias vivas)
+  [[ -n "$flatpak_app" ]] && flatpak kill "$flatpak_app" 2>/dev/null || true
   rm -rf "$work"
 }
 trap cleanup EXIT

@@ -366,3 +366,62 @@ def test_non_startable_option_returns_blocking_reasons(tmp_path: Path) -> None:
         assert "model_not_registered" in cast(list[str], detail["blocking_reasons"])
     finally:
         harness.close()
+
+
+def test_job_defaults_to_the_default_profile_and_exposes_it(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, created = harness.request(
+            "POST", "/api/jobs", body=harness.create_body()
+        )
+
+        assert status == 201
+        selection = cast(dict[str, object], created["selection"])
+        profile = cast(dict[str, object], selection["quality_profile"])
+        assert (profile["name"], profile["version"], profile["vad"]) == (
+            "default",
+            1,
+            None,
+        )
+        assert selection["glossary"] == []
+    finally:
+        harness.close()
+
+
+def test_job_stores_the_requested_profile_with_effective_parameters(
+    tmp_path: Path,
+) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, created = harness.request(
+            "POST", "/api/jobs", body=harness.create_body(profile="academic")
+        )
+        assert status == 201
+        status, fetched = harness.request("GET", f"/api/jobs/{created['id']}")
+
+        selection = cast(dict[str, object], fetched["selection"])
+        profile = cast(dict[str, object], selection["quality_profile"])
+        assert profile["name"] == "academic"
+        assert profile["condition_on_previous_text"] is False
+        assert (
+            cast(dict[str, object], profile["vad"])["min_silence_duration_ms"] == 1000
+        )
+    finally:
+        harness.close()
+
+
+def test_unknown_profile_is_a_typed_422_and_creates_no_job(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, body = harness.request(
+            "POST", "/api/jobs", body=harness.create_body(profile="nope")
+        )
+
+        assert status == 422
+        assert _detail(body)["code"] == "quality_profile_unknown"
+        _, listed = harness.request(
+            "GET", "/api/jobs", query=f"project_id={harness.project.id}"
+        )
+        assert listed["jobs"] == []
+    finally:
+        harness.close()

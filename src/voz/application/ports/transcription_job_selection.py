@@ -10,6 +10,8 @@ from uuid import UUID
 from voz.application.asr_device_selection import ExecutionDecision
 from voz.application.ports.diarization import DiarizationOptions
 from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.quality_profile import QualityProfile
+from voz.domain.entities.transcription_job import TranscriptionJob
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +33,10 @@ class JobSelection:
     """Speaker diarization requested for this job; ``None`` means disabled."""
     diarization_error_code: str | None = None
     """Stable code when diarization failed but the transcript was kept."""
+    quality_profile: QualityProfile | None = None
+    """Full decoding recipe used (S13.02); ``None`` for jobs from before profiles."""
+    glossary: tuple[str, ...] = ()
+    """Project glossary at creation time, frozen so the job can be repeated."""
 
     def __post_init__(self) -> None:
         if not isinstance(cast(object, self.job_id), UUID):
@@ -41,6 +47,8 @@ class JobSelection:
             raise ValueError("option_id must be a non-empty trimmed string")
         if self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
             raise ValueError("created_at must be timezone-aware")
+        if not isinstance(cast(object, self.glossary), tuple):
+            raise TypeError("glossary must be a tuple of strings")
 
 
 @runtime_checkable
@@ -60,4 +68,19 @@ class TranscriptionJobSelectionRepository(Protocol):
         ...
 
 
-__all__ = ["JobSelection", "TranscriptionJobSelectionRepository"]
+@runtime_checkable
+class JobWithSelectionWriter(Protocol):
+    """Create a job and its selection snapshot as one atomic write."""
+
+    def add_with_selection(
+        self, job: TranscriptionJob, selection: JobSelection
+    ) -> None:
+        """Persist both or neither; a failure leaves no orphan job."""
+        ...
+
+
+__all__ = [
+    "JobSelection",
+    "JobWithSelectionWriter",
+    "TranscriptionJobSelectionRepository",
+]

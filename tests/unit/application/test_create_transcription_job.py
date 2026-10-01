@@ -29,6 +29,7 @@ from voz.application.ports.transcription_options import (
     ModelRegistration,
     RuntimeAvailability,
 )
+from voz.application.quality_profiles import ACADEMIC_PROFILE, DEFAULT_PROFILE
 from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import (
@@ -350,3 +351,91 @@ def test_unmeasured_memory_never_blocks() -> None:
     _start(create, LARGE)
 
     assert len(jobs.items) == 1
+
+
+# --- S13.01/S13.02: quality profile and glossary snapshot ---------------------
+
+
+class Glossaries:
+    def __init__(self, terms: tuple[str, ...]) -> None:
+        self.terms = terms
+
+    def get(self, project_id: UUID) -> tuple[str, ...]:
+        return self.terms if project_id == PROJECT.id else ()
+
+    def put(self, project_id: UUID, terms: tuple[str, ...]) -> None:
+        self.terms = terms
+
+
+def test_default_profile_and_project_glossary_are_frozen_into_the_selection() -> None:
+    create, _, selections = use_case()
+    glossaries = Glossaries(("Mitocondria", "VOZ"))
+    create = replace(create, glossaries=glossaries)
+
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+    )
+
+    assert created.selection.quality_profile == DEFAULT_PROFILE
+    assert created.selection.glossary == ("Mitocondria", "VOZ")
+    # Editing the glossary later does not change what this job used.
+    glossaries.put(PROJECT.id, ("otro",))
+    snapshot = selections.get(created.job.id)
+    assert snapshot is not None and snapshot.glossary == ("Mitocondria", "VOZ")
+
+
+def test_named_profile_is_stored_with_its_effective_parameters() -> None:
+    create, _, selections = use_case()
+
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+        profile="academic",
+    )
+
+    assert created.selection.quality_profile == ACADEMIC_PROFILE
+    assert created.selection.glossary == ()  # no glossary wired
+    stored = selections.get(created.job.id)
+    assert stored is not None and stored.quality_profile is not None
+    assert stored.quality_profile.vad is not None
+
+
+def test_unknown_profile_is_rejected_before_persisting() -> None:
+    create, jobs, selections = use_case()
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+            profile="turbo-ultra",
+        )
+
+    assert error.value.code is CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN
+    assert not jobs.items and not selections.items
+
+
+def test_job_writer_persists_job_and_selection_in_one_call() -> None:
+    written: list[tuple[TranscriptionJob, JobSelection]] = []
+
+    class Writer:
+        def add_with_selection(
+            self, job: TranscriptionJob, selection: JobSelection
+        ) -> None:
+            written.append((job, selection))
+
+    create, jobs, selections = use_case()
+    create.job_writer = Writer()
+
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+        language=None,
+    )
+
+    assert written == [(created.job, created.selection)]
+    assert jobs.items == {} and selections.items == {}

@@ -21,7 +21,7 @@ from voz.application.asr_device_selection import (
     HardwareCapabilities,
     select_execution,
 )
-from voz.application.assign_speakers import AssignSpeakers
+from voz.application.assign_speakers import AssignProviderSpeakers, AssignSpeakers
 from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.edit_segment import EditSegmentText
 from voz.application.estimate_cloud_cost import EstimateCloudTranscription
@@ -45,6 +45,7 @@ from voz.application.ports.transcription import (
 )
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.application.prepare_inference_audio import PrepareInferenceAudio
+from voz.application.project_glossary import ProjectGlossary
 from voz.application.projects import CreateProject, ListProjects
 from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.application.speakers import (
@@ -110,6 +111,9 @@ from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
 from voz.infrastructure.persistence.migrate import BACKUPS_DIRECTORY, upgrade_to_head
+from voz.infrastructure.persistence.project_glossaries import (
+    SqliteProjectGlossaryRepository,
+)
 from voz.infrastructure.persistence.repositories import (
     SqliteMediaAssetRepository,
     SqliteProjectRepository,
@@ -137,6 +141,7 @@ from voz.interfaces.api.model_tasks import create_model_tasks_router
 from voz.interfaces.api.models import create_models_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.providers import create_providers_router
+from voz.interfaces.api.quality_profiles import create_quality_profiles_router
 from voz.interfaces.api.segments import create_segments_router
 from voz.interfaces.api.speakers import create_speakers_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
@@ -235,6 +240,7 @@ def create_app(
     )
 
     projects = SqliteProjectRepository(resolved_engine)
+    glossaries = SqliteProjectGlossaryRepository(resolved_engine)
     media_assets = SqliteMediaAssetRepository(resolved_engine)
     jobs = SqliteTranscriptionJobRepository(resolved_engine)
     selections = SqliteTranscriptionJobSelectionRepository(resolved_engine)
@@ -384,6 +390,7 @@ def create_app(
             speakers,
             SqliteSpeakerTurnRepository(resolved_engine),
         ),
+        assign_provider_speakers=AssignProviderSpeakers(speakers, segments),
         release_asr=release_asr,
         audio_source_for=audio_source_for,
         audio_preparer=PrepareInferenceAudio(
@@ -446,8 +453,15 @@ def create_app(
         create_transcription_options_router(transcription_options)
     )
     application.include_router(
-        create_projects_router(CreateProject(projects), ListProjects(projects))
+        create_projects_router(
+            CreateProject(projects),
+            ListProjects(projects),
+            ProjectGlossary(
+                projects, glossaries, providers=("faster-whisper", "elevenlabs")
+            ),
+        )
     )
+    application.include_router(create_quality_profiles_router())
     application.include_router(
         create_media_router(
             ImportMedia(
@@ -469,6 +483,8 @@ def create_app(
                 jobs,
                 selections,
                 diarization_availability=diarization_availability,
+                glossaries=glossaries,
+                job_writer=jobs,
             ),
             jobs,
             selections,

@@ -209,7 +209,15 @@ class ElevenLabsScribeProvider:
         ]
         if options.language is not None:
             fields.append(("language_code", options.language.split("-")[0].lower()))
-        fields.extend(("keyterms", term) for term in self._keyterms)
+        # The project glossary (S13.01) adds to the keyterms the provider was
+        # built with; both are capped by ``normalize_keyterms``.
+        try:
+            keyterms = normalize_keyterms((*self._keyterms, *options.glossary))
+        except ValueError as error:
+            raise _failure(
+                "The glossary exceeds the ElevenLabs keyterm limits."
+            ) from error
+        fields.extend(("keyterms", term) for term in keyterms)
         boundary = f"voz-{uuid.uuid4().hex}"
         head, tail = multipart_parts(
             boundary=boundary,

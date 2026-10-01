@@ -1,0 +1,54 @@
+.glossary-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.glossary-editor-label {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.glossary-editor-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.glossary-editor-input:focus-visible,
+.glossary-editor-save:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+.glossary-editor-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.glossary-editor-error {
+  margin: 0;
+  color: var(--warning);
+}
+
+.glossary-editor-save {
+  justify-self: start;
+  padding: 6px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.glossary-editor-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

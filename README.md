@@ -5,21 +5,46 @@ largas de clases, entrevistas y reuniones. La meta es ofrecer un workspace web
 local con waveform, timeline, segmentos editables y hablantes, sin convertir un
 proveedor cloud en requisito.
 
-> **Estado actual: workspace de transcripción editable.** La CLI, la API y la
-> interfaz local funcionan como una sola aplicación instalable. Desde el
-> navegador se crea un proyecto, se sube un archivo (copia inmutable con
-> SHA-256 y ffprobe), se elige el motor y se crea un job que un ejecutor en
-> segundo plano normaliza, transcribe por chunks con checkpoints SQLite y
-> publica por SSE. El workspace muestra waveform con zoom, reproductor del
-> original sincronizado con el segmento activo, búsqueda, edición con
-> autoguardado y control de conflictos, y exportación TXT, Markdown, SRT, VTT
-> y JSON por HTTP. Los jobs interrumpidos se reanudan al arrancar y la subida
-> comprueba el espacio en disco. `voz doctor` diagnostica FFmpeg, puerto,
-> rutas, runtime y GPU. El flujo completo se ha ejercitado con un motor
-> determinista de pruebas y con Faster Whisper real (turbo y large-v3) en una
-> RTX 4060 bajo Bazzite; en otras GPUs/distribuciones sigue siendo
-> experimental. Consulta el
-> [roadmap](ROADMAP.md) para ver qué fue verificado.
+> **Estado actual: workspace completo, verificado en una sola máquina.** La CLI,
+> la API y la interfaz local funcionan como una sola aplicación instalable.
+> Desde el navegador se crea un proyecto, se sube un archivo (copia inmutable
+> con SHA-256 y ffprobe), se elige motor y perfil, y un job en segundo plano
+> normaliza, transcribe por chunks con checkpoints SQLite y publica por SSE.
+> Funciona hoy:
+>
+> - **Faster Whisper real** (turbo y large-v3) en GPU NVIDIA, con Model
+>   Manager para descargar, importar desde el cache de Buzz y borrar modelos;
+> - **hablantes** con sherpa-onnx (sin torch ni token), editables y fusionables;
+> - **palabras con timestamps**, waveform con zoom, reproductor sincronizado,
+>   búsqueda, edición con autoguardado y exportación TXT/Markdown/SRT/VTT/JSON;
+> - **calidad**: perfiles reproducibles (`default`, `academic` con VAD),
+>   glosario por proyecto, avisos no destructivos de posibles alucinaciones y
+>   cola de revisión; `voz bench` mide RTF, RAM/VRAM y WER/CER;
+> - **opcionales**: whisper.cpp (si existe `whisper-cli`) y OpenAI/ElevenLabs
+>   con clave propia, consentimiento y estimación de coste (experimentales:
+>   probados solo con clientes falsos).
+>
+> Todo se ha ejercitado en una RTX 4060 bajo Bazzite; en otras GPUs o
+> distribuciones es experimental. No hay release publicada. Qué está verificado
+> y cómo: [ROADMAP.md](ROADMAP.md), [docs/benchmarks.md](docs/benchmarks.md).
+
+## Capturas
+
+Capturas reales de VOZ en local con Faster Whisper `turbo` en GPU
+([docs/demo.md](docs/demo.md) explica cómo regenerarlas con
+`scripts/capture-screenshots.sh`).
+
+| Inicio | Elegir motor |
+| --- | --- |
+| ![Inicio](docs/assets/screenshots/01-inicio.png) | ![Selector de motor](docs/assets/screenshots/02-selector-motor.png) |
+
+| Job terminado | Forma de onda del original |
+| --- | --- |
+| ![Job terminado](docs/assets/screenshots/04-job-terminado.png) | ![Forma de onda](docs/assets/screenshots/05-forma-de-onda.png) |
+
+| Transcripción | Gestor de modelos |
+| --- | --- |
+| ![Transcripción](docs/assets/screenshots/06-transcripcion.png) | ![Gestor de modelos](docs/assets/screenshots/07-gestor-modelos.png) |
 
 ## Visión
 
@@ -60,9 +85,10 @@ El MVP comprende:
 - diarización editable de hablantes;
 - exportación TXT, Markdown, SRT, VTT y JSON.
 
-Después del MVP se evaluarán word alignment, whisper.cpp, administración avanzada
-de modelos y proveedores cloud opcionales. La lista autoritativa, con IDs
-estables y estado verificable, está en [ROADMAP.md](ROADMAP.md).
+Más allá del MVP ya existen palabras con timestamps, whisper.cpp, Model Manager,
+perfiles de calidad, benchmark y proveedores cloud opcionales. La lista
+autoritativa, con IDs estables y estado verificable, está en
+[ROADMAP.md](ROADMAP.md).
 
 ## Privacidad
 

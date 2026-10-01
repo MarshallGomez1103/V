@@ -23,6 +23,7 @@ from voz.domain.entities.processing_profile import (
     ProcessingProfile,
     ProcessingProfileName,
 )
+from voz.domain.entities.quality_profile import QualityProfile
 from voz.infrastructure.persistence.schema import transcription_job_selections
 
 
@@ -181,7 +182,29 @@ def _diarization_from_json(value: object) -> DiarizationOptions | None:
     )
 
 
-def _selection_values(selection: JobSelection) -> dict[str, object]:
+def _profile_json(profile: QualityProfile | None) -> str | None:
+    return None if profile is None else _dump(profile.to_dict())
+
+
+def _profile_from_json(value: object) -> QualityProfile | None:
+    if value is None:
+        return None
+    return QualityProfile.from_dict(_object(value, field="profile_json"))
+
+
+def _glossary_json(terms: tuple[str, ...]) -> str | None:
+    return _dump(list(terms)) if terms else None
+
+
+def _glossary_from_json(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, str):
+        raise TypeError("persisted glossary_json must be a string")
+    return tuple(_strings(json.loads(value), field="glossary_json"))
+
+
+def selection_values(selection: JobSelection) -> dict[str, object]:
     return {
         "job_id": str(selection.job_id),
         "option_id": selection.option_id,
@@ -195,6 +218,8 @@ def _selection_values(selection: JobSelection) -> dict[str, object]:
         "created_at": selection.created_at.astimezone(UTC).isoformat(),
         "diarization_json": _diarization_json(selection.diarization),
         "diarization_error_code": selection.diarization_error_code,
+        "profile_json": _profile_json(selection.quality_profile),
+        "glossary_json": _glossary_json(selection.glossary),
     }
 
 
@@ -210,6 +235,8 @@ def _selection_from_row(row: RowMapping) -> JobSelection:
         diarization_error_code=_optional_text(
             row["diarization_error_code"], field="diarization_error_code"
         ),
+        quality_profile=_profile_from_json(row["profile_json"]),
+        glossary=_glossary_from_json(row["glossary_json"]),
     )
 
 
@@ -225,9 +252,7 @@ class SqliteTranscriptionJobSelectionRepository:
     def add(self, selection: JobSelection) -> None:
         with self._engine.begin() as connection:
             connection.execute(
-                insert(transcription_job_selections).values(
-                    _selection_values(selection)
-                )
+                insert(transcription_job_selections).values(selection_values(selection))
             )
 
     def get(self, job_id: UUID) -> JobSelection | None:
@@ -252,4 +277,4 @@ class SqliteTranscriptionJobSelectionRepository:
             )
 
 
-__all__ = ["SqliteTranscriptionJobSelectionRepository"]
+__all__ = ["SqliteTranscriptionJobSelectionRepository", "selection_values"]

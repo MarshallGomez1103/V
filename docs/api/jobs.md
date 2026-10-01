@@ -33,7 +33,7 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
 
 | Método y ruta | Request | Respuesta |
 | --- | --- | --- |
-| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; ver "Memoria insuficiente") / `diarization_unavailable`; 422 `diarization_options_invalid` (ver "Diarización") |
+| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; ver "Memoria insuficiente") / `diarization_unavailable`; 422 `diarization_options_invalid` (ver "Diarización") / `quality_profile_unknown` (ver "Perfil de calidad") |
 | `GET /api/jobs/{job_id}` | — | `JobView`; 404 `job_not_found` |
 | `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` |
 | `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 409 `job_terminal` |
@@ -53,6 +53,8 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
     "profile": { "...": "ProcessingProfile completo" },
     "execution": { "device": "cuda", "precision": "float16", "fallback_reason": null },
     "language": null,
+    "quality_profile": { "name": "default", "version": 1, "beam_size": 5, "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], "condition_on_previous_text": true, "no_speech_threshold": 0.6, "vad": null },
+    "glossary": [],
     "diarization": { "enabled": false, "speakers": { "exact": null, "minimum": null, "maximum": null } }
   },
   "created_at": "…", "updated_at": "…"
@@ -72,6 +74,18 @@ Al crear el job se revalida `option_id` contra la consulta actual de
 procedencia, revisión, perfil, decisión de ejecución e idioma) en
 `transcription_job_selections`. El `option_id` solo no es un checkpoint
 reproducible.
+
+### Perfil de calidad y glosario (S13.01-S13.03)
+
+`profile` (opcional, por defecto `"default"`) elige una receta de decodificación
+de `GET /api/quality-profiles`; un nombre desconocido responde 422
+`quality_profile_unknown` y no crea nada. La selección guarda en
+`quality_profile` el perfil **completo** con sus parámetros efectivos (no solo el
+nombre) y en `glossary` los términos del glosario del proyecto **en el momento de
+crear el job** (ver `docs/api/projects.md`); editar el glosario después no
+cambia jobs ya creados. Los jobs anteriores a esta función devuelven
+`quality_profile: null` y `glossary: []` y siguen con los valores por defecto del
+motor. Detalle, parámetros y qué motores lo respetan: `docs/quality-profiles.md`.
 
 ### Eventos SSE (S5.06)
 

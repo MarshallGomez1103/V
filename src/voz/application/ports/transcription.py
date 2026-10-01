@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import BinaryIO, Protocol, cast, runtime_checkable
 
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+from voz.domain.entities.quality_profile import QualityProfile
 
 _SAFE_LANGUAGE_TAG = re.compile(
     r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*",
@@ -215,6 +216,10 @@ class TranscriptionOptions:
     language: str | None = None
     clip: TranscriptionClip | None = None
     word_timestamps: bool = True
+    glossary: tuple[str, ...] = ()
+    """Hot terms that bias the engine (S13.01); engines without support ignore it."""
+    quality_profile: QualityProfile | None = None
+    """Decoding recipe (S13.02/S13.03); ``None`` keeps the engine's own defaults."""
 
     def __post_init__(self) -> None:
         raw_model = cast(object, self.model)
@@ -228,6 +233,14 @@ class TranscriptionOptions:
             raise TypeError("clip must be a TranscriptionClip or None")
         if type(self.word_timestamps) is not bool:
             raise TypeError("word_timestamps must be a bool")
+        raw_glossary = cast(object, self.glossary)
+        if not isinstance(raw_glossary, tuple) or any(
+            not isinstance(term, str) for term in cast(tuple[object, ...], raw_glossary)
+        ):
+            raise TypeError("glossary must be a tuple of strings")
+        raw_profile = cast(object, self.quality_profile)
+        if raw_profile is not None and not isinstance(raw_profile, QualityProfile):
+            raise TypeError("quality_profile must be a QualityProfile or None")
 
 
 @runtime_checkable

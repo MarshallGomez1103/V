@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from voz.application.diarization_reconcile import (
     DEFAULT_MIN_OVERLAP_RATIO,
@@ -109,4 +110,54 @@ class AssignSpeakers:
         )
 
 
-__all__ = ["AssignSpeakers", "AssignSpeakersOutcome", "TranscriptNotFound"]
+@dataclass(frozen=True, slots=True)
+class AssignProviderSpeakers:
+    """Turn the opaque ``speaker`` labels of a cloud ASR into ``Speaker`` entities.
+
+    Used only when no local diarization was requested (local wins). Speaker ids
+    derive from the transcript and the label, so resuming a job reuses the same
+    rows (keeping renames) instead of duplicating them. Names are "Hablante N"
+    in order of first appearance; colors follow the same fixed palette.
+
+    # ponytail: no hay turns (el proveedor no da tiempos de turno); una etiqueta
+    # que el proveedor reutilice entre chunks para personas distintas se fusiona.
+    """
+
+    speakers: SpeakerRepository
+    segments: SegmentRepository
+
+    def execute(
+        self,
+        transcript_id: UUID,
+        project_id: UUID,
+        labels: Mapping[UUID, str],
+    ) -> tuple[Speaker, ...]:
+        """``labels`` maps segment id -> provider label, in timeline order."""
+        by_label: dict[str, Speaker] = {}
+        for label in labels.values():
+            if label in by_label:
+                continue
+            speaker_id = uuid5(transcript_id, f"speaker:{label}")
+            index = len(by_label)
+            speaker = self.speakers.get(speaker_id)
+            if speaker is None:
+                speaker = Speaker(
+                    project_id,
+                    f"Hablante {index + 1}",
+                    speaker_palette_color(index),
+                    id=speaker_id,
+                )
+                self.speakers.add(speaker)
+            by_label[label] = speaker
+        self.segments.update_speakers(
+            {segment_id: by_label[label].id for segment_id, label in labels.items()}
+        )
+        return tuple(by_label.values())
+
+
+__all__ = [
+    "AssignProviderSpeakers",
+    "AssignSpeakers",
+    "AssignSpeakersOutcome",
+    "TranscriptNotFound",
+]

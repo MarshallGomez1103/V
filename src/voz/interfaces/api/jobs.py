@@ -46,6 +46,7 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.INSUFFICIENT_VRAM: 409,
     CreateJobFailureCode.INSUFFICIENT_RAM: 409,
     CreateJobFailureCode.DIARIZATION_UNAVAILABLE: 409,
+    CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN: 422,
 }
 
 MAX_DIARIZATION_SPEAKERS = 32
@@ -60,6 +61,8 @@ class CreateJobRequest:
     language: str | None = None
     diarization: object = None
     """``{"enabled": bool, "speakers": {"exact"?, "minimum"?, "maximum"?}}``."""
+    profile: str | None = None
+    """Quality profile name (S13.02); ``None`` means ``default``."""
 
 
 def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
@@ -139,6 +142,12 @@ def selection_view(selection: JobSelection) -> dict[str, object]:
             ),
         },
         "language": selection.language,
+        "quality_profile": (
+            None
+            if selection.quality_profile is None
+            else selection.quality_profile.to_dict()
+        ),
+        "glossary": list(selection.glossary),
         "diarization": {
             "enabled": selection.diarization is not None,
             "speakers": {
@@ -202,6 +211,7 @@ def create_jobs_router(
                 option_id=request.option_id,
                 language=request.language,
                 diarization=diarization,
+                profile=request.profile,
             )
         except CreateJobError as error:
             extra: dict[str, object] = {}

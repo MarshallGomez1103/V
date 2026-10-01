@@ -36,6 +36,10 @@ export interface JobSelection {
   profile?: { name?: string; [key: string]: unknown }
   execution?: { device?: string; [key: string]: unknown }
   language?: string | null
+  // S13.02: receta de decodificación completa con la que se creó el job, y el
+  // glosario congelado en ese momento (ausentes en jobs anteriores).
+  quality_profile?: { name: string; version: number; [key: string]: unknown } | null
+  glossary?: string[]
 }
 
 export interface JobView {
@@ -58,6 +62,8 @@ export interface CreateJobInput {
   media_asset_id: string
   option_id: string
   language: string | null
+  // Perfil de calidad (S13.02); ausente = `default`.
+  profile?: string
   // Diarización opcional (S6); ausente o enabled=false = desactivada.
   diarization?: {
     enabled: boolean
@@ -113,6 +119,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     'Esta opción todavía no se puede iniciar en este equipo.',
   job_already_active: 'Ya hay una transcripción en curso para esta grabación.',
   job_terminal: 'La transcripción ya terminó y no se puede cancelar.',
+  quality_profile_unknown: 'El perfil de calidad elegido no existe.',
   transcript_not_found: 'La transcripción ya no existe.',
   invalid_response: 'La API devolvió una respuesta inesperada.',
 }

@@ -56,6 +56,27 @@ Body: `{"speaker_id": "uuid" | null}` → `200` item de segmento (mismo shape qu
 | 404 | `segment_not_found` | el segmento no existe |
 | 409 | `segment_speaker_invalid` | el hablante no existe o no pertenece a la transcripción del segmento |
 
+## Hablantes de proveedores cloud (INTEGRITY-001)
+
+Cuando el proveedor ASR ya etiqueta cada segmento (`speaker`: ElevenLabs con
+diarización, OpenAI diarizado) y el trabajo **no** pidió diarización local, el
+pipeline crea los hablantes al persistir la transcripción:
+
+- Un `Speaker` por etiqueta, llamado `Hablante 1..N` en orden de primera
+  aparición, con el color de la paleta fija. Aparecen en
+  `GET .../speakers` y en `segment_count` como cualquier otro hablante.
+- El id del hablante deriva de la transcripción y la etiqueta
+  (`uuid5(transcript_id, "speaker:<etiqueta>")`): reanudar el trabajo reutiliza
+  las mismas filas y conserva nombre/color editados. No se crean turnos
+  (`speaker_turns`): el proveedor no los entrega.
+- Si hay diarización local pedida, gana la local y las etiquetas cloud se
+  ignoran. Segmentos sin etiqueta quedan sin hablante.
+- Si crear los hablantes falla, la transcripción se conserva y el código queda
+  en `diarization_error_code` de la selección del trabajo.
+- Limitación: ElevenLabs reutiliza etiquetas (`speaker_0`) por fragmento de
+  audio largo, así que una misma etiqueta en fragmentos distintos se fusiona en
+  un hablante. OpenAI prefija la etiqueta con el fragmento (no se fusionan).
+
 ## Notas
 
 - Sin transacción común con `AssignSpeakers` (ver su nota `ponytail:`): editar
