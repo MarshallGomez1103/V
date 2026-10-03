@@ -25,6 +25,12 @@ from voz.infrastructure.asr.whisper_cpp import (
     probe_whisper_cpp,
 )
 
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fake whisper-cli is an executable script with a shebang; real "
+    "whisper-cli.exe goes through the same plain subprocess call",
+)
+
 _FAKE = Path(__file__).parents[3] / "fixtures/whisper_cpp/fake_whisper_cli.py"
 _WAV = Path(__file__).parents[3] / "fixtures/media/synthetic-tone.wav"
 _DESCRIPTOR = ModelDescriptor(

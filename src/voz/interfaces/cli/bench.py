@@ -294,10 +294,13 @@ def _windows_peak_working_set_mib() -> float:
 
     counters = Counters()
     counters.cb = ctypes.sizeof(Counters)
-    process = ctypes.windll.kernel32.GetCurrentProcess()
-    if not ctypes.windll.psapi.GetProcessMemoryInfo(
-        process, ctypes.byref(counters), counters.cb
-    ):
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    # Exported from kernel32 on Windows 7+ (psapi.dll forwards to it).
+    probe = kernel32.K32GetProcessMemoryInfo
+    probe.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+    probe.restype = wintypes.BOOL
+    if not probe(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
         return 0.0
     return counters.peak_working_set / (1024 * 1024)
 

@@ -205,6 +205,7 @@ def test_cancellation_requested_by_completion_progress_does_not_publish(
     _assert_child_pipes_closed(normalizer)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="needs symlinks")
 def test_temporary_symlink_swap_is_rejected_without_touching_victim(
     tmp_path: Path,
 ) -> None:
@@ -268,6 +269,11 @@ def test_symlinked_storage_components_cannot_escape_trusted_root(
     _assert_no_ffmpeg_monitor_threads()
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="dir_fd identity check: Windows verifies components by path only "
+    "(documented weaker guarantee, docs/install/windows-macos.md)",
+)
 def test_replaced_trusted_root_identity_is_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

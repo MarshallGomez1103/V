@@ -89,7 +89,7 @@ def test_bundle_contains_no_seeded_names_paths_or_text(tmp_path: Path) -> None:
     for name, text in contents.items():
         for forbidden in (*SECRETS, str(tmp_path), str(home)):
             assert forbidden not in text, f"{forbidden!r} leaked into {name}"
-    assert "$XDG_DATA_HOME/voz" in contents["doctor.json"]
+    assert "$XDG_DATA_HOME/voz" in contents["doctor.json"].replace("\\\\", "/")
 
 
 def test_bundle_reports_revision_and_counts(tmp_path: Path) -> None:

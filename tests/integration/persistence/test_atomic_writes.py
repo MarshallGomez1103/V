@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -226,7 +227,12 @@ def test_a_killed_process_mid_transaction_leaves_the_previous_state(
     src = Path(__file__).parents[3] / "src"
     done = subprocess.run(
         [sys.executable, "-c", child],
-        env={"PYTHONPATH": str(src), "PATH": ""},
+        env={
+            "PYTHONPATH": str(src),
+            "PATH": "",
+            # Windows cannot start Python (sockets) without its system root.
+            **{k: v for k, v in os.environ.items() if k.upper() == "SYSTEMROOT"},
+        },
         capture_output=True,
         check=False,
         timeout=60,

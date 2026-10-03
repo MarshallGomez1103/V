@@ -2,6 +2,7 @@
 
 import json
 import re
+import sys
 import threading
 import wave
 from collections.abc import Callable
@@ -517,4 +518,6 @@ def test_urllib_transport_against_a_loopback_server(local_server: str) -> None:
 def test_urllib_transport_maps_connection_refused() -> None:
     with pytest.raises(TransportError) as raised:
         urllib_transport(HttpRequest("http://127.0.0.1:9/x", {}, b"x", 2))
-    assert raised.value.timeout is False
+    if sys.platform != "win32":
+        # Windows retries a refused connection until the timeout expires.
+        assert raised.value.timeout is False

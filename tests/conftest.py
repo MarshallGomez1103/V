@@ -60,6 +60,8 @@ def platform_mode(
     code that only runs on those platforms is exercised on Linux too.
     """
     name = str(request.param)
+    if name == "portable-fd-args" and IS_WINDOWS:
+        pytest.skip("pass_fds does not exist on Windows; it uses the path mode")
     if name != "native":
         monkeypatch.setattr(safe_fs, "FORCE_PORTABLE", True)
         monkeypatch.setattr(

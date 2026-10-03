@@ -21,7 +21,7 @@ def _mentions(directory: Path, suffixes: tuple[str, ...]) -> list[str]:
             and "node_modules" not in path.parts
             and any(n in path.read_text(encoding="utf-8").lower() for n in NEEDLES)
         ):
-            found.append(str(path.relative_to(ROOT)))
+            found.append(path.relative_to(ROOT).as_posix())
     return found
 
 

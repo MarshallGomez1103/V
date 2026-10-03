@@ -108,6 +108,7 @@ def test_open_file_refuses_symlinks_in_both_modes(tmp_path: Path, mode: str) -> 
         directory.close()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="NTFS directories cannot be fsynced")
 def test_durability_failure_is_a_distinct_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
@@ -192,7 +193,7 @@ def test_import_marks_read_only_by_name_when_fchmod_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(safe_fs, "FORCE_PORTABLE", True)
-    monkeypatch.delattr(os, "fchmod")
+    monkeypatch.delattr(os, "fchmod", raising=False)
     storage = FileSystemMediaStorage(tmp_path / "data")
 
     stored, _, _ = _import(storage, source_file)

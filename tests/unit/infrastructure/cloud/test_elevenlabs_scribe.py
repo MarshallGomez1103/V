@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.server
 import json
 import logging
+import sys
 import threading
 import wave
 from io import BytesIO
@@ -634,7 +635,10 @@ def test_default_transport_maps_connection_errors() -> None:
             )
         )
 
-    assert raised.value.timeout is False
+    if sys.platform != "win32":
+        # Windows retries a refused connection until the timeout expires, so the
+        # same failure surfaces there as a timeout; both are transport errors.
+        assert raised.value.timeout is False
 
 
 def test_default_transport_rejects_non_http_urls() -> None:

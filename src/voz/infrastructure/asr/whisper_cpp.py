@@ -33,6 +33,7 @@ from voz.application.ports.transcription import (
 )
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.infrastructure.asr.whisper_cpp_catalog import PROVIDER_ID, model_filename
+from voz.infrastructure.audio.media_args import NO_WINDOW
 
 BINARY_ENV_VAR = "VOZ_WHISPER_CPP_BIN"
 _BINARY_NAME = "whisper-cli"
@@ -277,6 +278,7 @@ class WhisperCppProvider:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 cwd=work_dir,
+                creationflags=NO_WINDOW,
             )
         except OSError as error:
             raise _failed("The whisper.cpp executable could not be started.") from error

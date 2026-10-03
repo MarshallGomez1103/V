@@ -3,6 +3,7 @@
 import json
 import subprocess
 from io import BytesIO
+from pathlib import Path
 from tempfile import TemporaryFile
 
 import pytest
@@ -12,6 +13,7 @@ from voz.application.ports.media_probe import (
     MediaProbeFailureCode,
     MediaStreamKind,
 )
+from voz.infrastructure.audio import media_args
 from voz.infrastructure.audio.ffprobe import FfprobeMediaProbe
 
 _DECODERS = """\
@@ -81,8 +83,12 @@ def test_probe_uses_argv_and_validates_detected_codecs(
     assert result.audio_streams[0].channels == 2
     assert all(stream.is_decodable for stream in result.streams)
     assert result.streams[0].kind is MediaStreamKind.VIDEO
-    assert calls[0][-3:] == ["-fd", str(source_fd), "fd:"]
-    assert call_kwargs[0]["pass_fds"] == (source_fd,)
+    if media_args.mode() == "path":  # Windows: no descriptor inheritance
+        assert call_kwargs[0]["pass_fds"] == ()
+        assert Path(calls[0][-1]).is_absolute()
+    else:
+        assert calls[0][-3:] == ["-fd", str(source_fd), "fd:"]
+        assert call_kwargs[0]["pass_fds"] == (source_fd,)
     assert all("lecture" not in argument for argument in calls[0])
 
 

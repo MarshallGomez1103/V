@@ -241,6 +241,8 @@ def provider_case(
         provider, options = elevenlabs_contract_case()
         return _ProviderContractCase(provider=provider, options=options)
     if request.param == "whisper-cpp":
+        if sys.platform == "win32":
+            pytest.skip("the fake whisper-cli is a shebang script (POSIX only)")
         return _whisper_cpp_case(tmp_path)
     if request.param in ("openai", "openai-diarized"):
         return _openai_case(request.param == "openai-diarized")

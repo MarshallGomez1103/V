@@ -77,8 +77,6 @@ class FileSystemMediaStorage:
                 source_before=source_before,
                 temporary_fd=temporary_fd,
             )
-            if not hasattr(os, "fchmod"):  # Windows < 3.13: read-only by name
-                directory.chmod(temporary_name, _READ_ONLY_MODE)
             media_asset = MediaAsset(
                 project_id=project_id,
                 content_sha256=digest,
@@ -119,6 +117,13 @@ class FileSystemMediaStorage:
                         )
                     except MediaStorageError as error:
                         cleanup_error = error
+                if published and cleanup_error is None and not hasattr(os, "fchmod"):
+                    # Windows < 3.13 has no fchmod. The read-only attribute is
+                    # shared by every hard link and would have blocked the temporary
+                    # name's removal, so it is applied to the published name last.
+                    # ponytail: the original is writable for those few microseconds.
+                    with suppress(OSError):
+                        directory.chmod(destination.name, _READ_ONLY_MODE)
                 with suppress(OSError):
                     directory.close()
             if cleanup_error is not None:

@@ -517,7 +517,9 @@ def _hf_cache(root: Path) -> Path:
     for name, data in (("model.bin", _BIN), ("config.json", _CFG)):
         blob = blobs / _sha(data)
         blob.write_bytes(data)
-        os.symlink(f"../../blobs/{blob.name}", snapshot / name)
+        os.symlink(
+            os.path.join("..", "..", "blobs", blob.name), snapshot / name
+        )  # NTFS needs backslashes
     return snapshot
 
 

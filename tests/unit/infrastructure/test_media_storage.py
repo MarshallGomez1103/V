@@ -219,6 +219,10 @@ def test_unsafe_display_name_is_rejected_before_storage_is_created(
     tmp_path: Path,
     source_name: str,
 ) -> None:
+    if os.name == "nt" and (
+        not source_name.strip() or any(c in source_name for c in "\\\n\x01")
+    ):
+        pytest.skip("Windows cannot create a file with this name")
     source = tmp_path / source_name
     source.write_bytes(b"bytes")
     storage_root = tmp_path / "data"
