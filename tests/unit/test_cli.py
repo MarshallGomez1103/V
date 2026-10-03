@@ -155,3 +155,19 @@ def test_cli_prepares_ffmpeg_before_serving_and_warns_in_spanish_on_failure(
     assert result.exit_code == 0
     assert order == ["ffmpeg", "server"]
     assert "No se pudo preparar FFmpeg" in result.output
+
+
+def test_run_server_reuses_a_running_voz_instead_of_binding_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from voz.interfaces.cli import main
+
+    opened: list[str] = []
+    monkeypatch.setattr(main, "is_server_ready", lambda _url: True)
+    monkeypatch.setattr(main.webbrowser, "open", opened.append)
+    monkeypatch.setattr(main, "create_app", lambda: pytest.fail("must not start"))
+
+    main.run_server(host="127.0.0.1", port=8765, open_browser=True)
+
+    assert opened == ["http://127.0.0.1:8765"]
+    assert "VOZ ya está abierto" in capsys.readouterr().out

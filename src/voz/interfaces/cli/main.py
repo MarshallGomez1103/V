@@ -127,6 +127,12 @@ def start_browser_opener(base_url: str) -> threading.Thread:
 def run_server(*, host: str, port: int, open_browser: bool) -> None:
     """Run Uvicorn in the foreground and stop cleanly on Ctrl+C."""
     base_url = server_url(host, port)
+    # A second double-click finds VOZ already serving: reuse it, don't crash.
+    if is_server_ready(base_url):
+        typer.echo(f"VOZ ya está abierto en {base_url}")
+        if open_browser:
+            webbrowser.open(base_url)
+        return
     if open_browser:
         start_browser_opener(base_url)
 
