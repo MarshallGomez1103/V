@@ -130,3 +130,28 @@ def test_cli_forwards_host_port_and_no_browser(
 
     assert result.exit_code == 0
     assert received == {"host": "0.0.0.0", "port": 9000, "open_browser": False}
+
+
+def test_cli_prepares_ffmpeg_before_serving_and_warns_in_spanish_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from voz.infrastructure.audio.ffmpeg_tools import FfmpegSetup
+
+    order: list[str] = []
+
+    def fake_ensure(*, announce: object) -> FfmpegSetup:
+        order.append("ffmpeg")
+        return FfmpegSetup("failed", "No se pudo preparar FFmpeg (sin red).")
+
+    monkeypatch.setattr("voz.interfaces.cli.main.ensure_ffmpeg", fake_ensure)
+
+    def fake_run_server(*, host: str, port: int, open_browser: bool) -> None:
+        order.append("server")
+
+    monkeypatch.setattr("voz.interfaces.cli.main.run_server", fake_run_server)
+
+    result = CliRunner().invoke(cli_app, ["--no-browser"])
+
+    assert result.exit_code == 0
+    assert order == ["ffmpeg", "server"]
+    assert "No se pudo preparar FFmpeg" in result.output

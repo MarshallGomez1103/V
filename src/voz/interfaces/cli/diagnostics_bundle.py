@@ -64,6 +64,15 @@ def _replacements(paths: VozPaths, home: Path) -> list[tuple[str, str]]:
         (str(paths.state.parent), "$XDG_STATE_HOME"),
         (str(home), "~"),
     ]
+    if paths.config.parent == paths.data.parent:
+        # Windows/macOS keep config, data and state side by side: the XDG parent
+        # labels would be ambiguous, so name each directory instead.
+        pairs += [
+            (str(paths.config), "$VOZ_CONFIG"),
+            (str(paths.data), "$VOZ_DATA"),
+            (str(paths.cache), "$VOZ_CACHE"),
+            (str(paths.state), "$VOZ_STATE"),
+        ]
     return sorted((pair for pair in pairs if pair[0]), key=lambda p: -len(p[0]))
 
 

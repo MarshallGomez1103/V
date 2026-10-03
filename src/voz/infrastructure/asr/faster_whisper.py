@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import ctypes
 import importlib
+import logging
 import math
+import os
+import sys
 from collections.abc import Callable, Generator, Iterable, Sequence
 from pathlib import Path
 from threading import RLock
@@ -23,6 +26,8 @@ from voz.application.ports.transcription import (
     clamp_words,
 )
 from voz.domain.entities.model_descriptor import ModelDescriptor
+
+_logger = logging.getLogger(__name__)
 
 
 class _EngineWord(Protocol):
@@ -87,24 +92,40 @@ def _default_invalid_audio_errors() -> tuple[type[Exception], ...]:
 
 
 _NVIDIA_RUNTIME_PACKAGES = ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_nvrtc")
+# Windows loads these by name through PATH / AddDllDirectory.
+_WINDOWS_CUDA_DLLS = ("cublas64_12.dll", "cudnn64_9.dll")
+_dll_directory_handles: list[object] = []  # AddDllDirectory dies with its handle
 
 
-def _preload_cuda_libraries() -> None:
-    """Make the optional pip CUDA 12 wheels visible to CTranslate2.
-
-    CTranslate2 dlopens ``libcublas.so.12``/``libcudnn*.so.9`` by soname. The
-    ``asr-local`` extra ships them as ``nvidia-*`` wheels instead of touching
-    the host; loading them RTLD_GLOBAL first lets those sonames resolve.
-    Missing packages are fine: a system CUDA install or the CPU path remains.
-    """
-    libraries: list[Path] = []
+def _nvidia_package_roots() -> list[Path]:
+    roots: list[Path] = []
     for package in _NVIDIA_RUNTIME_PACKAGES:
         try:
             module = importlib.import_module(package)
         except ImportError:
             continue
-        for root in getattr(module, "__path__", ()):
-            libraries.extend(sorted((Path(root) / "lib").glob("lib*.so.*")))
+        roots.extend(Path(root) for root in getattr(module, "__path__", ()))
+    return roots
+
+
+def _preload_cuda_libraries() -> bool:
+    """Make the optional pip CUDA 12 wheels visible to CTranslate2.
+
+    Linux: CTranslate2 dlopens ``libcublas.so.12``/``libcudnn*.so.9`` by soname.
+    The ``asr-local`` extra ships them as ``nvidia-*`` wheels instead of touching
+    the host; loading them RTLD_GLOBAL first lets those sonames resolve.
+    Windows: the same wheels carry DLLs in ``nvidia/<pkg>/bin``; those folders
+    are registered for DLL search and added to ``PATH``, then the two entry DLLs
+    are loaded to prove CUDA works before a model is built.
+
+    Missing packages are fine: a system CUDA install or the CPU path remains.
+    Returns ``False`` only when the Windows DLLs are present but cannot load.
+    """
+    if sys.platform == "win32":
+        return _preload_cuda_dlls()
+    libraries: list[Path] = []
+    for root in _nvidia_package_roots():
+        libraries.extend(sorted((root / "lib").glob("lib*.so.*")))
     # ponytail: retry passes resolve inter-library order without a dependency
     # graph; each pass loads at least one library or stops.
     pending = libraries
@@ -116,8 +137,35 @@ def _preload_cuda_libraries() -> None:
             except OSError:
                 failed.append(library)
         if len(failed) == len(pending):
-            return
+            return True
         pending = failed
+    return True
+
+
+def _preload_cuda_dlls() -> bool:
+    if sys.platform != "win32":
+        return False
+    for directory in (root / "bin" for root in _nvidia_package_roots()):
+        if not directory.is_dir():
+            continue
+        _dll_directory_handles.append(os.add_dll_directory(str(directory)))
+        path = os.environ.get("PATH", "")
+        if str(directory) not in path.split(os.pathsep):
+            os.environ["PATH"] = str(directory) + os.pathsep + path
+    try:
+        for name in _WINDOWS_CUDA_DLLS:
+            ctypes.WinDLL(name)
+    except OSError:
+        return False
+    return True
+
+
+def _cpu_fallback_notice(reason: str) -> None:
+    _logger.warning(
+        "CUDA no está disponible (%s); VOZ usa la CPU (int8). Es más lento pero "
+        "funciona. Revisa el driver NVIDIA o instala con la opción asr-local.",
+        reason,
+    )
 
 
 def _metric(
@@ -180,17 +228,33 @@ def _default_engine_factory(
             TranscriptionFailureCode.PROVIDER_FAILED,
             "The Faster Whisper runtime is not installed.",
         ) from error
-    if device == "cuda":
-        _preload_cuda_libraries()
-    return cast(
-        _Engine,
-        model_type(
-            model_path,
-            device=device,
-            compute_type=compute_type,
-            local_files_only=local_files_only,
-        ),
-    )
+    if device == "cuda" and not _preload_cuda_libraries():
+        _cpu_fallback_notice("no se pudieron cargar las bibliotecas cuBLAS/cuDNN")
+        device, compute_type = "cpu", "int8"
+    try:
+        return cast(
+            _Engine,
+            model_type(
+                model_path,
+                device=device,
+                compute_type=compute_type,
+                local_files_only=local_files_only,
+            ),
+        )
+    except (RuntimeError, ValueError) as error:
+        if device != "cuda":
+            raise
+        # A broken CUDA stack must degrade to CPU, never fail the job.
+        _cpu_fallback_notice(type(error).__name__)
+        return cast(
+            _Engine,
+            model_type(
+                model_path,
+                device="cpu",
+                compute_type="int8",
+                local_files_only=local_files_only,
+            ),
+        )
 
 
 class FasterWhisperProvider:

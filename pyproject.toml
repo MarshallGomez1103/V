@@ -22,13 +22,19 @@ dependencies = [
 asr-local = [
   "faster-whisper>=1.2.1,<2",
   # CTranslate2 loads CUDA 12 cuBLAS/cuDNN 9 at runtime; the pip wheels avoid
-  # touching the host (immutable on Bazzite). VOZ preloads them explicitly.
-  "nvidia-cublas-cu12>=12.4,<13; sys_platform == 'linux'",
-  "nvidia-cudnn-cu12>=9.1,<10; sys_platform == 'linux'",
+  # touching the host (immutable on Bazzite, no CUDA Toolkit on Windows). VOZ
+  # preloads them explicitly (.so on Linux, DLL folders on Windows). macOS has no
+  # CUDA: it always runs on CPU (int8).
+  "nvidia-cublas-cu12>=12.4,<13; sys_platform == 'linux' or sys_platform == 'win32'",
+  "nvidia-cudnn-cu12>=9.1,<10; sys_platform == 'linux' or sys_platform == 'win32'",
 ]
 # Local speaker diarization without torch or gated tokens (ADR-0007):
 # pyannote segmentation-3.0 and speaker embeddings as ONNX via sherpa-onnx.
 diarization = [
+  # Imported at runtime to turn PCM into float32 samples. It used to arrive only
+  # through asr-local (ctranslate2); declaring it keeps diarization installable
+  # (and type-checkable in CI) on its own.
+  "numpy>=1.26,<3",
   "sherpa-onnx>=1.13.8,<2",
   # The cp314 wheel omits its runtime requirement; pin it explicitly.
   "sherpa-onnx-core==1.13.8",
@@ -87,6 +93,9 @@ exclude = ["__pycache__", "*.py[cod]"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+markers = [
+  "windows_ok: test guards its own POSIX-only details; do not auto-skip on Windows",
+]
 pythonpath = ["src"]
 testpaths = ["tests"]
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -57,23 +58,100 @@ def read_gpu_memory(run: Runner = subprocess.run) -> GpuMemory | None:
 
 
 def read_system_memory(
-    path: Path = Path("/proc/meminfo"), platform: str = sys.platform
+    path: Path = Path("/proc/meminfo"),
+    platform: str = sys.platform,
+    run: Runner = subprocess.run,
 ) -> SystemMemory | None:
-    """RAM total/available from ``/proc/meminfo`` (Linux only); otherwise None."""
-    if not platform.startswith("linux"):
-        return None
+    """RAM total/available; ``None`` whenever the platform cannot tell.
+
+    Linux reads ``/proc/meminfo``, macOS asks ``sysctl``/``vm_stat`` and Windows
+    calls ``GlobalMemoryStatusEx``; all stdlib, no extra dependency.
+    """
     try:
-        values: dict[str, int] = {}
-        for line in path.read_text(encoding="ascii", errors="replace").splitlines():
-            key, _, rest = line.partition(":")
-            if key in {"MemTotal", "MemAvailable"}:
-                values[key] = int(rest.split()[0]) // 1024  # kB -> MiB
-        memory = SystemMemory(values["MemTotal"], values["MemAvailable"])
-    except (OSError, KeyError, IndexError, ValueError):
+        if platform.startswith("linux"):
+            memory = _linux_memory(path)
+        elif platform == "darwin":
+            memory = _macos_memory(run)
+        elif platform == "win32":
+            memory = _windows_memory()
+        else:
+            return None
+    except (OSError, KeyError, IndexError, ValueError, subprocess.SubprocessError):
         return None
-    if memory.total_mib <= 0 or memory.available_mib > memory.total_mib:
+    if (
+        memory is None
+        or memory.total_mib <= 0
+        or memory.available_mib > memory.total_mib
+    ):
         return None
     return memory
+
+
+def _linux_memory(path: Path) -> SystemMemory:
+    values: dict[str, int] = {}
+    for line in path.read_text(encoding="ascii", errors="replace").splitlines():
+        key, _, rest = line.partition(":")
+        if key in {"MemTotal", "MemAvailable"}:
+            values[key] = int(rest.split()[0]) // 1024  # kB -> MiB
+    return SystemMemory(values["MemTotal"], values["MemAvailable"])
+
+
+_VM_STAT_PAGE_SIZE = re.compile(r"page size of (\d+) bytes")
+_VM_STAT_COUNTED = ("Pages free", "Pages inactive", "Pages speculative")
+
+
+def _macos_memory(run: Runner) -> SystemMemory:
+    total = run(
+        ["sysctl", "-n", "hw.memsize"],
+        capture_output=True,
+        text=True,
+        timeout=_TIMEOUT_SECONDS,
+        check=True,
+    ).stdout
+    stats = run(
+        ["vm_stat"],
+        capture_output=True,
+        text=True,
+        timeout=_TIMEOUT_SECONDS,
+        check=True,
+    ).stdout
+    header = _VM_STAT_PAGE_SIZE.search(stats.splitlines()[0])
+    if header is None:
+        raise ValueError("unrecognised vm_stat output")
+    page_size = int(header.group(1))
+    pages = 0
+    for line in stats.splitlines()[1:]:
+        key, _, rest = line.partition(":")
+        if key in _VM_STAT_COUNTED:
+            pages += int(rest.strip().rstrip("."))
+    mib = 1024 * 1024
+    return SystemMemory(int(total.strip()) // mib, pages * page_size // mib)
+
+
+def _windows_memory() -> SystemMemory | None:
+    if sys.platform != "win32":
+        return None
+    import ctypes
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = (
+            ("length", ctypes.c_ulong),
+            ("load", ctypes.c_ulong),
+            ("total_phys", ctypes.c_ulonglong),
+            ("avail_phys", ctypes.c_ulonglong),
+            ("total_page", ctypes.c_ulonglong),
+            ("avail_page", ctypes.c_ulonglong),
+            ("total_virtual", ctypes.c_ulonglong),
+            ("avail_virtual", ctypes.c_ulonglong),
+            ("avail_extended", ctypes.c_ulonglong),
+        )
+
+    status = MemoryStatus()
+    status.length = ctypes.sizeof(MemoryStatus)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return None
+    mib = 1024 * 1024
+    return SystemMemory(status.total_phys // mib, status.avail_phys // mib)
 
 
 __all__ = [

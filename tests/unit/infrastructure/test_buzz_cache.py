@@ -210,10 +210,26 @@ def test_default_roots_order_and_dedup(tmp_path: Path) -> None:
     home = tmp_path / "home"
     flatpak = home / ".var/app/io.github.chidiwilliams.Buzz/cache/Buzz/models"
 
-    assert default_buzz_roots({}, home) == (flatpak, home / ".cache/Buzz/models")
+    assert default_buzz_roots({}, home, "linux") == (
+        flatpak,
+        home / ".cache/Buzz/models",
+    )
     assert default_buzz_roots(
-        {"BUZZ_MODEL_ROOT": "/x", "XDG_CACHE_HOME": "/xdg"}, home
+        {"BUZZ_MODEL_ROOT": "/x", "XDG_CACHE_HOME": "/xdg"}, home, "linux"
     ) == (Path("/x"), flatpak, Path("/xdg/Buzz/models"))
+
+
+def test_default_roots_include_the_native_buzz_cache_on_macos_and_windows(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+
+    mac = default_buzz_roots({}, home, "darwin")
+    windows = default_buzz_roots({"LOCALAPPDATA": str(tmp_path / "L")}, home, "win32")
+
+    assert home / "Library/Caches/Buzz/models" in mac
+    assert tmp_path / "L" / "Buzz" / "Buzz" / "Cache" / "models" in windows
+    assert BuzzModelCache(windows, lambda: ()).find_candidates() == ()
 
 
 def test_empty_buzz_model_root_disables_detection(tmp_path: Path) -> None:

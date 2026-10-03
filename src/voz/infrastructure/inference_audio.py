@@ -16,6 +16,7 @@ from voz.application.ports.inference_audio import (
     InferenceAudioFailureCode,
 )
 from voz.application.ports.transcription import TranscriptionClip
+from voz.infrastructure.safe_fs import open_directory_chain
 
 
 class FileSystemInferenceAudioSource:
@@ -48,22 +49,23 @@ class FileSystemInferenceAudioSource:
             audio.close()
 
     def _open_full(self) -> BinaryIO:
-        directory_fds: list[int] = []
+        try:
+            directory = open_directory_chain(
+                self._storage_root,
+                ("projects", str(self._project_id), "derivatives"),
+                create=False,
+            )
+        except FileNotFoundError as error:
+            raise self._not_found() from error
+        except OSError as error:
+            raise self._unsafe_path() from error
         audio_fd: int | None = None
         try:
-            root_fd = self._open_directory(self._storage_root)
-            directory_fds.append(root_fd)
-            for name in ("projects", str(self._project_id), "derivatives"):
-                child_fd = self._open_directory(name, dir_fd=directory_fds[-1])
-                directory_fds.append(child_fd)
-
             flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
             flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
             try:
-                audio_fd = os.open(
-                    f"{self._media_asset_id}.inference.wav",
-                    flags,
-                    dir_fd=directory_fds[-1],
+                audio_fd = directory.open_file(
+                    f"{self._media_asset_id}.inference.wav", flags
                 )
             except FileNotFoundError as error:
                 raise self._not_found() from error
@@ -92,9 +94,8 @@ class FileSystemInferenceAudioSource:
             if audio_fd is not None:
                 with suppress(OSError):
                     os.close(audio_fd)
-            for directory_fd in reversed(directory_fds):
-                with suppress(OSError):
-                    os.close(directory_fd)
+            with suppress(OSError):
+                directory.close()
 
     @staticmethod
     def _read_clip(audio: BinaryIO, clip: TranscriptionClip) -> BytesIO:
@@ -129,24 +130,6 @@ class FileSystemInferenceAudioSource:
             destination.writeframes(frames)
         output.seek(0)
         return output
-
-    @staticmethod
-    def _directory_flags() -> int:
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-        return flags | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-
-    def _open_directory(
-        self,
-        path: str | Path,
-        *,
-        dir_fd: int | None = None,
-    ) -> int:
-        try:
-            return os.open(path, self._directory_flags(), dir_fd=dir_fd)
-        except FileNotFoundError as error:
-            raise self._not_found() from error
-        except OSError as error:
-            raise self._unsafe_path() from error
 
     @staticmethod
     def _not_found() -> InferenceAudioError:

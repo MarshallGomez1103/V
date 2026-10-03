@@ -14,7 +14,9 @@ que se instala desde un wheel construido a partir del repositorio.
 - [`uv`](https://docs.astral.sh/uv/) instalado para el usuario.
 - **FFmpeg** (`ffmpeg` y `ffprobe` en el `PATH`) para importar y normalizar audio.
   Instálalo con el gestor de tu distribución o, en sistemas inmutables, en un
-  contenedor de usuario (Distrobox). No hace falta para arrancar la interfaz.
+  contenedor de usuario (Distrobox). Si faltan, `voz` descarga una sola vez una
+  compilación estática fijada y verificada (ver [Windows y macOS](windows-macos.md)); se
+  desactiva con `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
 - Opcional, para transcribir en GPU: una GPU NVIDIA con controlador CUDA 12
   operativo en el host. Los runtimes cuBLAS/cuDNN llegan como wheels de pip.
 

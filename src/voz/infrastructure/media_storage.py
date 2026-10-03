@@ -18,6 +18,13 @@ from voz.application.ports.media_storage import (
     MediaStorageErrorCode,
 )
 from voz.domain.entities.media_asset import MediaAsset
+from voz.infrastructure.safe_fs import (
+    BINARY_FLAG,
+    DirectoryDurabilityError,
+    DirectoryHandle,
+    fchmod,
+    open_directory_chain,
+)
 
 _COPY_CHUNK_BYTES = 1024 * 1024
 _READ_ONLY_MODE = 0o444
@@ -53,23 +60,25 @@ class FileSystemMediaStorage:
         destination = self.original_path_for(project_id, media_asset_id)
 
         source_fd = self._open_stable_regular_source(source_path)
-        directory_fd: int | None = None
+        directory: DirectoryHandle | None = None
         temporary_name: str | None = None
         published = False
         try:
             source_before = os.fstat(source_fd)
-            directory_fd = self._create_originals_directory(project_id)
+            directory = self._create_originals_directory(project_id)
             self._reject_existing_destination(
-                directory_fd=directory_fd,
+                directory=directory,
                 destination_name=destination.name,
                 source_stat=source_before,
             )
-            temporary_name, temporary_fd = self._create_temporary(directory_fd)
+            temporary_name, temporary_fd = self._create_temporary(directory)
             digest, bytes_copied = self._copy_and_hash(
                 source_fd=source_fd,
                 source_before=source_before,
                 temporary_fd=temporary_fd,
             )
+            if not hasattr(os, "fchmod"):  # Windows < 3.13: read-only by name
+                directory.chmod(temporary_name, _READ_ONLY_MODE)
             media_asset = MediaAsset(
                 project_id=project_id,
                 content_sha256=digest,
@@ -79,7 +88,7 @@ class FileSystemMediaStorage:
                 media_type=media_type,
             )
             self._publish_without_replacement(
-                directory_fd=directory_fd,
+                directory=directory,
                 temporary_name=temporary_name,
                 destination_name=destination.name,
             )
@@ -100,18 +109,18 @@ class FileSystemMediaStorage:
             cleanup_error: MediaStorageError | None = None
             with suppress(OSError):
                 os.close(source_fd)
-            if directory_fd is not None:
+            if directory is not None:
                 if temporary_name is not None:
                     try:
                         self._remove_temporary(
-                            directory_fd=directory_fd,
+                            directory=directory,
                             temporary_name=temporary_name,
                             published=published,
                         )
                     except MediaStorageError as error:
                         cleanup_error = error
                 with suppress(OSError):
-                    os.close(directory_fd)
+                    directory.close()
             if cleanup_error is not None:
                 if active_error is not None:
                     active_error.add_note(
@@ -141,16 +150,12 @@ class FileSystemMediaStorage:
         """Open a stored original without returning its host path to callers."""
         self._require_uuid(project_id, field="project_id")
         self._require_uuid(media_asset_id, field="media_asset_id")
-        directory_fd = self._open_existing_originals_directory(project_id)
+        directory = self._open_existing_originals_directory(project_id)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         try:
             try:
-                original_fd = os.open(
-                    f"{media_asset_id}.original",
-                    flags,
-                    dir_fd=directory_fd,
-                )
+                original_fd = directory.open_file(f"{media_asset_id}.original", flags)
             except FileNotFoundError as error:
                 raise MediaStorageError(
                     MediaStorageErrorCode.ORIGINAL_NOT_FOUND,
@@ -187,7 +192,7 @@ class FileSystemMediaStorage:
                     "The stored original could not be opened for reading.",
                 ) from error
         finally:
-            os.close(directory_fd)
+            directory.close()
 
     def discard_original(
         self,
@@ -199,14 +204,14 @@ class FileSystemMediaStorage:
         self._require_uuid(project_id, field="project_id")
         self._require_uuid(media_asset_id, field="media_asset_id")
         try:
-            directory_fd = self._open_existing_originals_directory(project_id)
+            directory = self._open_existing_originals_directory(project_id)
         except MediaStorageError as error:
             if error.code is MediaStorageErrorCode.ORIGINAL_NOT_FOUND:
                 return
             raise
         try:
             try:
-                os.unlink(f"{media_asset_id}.original", dir_fd=directory_fd)
+                directory.unlink(f"{media_asset_id}.original")
             except FileNotFoundError:
                 return
             except OSError as error:
@@ -215,7 +220,7 @@ class FileSystemMediaStorage:
                     "The original could not be discarded during rollback.",
                 ) from error
             try:
-                os.fsync(directory_fd)
+                directory.fsync()
             except OSError as error:
                 raise MediaStorageError(
                     MediaStorageErrorCode.IO_ERROR,
@@ -223,7 +228,7 @@ class FileSystemMediaStorage:
                     "be confirmed.",
                 ) from error
         finally:
-            os.close(directory_fd)
+            directory.close()
 
     @staticmethod
     def _require_uuid(value: object, *, field: str) -> None:
@@ -250,57 +255,30 @@ class FileSystemMediaStorage:
             )
         return name
 
-    def _create_originals_directory(self, project_id: UUID) -> int:
+    def _create_originals_directory(self, project_id: UUID) -> DirectoryHandle:
         """Create and open the UUID-only directory chain durably."""
         return self._open_originals_directory(project_id, create=True)
 
-    def _open_existing_originals_directory(self, project_id: UUID) -> int:
+    def _open_existing_originals_directory(self, project_id: UUID) -> DirectoryHandle:
         """Open the UUID-only directory chain without creating it."""
         return self._open_originals_directory(project_id, create=False)
 
-    def _open_originals_directory(self, project_id: UUID, *, create: bool) -> int:
+    def _open_originals_directory(
+        self, project_id: UUID, *, create: bool
+    ) -> DirectoryHandle:
         """Open a UUID-only directory chain without following symlinks."""
         try:
-            if create:
-                self._storage_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-            root_lstat = self._storage_root.lstat()
-            if stat.S_ISLNK(root_lstat.st_mode):
-                raise OSError("storage root is a symbolic link")
-            directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-            directory_flags |= getattr(os, "O_DIRECTORY", 0)
-            directory_flags |= getattr(os, "O_NOFOLLOW", 0)
-            current_fd = os.open(self._storage_root, directory_flags)
-            try:
-                root_fstat = os.fstat(current_fd)
-                if not stat.S_ISDIR(root_fstat.st_mode) or not os.path.samestat(
-                    root_lstat,
-                    root_fstat,
-                ):
-                    raise OSError("storage root changed while it was being opened")
-                for component in ("projects", str(project_id), "originals"):
-                    if create:
-                        created = False
-                        try:
-                            os.mkdir(component, mode=0o700, dir_fd=current_fd)
-                            created = True
-                        except FileExistsError:
-                            pass
-                        if created:
-                            try:
-                                os.fsync(current_fd)
-                            except OSError as error:
-                                raise MediaStorageError(
-                                    MediaStorageErrorCode.IO_ERROR,
-                                    "The media storage directory could not be "
-                                    "created durably.",
-                                ) from error
-                    next_fd = os.open(component, directory_flags, dir_fd=current_fd)
-                    os.close(current_fd)
-                    current_fd = next_fd
-            except BaseException:
-                os.close(current_fd)
-                raise
-            return current_fd
+            return open_directory_chain(
+                self._storage_root,
+                ("projects", str(project_id), "originals"),
+                create=create,
+                durable=True,
+            )
+        except DirectoryDurabilityError as error:
+            raise MediaStorageError(
+                MediaStorageErrorCode.IO_ERROR,
+                "The media storage directory could not be created durably.",
+            ) from error
         except FileNotFoundError as error:
             if create:
                 raise MediaStorageError(
@@ -318,13 +296,13 @@ class FileSystemMediaStorage:
             ) from error
 
     @staticmethod
-    def _create_temporary(directory_fd: int) -> tuple[str, int]:
+    def _create_temporary(directory: DirectoryHandle) -> tuple[str, int]:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         flags |= getattr(os, "O_CLOEXEC", 0)
         for _ in range(10):
             name = f".import-{uuid4()}.tmp"
             try:
-                return name, os.open(name, flags, 0o600, dir_fd=directory_fd)
+                return name, directory.open_file(name, flags, 0o600)
             except FileExistsError:
                 continue
         raise MediaStorageError(
@@ -358,7 +336,7 @@ class FileSystemMediaStorage:
                 "The selected source must be a regular file.",
             )
 
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | BINARY_FLAG
         flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         try:
             source_fd = os.open(source, flags)
@@ -406,16 +384,12 @@ class FileSystemMediaStorage:
     @staticmethod
     def _reject_existing_destination(
         *,
-        directory_fd: int,
+        directory: DirectoryHandle,
         destination_name: str,
         source_stat: os.stat_result,
     ) -> None:
         try:
-            destination_lstat = os.stat(
-                destination_name,
-                dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
+            destination_lstat = directory.stat(destination_name, follow_symlinks=False)
         except FileNotFoundError:
             return
         except OSError as error:
@@ -425,11 +399,7 @@ class FileSystemMediaStorage:
             ) from error
 
         try:
-            destination_stat = os.stat(
-                destination_name,
-                dir_fd=directory_fd,
-                follow_symlinks=True,
-            )
+            destination_stat = directory.stat(destination_name, follow_symlinks=True)
         except OSError:
             destination_stat = destination_lstat
         if os.path.samestat(source_stat, destination_stat):
@@ -471,7 +441,7 @@ class FileSystemMediaStorage:
                     digest.update(chunk)
                     bytes_copied += len(chunk)
                 output.flush()
-                os.fchmod(output.fileno(), _READ_ONLY_MODE)
+                fchmod(output.fileno(), _READ_ONLY_MODE)
                 os.fsync(output.fileno())
         except MediaStorageError:
             raise
@@ -499,18 +469,12 @@ class FileSystemMediaStorage:
     @staticmethod
     def _publish_without_replacement(
         *,
-        directory_fd: int,
+        directory: DirectoryHandle,
         temporary_name: str,
         destination_name: str,
     ) -> None:
         try:
-            os.link(
-                temporary_name,
-                destination_name,
-                src_dir_fd=directory_fd,
-                dst_dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
+            directory.link(temporary_name, destination_name)
         except FileExistsError as error:
             raise MediaStorageError(
                 MediaStorageErrorCode.DESTINATION_EXISTS,
@@ -523,17 +487,17 @@ class FileSystemMediaStorage:
             ) from error
 
         try:
-            os.fsync(directory_fd)
+            directory.fsync()
         except OSError as publish_error:
             rollback_confirmed = True
             try:
-                os.unlink(destination_name, dir_fd=directory_fd)
+                directory.unlink(destination_name)
             except FileNotFoundError:
                 pass
             except OSError:
                 rollback_confirmed = False
             try:
-                os.fsync(directory_fd)
+                directory.fsync()
             except OSError:
                 rollback_confirmed = False
 
@@ -551,12 +515,12 @@ class FileSystemMediaStorage:
     @staticmethod
     def _remove_temporary(
         *,
-        directory_fd: int,
+        directory: DirectoryHandle,
         temporary_name: str,
         published: bool,
     ) -> None:
         try:
-            os.unlink(temporary_name, dir_fd=directory_fd)
+            directory.unlink(temporary_name)
         except FileNotFoundError:
             return
         except OSError as error:
@@ -567,7 +531,7 @@ class FileSystemMediaStorage:
             ) from error
 
         try:
-            os.fsync(directory_fd)
+            directory.fsync()
         except OSError as error:
             raise MediaStorageError(
                 MediaStorageErrorCode.IO_ERROR,

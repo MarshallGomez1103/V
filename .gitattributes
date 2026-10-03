@@ -1,0 +1,4 @@
+# Lanzadores de doble clic: .bat necesita CRLF en Windows; los de sh, LF.
+*.bat text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf

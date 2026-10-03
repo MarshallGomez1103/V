@@ -38,6 +38,7 @@ from voz.application.ports.transcription import (
     TranscriptionFailureCode,
 )
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+from voz.infrastructure.safe_fs import DirectoryHandle
 
 _MANIFEST_NAME = ".voz-model.json"
 _BLOCK_BYTES = 1024 * 1024
@@ -861,17 +862,25 @@ class FileSystemModelStore:
                     "The downloaded model snapshot contains an unsafe link.",
                 )
             if path.is_file():
-                with path.open("rb") as source:
-                    os.fsync(source.fileno())
+                FileSystemModelStore._sync_file(path)
         FileSystemModelStore._sync_directory(directory)
 
     @staticmethod
-    def _sync_directory(directory: Path) -> None:
-        descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    def _sync_file(path: Path) -> None:
+        # Windows can only flush a descriptor opened for writing.
+        windows = os.name == "nt"
         try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+            with path.open("r+b" if windows else "rb") as source:
+                os.fsync(source.fileno())
+        except PermissionError:
+            # ponytail: a read-only (hard-linked) file on Windows keeps whatever
+            # durability the OS gives it; its size and digest are verified on use.
+            if not windows:
+                raise
+
+    @staticmethod
+    def _sync_directory(directory: Path) -> None:
+        DirectoryHandle(directory, None).fsync()
 
 
 __all__ = ["FileSystemModelStore", "SnapshotDownloader"]

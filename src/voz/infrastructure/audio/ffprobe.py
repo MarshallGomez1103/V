@@ -16,6 +16,7 @@ from voz.application.ports.media_probe import (
     MediaStreamKind,
     ProbedMediaStream,
 )
+from voz.infrastructure.audio.media_args import NO_WINDOW, ffprobe_file_arguments
 
 _DECODER_LINE = re.compile(r"^\s*[AV][A-Z.]{5}\s+([a-zA-Z0-9_.-]+)(?:\s|$)")
 _DECODER_CODEC_ALIAS = re.compile(r"(?:^|\s)\(codec\s+([a-zA-Z0-9_.-]+)\)(?:\s|$)")
@@ -50,6 +51,7 @@ class FfprobeMediaProbe:
         """Return metadata from an inherited seekable descriptor."""
 
         source_fd = _prepare_source_descriptor(source)
+        source_arguments, inherited = ffprobe_file_arguments(source_fd)
 
         completed = self._run(
             [
@@ -60,11 +62,9 @@ class FfprobeMediaProbe:
                 _PROBE_ENTRIES,
                 "-of",
                 "json",
-                "-fd",
-                str(source_fd),
-                "fd:",
+                *source_arguments,
             ],
-            pass_fds=(source_fd,),
+            pass_fds=inherited,
         )
         if completed.returncode != 0:
             raise MediaProbeError(
@@ -129,6 +129,7 @@ class FfprobeMediaProbe:
                 errors="replace",
                 timeout=self.timeout_seconds,
                 pass_fds=pass_fds,
+                creationflags=NO_WINDOW,
             )
         except FileNotFoundError as error:
             raise MediaProbeError(

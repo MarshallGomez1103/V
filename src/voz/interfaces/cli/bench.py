@@ -11,8 +11,8 @@ import importlib.metadata
 import io
 import json
 import platform
-import resource
 import subprocess
+import sys
 import threading
 import time
 import wave
@@ -257,9 +257,49 @@ def audio_duration_seconds(path: Path) -> float:
 
 
 def peak_rss_mib(*, children: bool = False) -> float:
-    """Peak resident set of this process (or its finished children), in MiB."""
+    """Peak resident set of this process (or its finished children), in MiB.
+
+    Windows has no per-children accounting, so ``children=True`` reports 0.0
+    there (ponytail: whisper.cpp memory is simply not measured on Windows).
+    """
+    if sys.platform == "win32":
+        return 0.0 if children else _windows_peak_working_set_mib()
+    import resource
+
     who = resource.RUSAGE_CHILDREN if children else resource.RUSAGE_SELF
-    return resource.getrusage(who).ru_maxrss / 1024  # Linux reports KiB
+    peak = resource.getrusage(who).ru_maxrss
+    # ru_maxrss is KiB on Linux but bytes on macOS.
+    return peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
+
+
+def _windows_peak_working_set_mib() -> float:
+    if sys.platform != "win32":
+        return 0.0
+    import ctypes
+    from ctypes import wintypes
+
+    class Counters(ctypes.Structure):
+        _fields_ = (
+            ("cb", wintypes.DWORD),
+            ("page_fault_count", wintypes.DWORD),
+            ("peak_working_set", ctypes.c_size_t),
+            ("working_set", ctypes.c_size_t),
+            ("quota_peak_paged_pool", ctypes.c_size_t),
+            ("quota_paged_pool", ctypes.c_size_t),
+            ("quota_peak_non_paged_pool", ctypes.c_size_t),
+            ("quota_non_paged_pool", ctypes.c_size_t),
+            ("pagefile", ctypes.c_size_t),
+            ("peak_pagefile", ctypes.c_size_t),
+        )
+
+    counters = Counters()
+    counters.cb = ctypes.sizeof(Counters)
+    process = ctypes.windll.kernel32.GetCurrentProcess()
+    if not ctypes.windll.psapi.GetProcessMemoryInfo(
+        process, ctypes.byref(counters), counters.cb
+    ):
+        return 0.0
+    return counters.peak_working_set / (1024 * 1024)
 
 
 def read_vram_used_mib() -> int | None:
@@ -472,7 +512,7 @@ def _version(package: str) -> str:
 
 
 def describe_environment(engine: str) -> dict[str, str]:
-    cpu = "desconocido"
+    cpu = platform.processor() or "desconocido"  # Windows/macOS answer here
     try:
         for line in Path("/proc/cpuinfo").read_text("utf-8", "replace").splitlines():
             if line.startswith("model name"):

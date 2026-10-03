@@ -21,6 +21,7 @@ from voz.application.ports.waveform import (
     WaveformError,
     WaveformFailureCode,
 )
+from voz.infrastructure.audio.media_args import NO_WINDOW, ffmpeg_input_arguments
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
 
@@ -182,14 +183,14 @@ class FfmpegWaveformPeaks:
             raise _unavailable("The media file is not available.") from error
 
     def _decode(self, source: BinaryIO, buckets: int) -> PeakSeries:
+        source_arguments, inherited = ffmpeg_input_arguments(source.fileno())
         command = [
             self._executable,
             "-hide_banner",
             "-loglevel",
             "error",
             "-nostdin",
-            "-i",
-            f"/proc/self/fd/{source.fileno()}",
+            *source_arguments,
             "-map",
             "0:a:0",
             "-vn",
@@ -208,7 +209,8 @@ class FfmpegWaveformPeaks:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 close_fds=True,
-                pass_fds=(source.fileno(),),
+                pass_fds=inherited,
+                creationflags=NO_WINDOW,
             )
         except OSError as error:
             raise _unavailable("The audio decoder could not be started.") from error

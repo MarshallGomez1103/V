@@ -28,14 +28,43 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ffmpeg
+      # numpy ships with the diarization extra; pyright and the sherpa tests need it.
       - name: Install dependencies
-        run: uv sync --locked --all-groups
+        run: uv sync --locked --all-groups --extra diarization
       - name: Ruff format
         run: uv run ruff format --check .
       - name: Ruff lint
         run: uv run ruff check .
       - name: Pyright
         run: uv run pyright
+      - name: Pytest
+        run: uv run pytest
+
+  backend-portable:
+    name: Backend / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      # Same dependency set the double-click launcher installs; uv takes the
+      # interpreter from .python-version.
+      - name: Install dependencies
+        run: uv sync --locked --all-groups --extra asr-local --extra diarization
+      # No FFmpeg is preinstalled that we can rely on: use VOZ's own pinned,
+      # checksummed download, which is exactly what end users get.
+      - name: Provide FFmpeg (VOZ bootstrap)
+        run: |
+          ffmpeg_dir="$(uv run python -m voz.infrastructure.audio.ffmpeg_tools)"
+          echo "$ffmpeg_dir" >> "$GITHUB_PATH"
       - name: Pytest
         run: uv run pytest
 

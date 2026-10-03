@@ -90,7 +90,10 @@ class ProviderSecrets:
             return {}
         except OSError as error:
             raise _invalid() from error
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+        # ponytail: Windows reports 0o666 for every file and has no POSIX modes;
+        # the user-profile ACL is the protection there, so only POSIX is checked.
+        group_or_world = info.st_mode & 0o077 if os.name != "nt" else 0
+        if not stat.S_ISREG(info.st_mode) or group_or_world:
             raise SecretsError(
                 SecretsFailureCode.FILE_INSECURE,
                 "The secrets file must be a regular file with mode 0600.",

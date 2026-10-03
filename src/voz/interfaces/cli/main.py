@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import sys
 import threading
 import time
 import urllib.request
@@ -17,6 +18,7 @@ import typer
 import uvicorn
 
 from voz.bootstrap import create_app
+from voz.infrastructure.audio.ffmpeg_tools import ensure_ffmpeg
 from voz.infrastructure.paths import resolve_voz_paths
 from voz.interfaces.cli.bench import bench_command
 from voz.interfaces.cli.diagnostics_bundle import build_bundle, write_bundle
@@ -166,6 +168,13 @@ BUNDLE_OPTION = typer.Option(
 )
 
 
+def prepare_ffmpeg() -> None:
+    """Put FFmpeg/ffprobe on PATH, downloading a pinned build once if absent."""
+    result = ensure_ffmpeg(announce=lambda message: typer.echo(message, err=True))
+    if result.status in {"failed", "unsupported"}:
+        typer.echo(result.message, err=True)
+
+
 @app.callback(invoke_without_command=True)
 def root(
     ctx: typer.Context,
@@ -174,6 +183,7 @@ def root(
     no_browser: bool = NO_BROWSER_OPTION,
 ) -> None:
     """Start VOZ locally; ``voz`` without a subcommand behaves like ``voz serve``."""
+    prepare_ffmpeg()
     if ctx.invoked_subcommand is None:
         run_server(host=host, port=port, open_browser=not no_browser)
 
@@ -229,6 +239,11 @@ app.command(name="bench")(bench_command)
 
 def main() -> None:
     """Console script entry point."""
+    # Windows consoles may use a legacy code page: never crash on a character.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="replace")
     app()
 
 

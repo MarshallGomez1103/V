@@ -196,6 +196,7 @@ def _create_staging_directory(staging_root: Path) -> Path:
 
 async def _stream_body_to(request: Request, destination: Path, limit: int) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_BINARY", 0)  # Windows: no newline translation
     received = 0
     with os.fdopen(os.open(destination, flags, 0o600), "wb") as output:
         async for chunk in request.stream():

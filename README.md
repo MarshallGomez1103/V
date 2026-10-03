@@ -5,28 +5,64 @@ largas de clases, entrevistas y reuniones. La meta es ofrecer un workspace web
 local con waveform, timeline, segmentos editables y hablantes, sin convertir un
 proveedor cloud en requisito.
 
-> **Estado actual: workspace completo, verificado en una sola máquina.** La CLI,
-> la API y la interfaz local funcionan como una sola aplicación instalable.
-> Desde el navegador se crea un proyecto, se sube un archivo (copia inmutable
-> con SHA-256 y ffprobe), se elige motor y perfil, y un job en segundo plano
-> normaliza, transcribe por chunks con checkpoints SQLite y publica por SSE.
-> Funciona hoy:
->
-> - **Faster Whisper real** (turbo y large-v3) en GPU NVIDIA, con Model
->   Manager para descargar, importar desde el cache de Buzz y borrar modelos;
-> - **hablantes** con sherpa-onnx (sin torch ni token), editables y fusionables;
-> - **palabras con timestamps**, waveform con zoom, reproductor sincronizado,
->   búsqueda, edición con autoguardado y exportación TXT/Markdown/SRT/VTT/JSON;
-> - **calidad**: perfiles reproducibles (`default`, `academic` con VAD),
->   glosario por proyecto, avisos no destructivos de posibles alucinaciones y
->   cola de revisión; `voz bench` mide RTF, RAM/VRAM y WER/CER;
-> - **opcionales**: whisper.cpp (si existe `whisper-cli`) y OpenAI/ElevenLabs
->   con clave propia, consentimiento y estimación de coste (experimentales:
->   probados solo con clientes falsos).
->
-> Todo se ha ejercitado en una RTX 4060 bajo Bazzite; en otras GPUs o
-> distribuciones es experimental. No hay release publicada. Qué está verificado
-> y cómo: [ROADMAP.md](ROADMAP.md), [docs/benchmarks.md](docs/benchmarks.md).
+## Cómo abrirlo (sin saber programar)
+
+No necesitas instalar Python, ni Node, ni FFmpeg.
+
+1. **Descarga el proyecto.** En [GitHub Desktop](https://desktop.github.com):
+   *File → Clone repository → URL* y pega
+   `https://github.com/MarshallGomez1103/voz`. O descarga el ZIP desde GitHub
+   (*Code → Download ZIP*) y descomprímelo.
+2. **Abre la carpeta y haz doble clic en el archivo de tu equipo:**
+
+   | Equipo | Archivo |
+   |---|---|
+   | Windows | `Iniciar-Windows.bat` |
+   | Mac | `Iniciar-Mac.command` |
+   | Linux | `Iniciar-Linux.sh` (o `./Iniciar-Linux.sh` en la terminal) |
+
+3. **Espera.** La primera vez descarga lo necesario y tarda unos minutos; luego
+   se abre el navegador solo. Las siguientes veces tarda segundos.
+4. **En la página, descarga un modelo** (sección *Modelos*; `turbo` es el
+   recomendado), arrastra tu grabación y pulsa *Transcribir*.
+
+Para cerrar VOZ, cierra la ventana negra que se abrió con él. Tus grabaciones,
+modelos y transcripciones se quedan en tu equipo. Fuera de la carpeta solo se
+instalan uv y su propio Python, sin tocar otros programas.
+
+**Si algo no va:**
+
+- **Windows dice "Windows protegió su PC":** *Más información → Ejecutar de
+  todas formas*.
+- **Mac dice que no puede abrirlo:** clic derecho sobre el archivo → *Abrir*. Si
+  no aparece la opción: *Ajustes del Sistema → Privacidad y seguridad → Abrir
+  igualmente*.
+- **Windows dice "ruta demasiado larga" (path too long):** mueve la carpeta a
+  un sitio corto, por ejemplo `C:\Voz`, y vuelve a abrir el archivo.
+- **Va lento:** sin tarjeta NVIDIA, VOZ transcribe con el procesador. Funciona,
+  pero una hora de audio puede tardar bastante; el modelo `turbo` es el más
+  rápido con buena calidad.
+
+## Qué hace
+
+- **Faster Whisper** (`turbo` y `large-v3`) en tu equipo: con GPU NVIDIA si la
+  tienes, si no con el procesador. El gestor de modelos los descarga y borra.
+- **Hablantes** separados en local con sherpa-onnx (sin cuentas ni tokens),
+  editables y fusionables.
+- **Palabras con tiempos**, forma de onda con zoom, reproductor sincronizado,
+  búsqueda, edición con autoguardado y exportación TXT, Markdown, SRT, VTT y
+  JSON.
+- **Calidad**: perfiles reproducibles (`default`, `academic` con filtro de
+  silencios), glosario por proyecto, avisos de posibles alucinaciones y cola de
+  revisión; `voz bench` mide velocidad y tasa de error.
+- **Opcionales**: whisper.cpp (si existe `whisper-cli`) y proveedores cloud con
+  tu propia clave, consentimiento explícito y estimación de coste
+  (experimentales).
+
+Verificado a fondo en Linux con una RTX 4060. Windows y macOS corren las pruebas
+automáticas en CI, pero aún no se han usado a mano. No hay release publicada.
+Qué está verificado y cómo: [ROADMAP.md](ROADMAP.md),
+[docs/benchmarks.md](docs/benchmarks.md).
 
 ## Capturas
 
@@ -184,7 +220,9 @@ La aplicación queda disponible en `http://127.0.0.1:8765` y expone
 
 ```bash
 uv run voz doctor          # añade --json o --redact si lo necesitas
-``` Para modificar y reconstruir el frontend:
+```
+
+Para modificar y reconstruir el frontend:
 
 ```bash
 cd apps/web

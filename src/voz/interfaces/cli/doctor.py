@@ -85,7 +85,12 @@ def _free_bytes(path: Path) -> int:
 def _check_tool(name: str, which: Which, run: Run) -> DoctorCheck:
     executable = which(name)
     if executable is None:
-        return DoctorCheck(name, "fail", "no encontrado en PATH; instala FFmpeg")
+        return DoctorCheck(
+            name,
+            "fail",
+            "no encontrado en PATH; VOZ lo descarga solo al iniciar con conexión, "
+            "o instálalo (winget/brew/apt install ffmpeg)",
+        )
     try:
         completed = run([executable, "-version"])
     except (OSError, subprocess.TimeoutExpired) as error:

@@ -16,6 +16,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import Engine
 
 from voz.infrastructure.paths import resolve_voz_paths
+from voz.infrastructure.safe_fs import BINARY_FLAG, DirectoryHandle, best_effort_chmod
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 # The wheel force-includes ``migrations`` next to this module; a development
@@ -62,8 +63,9 @@ def current_revision(engine: Engine) -> str | None:
         return MigrationContext.configure(connection).get_current_revision()
 
 
-def _fsync_path(path: Path, flags: int) -> None:
-    descriptor = os.open(path, flags)
+def _fsync_file(path: Path) -> None:
+    # Read-write: Windows refuses to flush a descriptor opened read-only.
+    descriptor = os.open(path, os.O_RDWR | BINARY_FLAG)
     try:
         os.fsync(descriptor)
     finally:
@@ -100,10 +102,10 @@ def backup_database(engine: Engine, revision: str, directory: Path) -> Path:
                 source.backup(copy)
         finally:
             raw.close()
-        os.chmod(partial, 0o600)
-        _fsync_path(partial, os.O_RDONLY)
+        best_effort_chmod(partial, 0o600)  # Windows only honours the read-only bit
+        _fsync_file(partial)
         os.replace(partial, final)
-        _fsync_path(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        DirectoryHandle(directory, None).fsync()  # no-op where NTFS cannot
         _prune_backups(directory, KEEP_BACKUPS)
     except (OSError, sqlite3.Error) as error:
         with suppress(OSError):

@@ -22,6 +22,12 @@ from voz.application.ports.media_normalization import (
     MediaNormalizationProgressCallback,
     NormalizedAudio,
 )
+from voz.infrastructure.audio.media_args import (
+    NO_WINDOW,
+    ffmpeg_input_arguments,
+    ffmpeg_output_arguments,
+)
+from voz.infrastructure.safe_fs import DirectoryHandle, open_directory_chain
 
 _SAMPLE_RATE_HZ = 16_000
 _CHANNELS = 1
@@ -75,18 +81,18 @@ class FfmpegMediaNormalizer:
             raise ValueError("audio_stream_index must be a non-negative integer")
 
         source_fd = self._source_file_descriptor(original)
-        directory_fd: int | None = None
+        directory: DirectoryHandle | None = None
         temporary_fd: int | None = None
         temporary_name: str | None = None
         process: subprocess.Popen[str] | None = None
         try:
-            directory_fd = self._open_derivatives_directory(project_id)
+            directory = self._open_derivatives_directory(project_id)
             destination_name = f"{media_asset_id}.inference.wav"
-            self._reject_existing_destination(directory_fd, destination_name)
+            self._reject_existing_destination(directory, destination_name)
             if self._is_cancelled(cancellation):
                 raise self._cancelled_error()
 
-            temporary_name, temporary_fd = self._create_temporary(directory_fd)
+            temporary_name, temporary_fd = self._create_temporary(directory)
             temporary_stat = os.fstat(temporary_fd)
             process = self._start_process(
                 source_fd=source_fd,
@@ -101,14 +107,14 @@ class FfmpegMediaNormalizer:
             )
             bytes_written = self._validate_and_sync_output(
                 temporary_fd=temporary_fd,
-                directory_fd=directory_fd,
+                directory=directory,
                 temporary_name=temporary_name,
                 expected_stat=temporary_stat,
             )
             if self._is_cancelled(cancellation):
                 raise self._cancelled_error()
             self._publish_without_replacement(
-                directory_fd=directory_fd,
+                directory=directory,
                 temporary_name=temporary_name,
                 destination_name=destination_name,
                 expected_stat=temporary_stat,
@@ -128,13 +134,13 @@ class FfmpegMediaNormalizer:
                 self._stop_process(process)
             if temporary_fd is not None:
                 os.close(temporary_fd)
-            if directory_fd is not None:
+            if directory is not None:
                 if temporary_name is not None:
                     try:
-                        self._remove_temporary(directory_fd, temporary_name)
+                        self._remove_temporary(directory, temporary_name)
                     except MediaNormalizationError as error:
                         cleanup_error = error
-                os.close(directory_fd)
+                directory.close()
             if cleanup_error is not None:
                 if active_error is None:
                     raise cleanup_error
@@ -159,6 +165,8 @@ class FfmpegMediaNormalizer:
         temporary_fd: int,
         audio_stream_index: int,
     ) -> subprocess.Popen[str]:
+        source_arguments, source_inherit = ffmpeg_input_arguments(source_fd)
+        output_arguments, output_inherit = ffmpeg_output_arguments(temporary_fd)
         command = [
             self._executable,
             "-hide_banner",
@@ -168,8 +176,7 @@ class FfmpegMediaNormalizer:
             "-progress",
             "pipe:1",
             "-nostats",
-            "-i",
-            f"/proc/self/fd/{source_fd}",
+            *source_arguments,
             "-map",
             f"0:{audio_stream_index}",
             "-vn",
@@ -182,7 +189,7 @@ class FfmpegMediaNormalizer:
             "-f",
             "wav",
             "-y",
-            f"/proc/self/fd/{temporary_fd}",
+            *output_arguments,
         ]
         try:
             return subprocess.Popen(
@@ -195,7 +202,8 @@ class FfmpegMediaNormalizer:
                 errors="replace",
                 bufsize=1,
                 close_fds=True,
-                pass_fds=(source_fd, temporary_fd),
+                pass_fds=(*source_inherit, *output_inherit),
+                creationflags=NO_WINDOW,
             )
         except FileNotFoundError as error:
             raise MediaNormalizationError(
@@ -363,33 +371,13 @@ class FfmpegMediaNormalizer:
         with suppress(subprocess.TimeoutExpired):
             process.wait(timeout=self._terminate_grace_seconds)
 
-    def _open_derivatives_directory(self, project_id: UUID) -> int:
+    def _open_derivatives_directory(self, project_id: UUID) -> DirectoryHandle:
         try:
-            self._trusted_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-            root_lstat = self._trusted_root.lstat()
-            if stat.S_ISLNK(root_lstat.st_mode):
-                raise OSError("trusted root is a symbolic link")
-            directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-            directory_flags |= getattr(os, "O_DIRECTORY", 0)
-            directory_flags |= getattr(os, "O_NOFOLLOW", 0)
-            current_fd = os.open(self._trusted_root, directory_flags)
-            try:
-                root_fstat = os.fstat(current_fd)
-                if not stat.S_ISDIR(root_fstat.st_mode) or not os.path.samestat(
-                    root_lstat,
-                    root_fstat,
-                ):
-                    raise OSError("trusted root changed while it was being opened")
-                for component in ("projects", str(project_id), "derivatives"):
-                    with suppress(FileExistsError):
-                        os.mkdir(component, mode=0o700, dir_fd=current_fd)
-                    next_fd = os.open(component, directory_flags, dir_fd=current_fd)
-                    os.close(current_fd)
-                    current_fd = next_fd
-            except BaseException:
-                os.close(current_fd)
-                raise
-            return current_fd
+            return open_directory_chain(
+                self._trusted_root,
+                ("projects", str(project_id), "derivatives"),
+                create=True,
+            )
         except OSError as error:
             raise MediaNormalizationError(
                 MediaNormalizationFailureCode.UNSAFE_DESTINATION,
@@ -397,13 +385,13 @@ class FfmpegMediaNormalizer:
             ) from error
 
     @staticmethod
-    def _create_temporary(directory_fd: int) -> tuple[str, int]:
+    def _create_temporary(directory: DirectoryHandle) -> tuple[str, int]:
         flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
         flags |= getattr(os, "O_CLOEXEC", 0)
         for _ in range(10):
             name = f".normalize-{uuid4()}.tmp.wav"
             try:
-                return name, os.open(name, flags, 0o600, dir_fd=directory_fd)
+                return name, directory.open_file(name, flags, 0o600)
             except FileExistsError:
                 continue
         raise MediaNormalizationError(
@@ -433,17 +421,13 @@ class FfmpegMediaNormalizer:
         cls,
         *,
         temporary_fd: int,
-        directory_fd: int,
+        directory: DirectoryHandle,
         temporary_name: str,
         expected_stat: os.stat_result,
     ) -> int:
         try:
             descriptor_stat = os.fstat(temporary_fd)
-            named_stat = os.stat(
-                temporary_name,
-                dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
+            named_stat = directory.stat(temporary_name, follow_symlinks=False)
             if (
                 not stat.S_ISREG(descriptor_stat.st_mode)
                 or not os.path.samestat(expected_stat, descriptor_stat)
@@ -480,36 +464,22 @@ class FfmpegMediaNormalizer:
     def _publish_without_replacement(
         cls,
         *,
-        directory_fd: int,
+        directory: DirectoryHandle,
         temporary_name: str,
         destination_name: str,
         expected_stat: os.stat_result,
     ) -> None:
         destination_linked = False
         try:
-            current_stat = os.stat(
-                temporary_name,
-                dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
+            current_stat = directory.stat(temporary_name, follow_symlinks=False)
             if not os.path.samestat(expected_stat, current_stat):
                 raise OSError("normalization temporary identity changed")
-            os.link(
-                temporary_name,
-                destination_name,
-                src_dir_fd=directory_fd,
-                dst_dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
+            directory.link(temporary_name, destination_name)
             destination_linked = True
-            published_stat = os.stat(
-                destination_name,
-                dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
+            published_stat = directory.stat(destination_name, follow_symlinks=False)
             if not os.path.samestat(expected_stat, published_stat):
                 raise OSError("published normalization identity changed")
-            os.fsync(directory_fd)
+            directory.fsync()
         except FileExistsError as error:
             raise MediaNormalizationError(
                 MediaNormalizationFailureCode.DESTINATION_EXISTS,
@@ -522,7 +492,7 @@ class FfmpegMediaNormalizer:
             )
             if destination_linked:
                 rollback_error = cls._rollback_publication(
-                    directory_fd=directory_fd,
+                    directory=directory,
                     destination_name=destination_name,
                 )
                 if rollback_error is not None:
@@ -532,18 +502,18 @@ class FfmpegMediaNormalizer:
     @staticmethod
     def _rollback_publication(
         *,
-        directory_fd: int,
+        directory: DirectoryHandle,
         destination_name: str,
     ) -> str | None:
         try:
-            os.unlink(destination_name, dir_fd=directory_fd)
+            directory.unlink(destination_name)
         except FileNotFoundError:
             pass
         except OSError:
             return "The failed publication rollback could not be confirmed."
 
         try:
-            os.stat(destination_name, dir_fd=directory_fd, follow_symlinks=False)
+            directory.stat(destination_name, follow_symlinks=False)
         except FileNotFoundError:
             pass
         except OSError:
@@ -552,15 +522,15 @@ class FfmpegMediaNormalizer:
             return "The failed publication rollback could not be confirmed."
 
         try:
-            os.fsync(directory_fd)
+            directory.fsync()
         except OSError:
             return "The failed publication rollback could not be synchronized."
         return None
 
     @staticmethod
-    def _remove_temporary(directory_fd: int, temporary_name: str) -> None:
+    def _remove_temporary(directory: DirectoryHandle, temporary_name: str) -> None:
         try:
-            os.unlink(temporary_name, dir_fd=directory_fd)
+            directory.unlink(temporary_name)
         except FileNotFoundError:
             return
         except OSError as error:
@@ -571,11 +541,11 @@ class FfmpegMediaNormalizer:
 
     @staticmethod
     def _reject_existing_destination(
-        directory_fd: int,
+        directory: DirectoryHandle,
         destination_name: str,
     ) -> None:
         try:
-            os.stat(destination_name, dir_fd=directory_fd, follow_symlinks=False)
+            directory.stat(destination_name, follow_symlinks=False)
         except FileNotFoundError:
             return
         except OSError as error:

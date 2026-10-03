@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
@@ -42,19 +43,30 @@ class _CatalogEntry(Protocol):
 def default_buzz_roots(
     environ: Mapping[str, str] | None = None,
     home: Path | None = None,
+    platform: str | None = None,
 ) -> tuple[Path, ...]:
-    """Candidate Buzz model roots; ``BUZZ_MODEL_ROOT=`` (empty) disables detection."""
+    """Candidate Buzz model roots; ``BUZZ_MODEL_ROOT=`` (empty) disables detection.
+
+    Candidates that do not exist are skipped later, so listing the per-platform
+    Buzz cache locations is harmless where Buzz is not installed.
+    """
     env = os.environ if environ is None else environ
     home_dir = Path.home() if home is None else home
     override = env.get("BUZZ_MODEL_ROOT")
     if override is not None and not override.strip():
         return ()
+    system = sys.platform if platform is None else platform
     cache_home = env.get("XDG_CACHE_HOME") or str(home_dir / ".cache")
     roots = [
         *([Path(override)] if override else []),
         home_dir / _FLATPAK_MODELS,
         Path(cache_home) / "Buzz" / "models",
     ]
+    if system == "darwin":
+        roots.append(home_dir / "Library" / "Caches" / "Buzz" / "models")
+    elif system == "win32":
+        local = Path(env.get("LOCALAPPDATA") or home_dir / "AppData" / "Local")
+        roots.append(local / "Buzz" / "Buzz" / "Cache" / "models")
     return tuple(dict.fromkeys(roots))
 
 
