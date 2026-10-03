@@ -172,7 +172,10 @@ def test_directory_in_place_of_a_file_is_rejected(tmp_path: Path) -> None:
     assert cache(tmp_path).find_candidates() == ()
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permission bits")
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0,
+    reason="needs POSIX permission bits and a non-root user",
+)
 def test_unreadable_root_is_ignored_without_raising(tmp_path: Path) -> None:
     locked, good = tmp_path / "locked", tmp_path / "good"
     build_snapshot(locked)

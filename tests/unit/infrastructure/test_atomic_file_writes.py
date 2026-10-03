@@ -17,6 +17,7 @@ from voz.application.ports.model_installation import (
 )
 from voz.application.ports.waveform import PeakSeries
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+from voz.infrastructure.audio.media_args import path_of_descriptor
 from voz.infrastructure.audio.waveform_peaks import FfmpegWaveformPeaks
 from voz.infrastructure.diarization.models import (
     EMBEDDING_FILE,
@@ -231,7 +232,7 @@ def test_diarization_files_and_manifest_are_synced_before_the_rename(
 
     def name_of(descriptor: int) -> str:
         try:
-            return Path(os.readlink(f"/proc/self/fd/{descriptor}")).name
+            return Path(path_of_descriptor(descriptor)).name
         except OSError:
             return "?"
 

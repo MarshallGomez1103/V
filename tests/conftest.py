@@ -41,11 +41,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(skip)
 
 
-def _proc_path(descriptor: int) -> str:
-    """Stand-in for GetFinalPathNameByHandle on Linux."""
-    return os.readlink(f"/proc/self/fd/{descriptor}")
-
-
 @pytest.fixture(autouse=True)
 def no_ffmpeg_download(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests never fetch FFmpeg; the dedicated tests inject a fake downloader."""
@@ -72,9 +67,4 @@ def platform_mode(
             "FORCE_MODE",
             "fd" if name == "portable-fd-args" else "path",
         )
-    if name == "portable-path-args":
-        if IS_WINDOWS:  # pragma: no cover - real implementation on Windows
-            pass
-        else:
-            monkeypatch.setattr(media_args, "path_of_descriptor", _proc_path)
     yield name

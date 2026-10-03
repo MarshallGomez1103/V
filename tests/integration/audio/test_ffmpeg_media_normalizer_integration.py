@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import subprocess
 import threading
 from pathlib import Path
@@ -346,7 +347,7 @@ def test_temporary_fsync_failure_is_io_error_and_does_not_publish(
     original_fsync = os.fsync
 
     def fail_regular_file_fsync(file_descriptor: int) -> None:
-        if os.path.isfile(f"/proc/self/fd/{file_descriptor}"):
+        if stat.S_ISREG(os.fstat(file_descriptor).st_mode):
             raise OSError("simulated file fsync failure")
         original_fsync(file_descriptor)
 
@@ -381,7 +382,7 @@ def test_publication_fsync_failure_rolls_back_and_is_reported(
     original_fsync = os.fsync
 
     def fail_directory_fsync(file_descriptor: int) -> None:
-        if os.path.isdir(f"/proc/self/fd/{file_descriptor}"):
+        if stat.S_ISDIR(os.fstat(file_descriptor).st_mode):
             raise OSError("simulated directory fsync failure")
         original_fsync(file_descriptor)
 

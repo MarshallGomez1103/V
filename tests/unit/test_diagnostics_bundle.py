@@ -6,6 +6,7 @@ import json
 import sqlite3
 import zipfile
 from pathlib import Path
+from typing import cast
 
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
@@ -60,7 +61,7 @@ def _seed(paths: VozPaths) -> None:
 
 def _bundle_files(tmp_path: Path) -> tuple[dict[str, str], Path]:
     home = tmp_path / "home" / "usuario-real"
-    paths = resolve_voz_paths(environ={}, home=home)
+    paths = resolve_voz_paths(environ={}, home=home, platform="linux")
     _seed(paths)
     report = DoctorReport(
         (
@@ -117,7 +118,7 @@ def test_bundle_versions_and_readme(tmp_path: Path) -> None:
 
 def test_bundle_without_database_still_builds(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    paths = resolve_voz_paths(environ={}, home=home)
+    paths = resolve_voz_paths(environ={}, home=home, platform="linux")
 
     files = build_bundle(DoctorReport(()), paths=paths, home=home)
 
@@ -129,9 +130,14 @@ def test_bundle_without_database_still_builds(tmp_path: Path) -> None:
 def test_redact_replaces_xdg_bases_before_home(tmp_path: Path) -> None:
     home = tmp_path / "home"
     paths = resolve_voz_paths(
-        environ={"XDG_DATA_HOME": str(tmp_path / "elsewhere")}, home=home
+        environ={"XDG_DATA_HOME": str(tmp_path / "elsewhere")},
+        home=home,
+        platform="linux",
     )
 
-    result = redact({"a": [f"{paths.data}/x", f"{home}/y", 3]}, paths, home)
+    result = redact({"a": [str(paths.data / "x"), str(home / "y"), 3]}, paths, home)
 
-    assert result == {"a": ["$XDG_DATA_HOME/voz/x", "~/y", 3]}
+    assert isinstance(result, dict)
+    items = cast(list[object], cast(dict[str, object], result)["a"])
+    labels = [i.replace("\\", "/") if isinstance(i, str) else i for i in items]
+    assert labels == ["$XDG_DATA_HOME/voz/x", "~/y", 3]

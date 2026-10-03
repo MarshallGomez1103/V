@@ -36,9 +36,21 @@ def mode() -> Mode:
 
 
 def path_of_descriptor(descriptor: int) -> str:
-    """Final path of the file behind ``descriptor`` (Windows only)."""
+    """Current path of the file behind an open ``descriptor``.
+
+    Windows: ``GetFinalPathNameByHandleW``. Linux: ``/proc/self/fd``. macOS:
+    ``fcntl(F_GETPATH)``. Production only needs it on Windows; the other branches
+    let tests exercise the ``path`` mode and inspect descriptors portably.
+    """
+    if sys.platform == "linux":
+        return os.readlink(f"/proc/self/fd/{descriptor}")
+    if sys.platform == "darwin":
+        import fcntl
+
+        raw = fcntl.fcntl(descriptor, fcntl.F_GETPATH, b"\0" * 1024)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        return os.fsdecode(bytes(raw).split(b"\0", 1)[0])  # pyright: ignore[reportUnknownArgumentType]
     if sys.platform != "win32":
-        raise OSError("descriptor paths are only resolved on Windows")
+        raise OSError("descriptor paths are not available on this platform")
     import ctypes
     import msvcrt
     from ctypes import wintypes
