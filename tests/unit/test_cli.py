@@ -163,7 +163,11 @@ def test_run_server_reuses_a_running_voz_instead_of_binding_again(
     from voz.interfaces.cli import main
 
     opened: list[str] = []
-    monkeypatch.setattr(main, "is_server_ready", lambda _url: True)
+
+    def ready(_url: str) -> bool:
+        return True
+
+    monkeypatch.setattr(main, "is_server_ready", ready)
     monkeypatch.setattr(main.webbrowser, "open", opened.append)
     monkeypatch.setattr(main, "create_app", lambda: pytest.fail("must not start"))
 
