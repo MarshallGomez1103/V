@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import plistlib
 import subprocess
 from pathlib import Path
@@ -87,6 +88,7 @@ def test_recreating_overwrites_and_exists_follows_the_file(tmp_path: Path) -> No
     assert not shortcut.exists()  # the user deleted the icon: offer to recreate it
 
 
+@pytest.mark.skipif(os.name == "nt", reason='Windows forbids " in paths')
 def test_exec_line_escapes_special_characters(tmp_path: Path) -> None:
     desktop = tmp_path / "desk"
     root = tmp_path / 'a"b$c%d'

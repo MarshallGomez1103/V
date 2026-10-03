@@ -304,7 +304,7 @@ async function importFile() {
   await screen.findByRole('heading', { name: 'clase.wav' })
   await waitFor(() => {
     expect(screen.getByRole<HTMLInputElement>('radio', { name: /motor de prueba/i }).checked).toBe(true)
-  })
+  }, { timeout: 5000 }) // ponytail: CI runners are slow; 1 s default flaked there
 }
 
 function transcribeButton() {
@@ -403,10 +403,12 @@ describe('instrucciones de estilo', () => {
   it('un ejemplo con puntuación se inserta con un clic', async () => {
     render(<App />)
     await importFile()
-    fireEvent.click(screen.getByRole('button', { name: 'Usar un ejemplo con puntuación' }))
-    expect(
-      screen.getByPlaceholderText<HTMLTextAreaElement>(/ejemplo: hola, buenas tardes/i).value,
-    ).toMatch(/^Hola, buenas tardes\./)
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar un ejemplo con puntuación' }))
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText<HTMLTextAreaElement>(/ejemplo: hola, buenas tardes/i).value,
+      ).toMatch(/^Hola, buenas tardes\./)
+    })
   })
 })
 
