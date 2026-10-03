@@ -158,3 +158,47 @@ def test_the_word_timestamp_retry_keeps_profile_and_glossary() -> None:
     assert [call["word_timestamps"] for call in engine.calls] == [True, False]
     assert engine.calls[0]["hotwords"] == engine.calls[1]["hotwords"] == "VOZ"
     assert engine.calls[0]["vad_filter"] is engine.calls[1]["vad_filter"] is True
+
+
+def test_style_prompt_becomes_initial_prompt_next_to_the_glossary_hotwords() -> None:
+    engine = _Engine()
+
+    _transcribe(engine, glossary=("VOZ",), prompt="Habla formal. Usa tildes.")
+
+    call = engine.calls[0]
+    # Both coexist: hotwords are prepended to every window, the prompt seeds the first.
+    assert call["hotwords"] == "VOZ"
+    assert call["initial_prompt"] == "Habla formal. Usa tildes."
+
+
+def test_no_prompt_adds_no_initial_prompt() -> None:
+    engine = _Engine()
+
+    _transcribe(engine, prompt=None)
+
+    assert "initial_prompt" not in engine.calls[0]
+
+
+def test_prompt_survives_the_word_timestamp_retry() -> None:
+    engine = _Engine(fail_first=True)
+
+    _transcribe(engine, prompt="Estilo", word_timestamps=True)
+
+    assert [call["initial_prompt"] for call in engine.calls] == ["Estilo", "Estilo"]
+
+
+def test_on_position_reports_the_end_of_every_decoded_segment() -> None:
+    class Two(_Engine):
+        def transcribe(self, audio: BinaryIO, **kwargs: object):  # type: ignore[no-untyped-def]
+            self.calls.append(kwargs)
+            return iter([_Segment(0.0, 1.5), _Segment(1.5, 4.0)]), _Info()
+
+    positions: list[int] = []
+    provider = _provider(Two())
+
+    provider.transcribe(
+        audio=BytesIO(b"pcm"),
+        options=TranscriptionOptions(model=DESCRIPTOR, on_position=positions.append),
+    )
+
+    assert positions == [1_500, 4_000]

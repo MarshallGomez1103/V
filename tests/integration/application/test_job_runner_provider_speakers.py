@@ -108,6 +108,7 @@ class LocalDiarizer:
         audio: BinaryIO,
         options: DiarizationOptions,
         cancellation: TranscriptionCancellationToken | None = None,
+        on_progress: object = None,
     ) -> DiarizationResult:
         del audio, options, cancellation
         return DiarizationResult((DiarizedTurn(0, 250, "L"),))
@@ -120,6 +121,7 @@ class NoPreparer:
         project_id: object,
         media_asset_id: object,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: object = None,
     ) -> None:
         raise AssertionError("derivative already exists")
 

@@ -324,3 +324,104 @@ def test_error_code_is_only_valid_for_failure() -> None:
             at=STARTED_AT,
             error_code="ASR_PROVIDER_ERROR",
         )
+
+
+def _running(state: TranscriptionJobState) -> TranscriptionJob:
+    job = make_job()
+    for step, target in enumerate(PIPELINE[1 : PIPELINE.index(state) + 1], start=1):
+        job = job.transition_to(target, at=STARTED_AT + timedelta(seconds=step))
+    return job
+
+
+def test_started_at_is_set_when_the_job_first_leaves_queued() -> None:
+    queued = make_job()
+    assert (queued.started_at, queued.stage_started_at) == (None, None)
+
+    probing = queued.transition_to(
+        TranscriptionJobState.PROBING, at=STARTED_AT + timedelta(seconds=3)
+    )
+    later = probing.transition_to(
+        TranscriptionJobState.PREPROCESSING, at=STARTED_AT + timedelta(seconds=5)
+    )
+
+    assert probing.started_at == STARTED_AT + timedelta(seconds=3)
+    assert later.started_at == probing.started_at  # never moves again
+
+
+def test_every_transition_restarts_the_stage_clock_and_clears_stage_progress() -> None:
+    transcribing = _running(TranscriptionJobState.TRANSCRIBING)
+    working = transcribing.with_stage_progress(
+        0.4, progress=0.3, at=STARTED_AT + timedelta(seconds=10)
+    )
+    assert working.stage_progress == 0.4
+
+    aligning = working.transition_to(
+        TranscriptionJobState.ALIGNING, at=STARTED_AT + timedelta(seconds=20)
+    )
+
+    assert aligning.stage_progress is None
+    assert aligning.stage_started_at == STARTED_AT + timedelta(seconds=20)
+    assert aligning.progress == 0.3  # global progress carries over
+
+
+def test_stage_progress_updates_global_progress_without_decreasing_it() -> None:
+    job = _running(TranscriptionJobState.DIARIZING)
+    first = job.with_stage_progress(0.5, progress=0.9, at=job.updated_at)
+    assert (first.stage_progress, first.progress) == (0.5, 0.9)
+
+    lower = first.with_stage_progress(0.6, progress=0.5, at=first.updated_at)
+    assert lower.progress == 0.9  # monotonic global progress
+
+    with pytest.raises(ValueError, match="stage progress cannot decrease"):
+        lower.with_stage_progress(0.1, at=lower.updated_at)
+    with pytest.raises(ValueError):
+        first.with_stage_progress(1.5, at=first.updated_at)
+
+
+def test_stage_progress_only_while_processable() -> None:
+    job = _running(TranscriptionJobState.PERSISTING).transition_to(
+        TranscriptionJobState.COMPLETED, at=STARTED_AT + timedelta(minutes=1)
+    )
+    with pytest.raises(ValueError, match="processable"):
+        job.with_stage_progress(0.5)
+    with pytest.raises(ValueError, match="processable"):
+        job.restart_stage()
+
+
+def test_restart_stage_resets_the_clock_and_progress() -> None:
+    job = _running(TranscriptionJobState.DIARIZING).with_stage_progress(
+        0.7, progress=0.9, at=STARTED_AT + timedelta(seconds=30)
+    )
+
+    restarted = job.restart_stage(at=STARTED_AT + timedelta(minutes=2))
+
+    assert restarted.stage_progress is None
+    assert restarted.stage_started_at == STARTED_AT + timedelta(minutes=2)
+    assert restarted.progress == 0.9
+    assert restarted.started_at == job.started_at
+
+
+def test_new_timing_fields_are_validated() -> None:
+    job = make_job()
+    with pytest.raises(ValueError, match="timezone-aware"):
+        TranscriptionJob(
+            id=job.id,
+            project_id=job.project_id,
+            media_asset_id=job.media_asset_id,
+            state=job.state,
+            progress=0.0,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+            started_at=datetime(2026, 9, 2, 8, 0),
+        )
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        TranscriptionJob(
+            id=job.id,
+            project_id=job.project_id,
+            media_asset_id=job.media_asset_id,
+            state=job.state,
+            progress=0.0,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+            stage_progress=2.0,
+        )

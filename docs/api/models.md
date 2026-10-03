@@ -48,10 +48,16 @@ HTTP 200. Una entrada por cada modelo del catálogo, instalado o no.
       "size_bytes": 77003619,
       "installed": true,
       "disk_bytes": 77010000,
+      "reclaimable_bytes": 10000,
+      "shared_bytes": 77000000,
       "external": [{ "origin": "buzz" }]
     }
   ],
-  "disk": { "models_bytes": 77010000, "free_bytes": 120000000000 }
+  "disk": {
+    "models_bytes": 77010000,
+    "free_bytes": 120000000000,
+    "reclaimable_bytes": 10000
+  }
 }
 ```
 
@@ -66,10 +72,30 @@ HTTP 200. Una entrada por cada modelo del catálogo, instalado o no.
 | `profile` | `fast` o `quality`; `null` en diarización. |
 | `size_bytes` | Suma de los archivos esperados del catálogo (lo que se descargaría). |
 | `installed` | `true` si hay un manifest VOZ válido para exactamente esa fuente y revisión. Una revisión distinta instalada antes no cuenta. |
-| `disk_bytes` | Bytes realmente ocupados en disco por la instalación; `null` si no está instalado. |
+| `disk_bytes` | **Tamaño real** de los archivos del modelo instalado (suma de `lstat`), también si son hardlinks a la caché de Buzz; `null` si no está instalado. Nunca es 0 para un modelo instalado. |
+| `reclaimable_bytes` | Lo que borrar el modelo liberaría de verdad: excluye los archivos con otro enlace duro (la copia importada de Buzz). `null` si no está instalado. Es el valor que coincide con `freed_bytes` del `DELETE`. |
+| `shared_bytes` | `disk_bytes − reclaimable_bytes`: lo que sigue en disco porque otra herramienta (Buzz) tiene el mismo archivo. `null` si no está instalado. |
 | `external` | Orígenes de otras herramientas que tienen exactamente esa fuente y revisión y podrían importarse (`buzz`). Vacío sin fuente externa. Sin duplicados, sin rutas. |
 | `disk.models_bytes` | Suma de `disk_bytes` de los modelos instalados. |
+| `disk.reclaimable_bytes` | Suma de `reclaimable_bytes` de los modelos instalados. |
 | `disk.free_bytes` | Bytes libres del volumen de datos; `null` si no se puede consultar. |
+
+### Modelos importados desde Buzz: «0 bytes»
+
+Un modelo importado como copia local se enlaza con *hardlinks* a la caché de Buzz:
+no ocupa un segundo espacio en disco. `disk_bytes` informa su tamaño real
+(`lstat`), y `DELETE` devuelve `freed_bytes` ≈ 0 (solo el manifest) porque los
+pesos siguen en la caché de Buzz. Una UI que quiera decir «se liberarán X» debe
+usar `reclaimable_bytes`, y puede mostrar `shared_bytes` como «compartido con
+Buzz»; mostrar `freed_bytes` o `reclaimable_bytes` como «tamaño» da 0.
+
+### Antes de pedir hablantes
+
+Los modelos de hablantes son la entrada `diarization:sherpa-default`
+(`kind: "diarization"`). Para saber si se puede crear un job con diarización:
+`installed` (modelos) y `runtime_available` (extra `diarization`). Si falta
+`installed`, ofrecer la descarga (`POST /api/models/diarization:sherpa-default/install`);
+si no, `POST /api/jobs` responde 409 `diarization_models_missing`.
 
 ## `DELETE /api/models/{model_id}?confirm=<model_id>`
 

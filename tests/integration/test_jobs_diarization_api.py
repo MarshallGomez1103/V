@@ -131,6 +131,7 @@ class Diarizer:
         audio: BinaryIO,
         options: DiarizationOptions,
         cancellation: TranscriptionCancellationToken | None = None,
+        on_progress: object = None,
     ) -> DiarizationResult:
         del audio, cancellation
         self.options.append(options)
@@ -140,11 +141,18 @@ class Diarizer:
 
 
 class Availability:
-    def __init__(self, available: bool) -> None:
-        self.available = available
+    def __init__(self, models: bool, runtime: bool) -> None:
+        self.models = models
+        self.runtime = runtime
+
+    def runtime_available(self) -> bool:
+        return self.runtime
+
+    def models_installed(self) -> bool:
+        return self.models
 
     def is_available(self) -> bool:
-        return self.available
+        return self.models and self.runtime
 
 
 class Preparer:
@@ -154,6 +162,7 @@ class Preparer:
         project_id: UUID,
         media_asset_id: UUID,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: object = None,
     ) -> None:
         raise AssertionError("derivative already exists")
 
@@ -163,7 +172,8 @@ class Harness:
         self,
         tmp_path: Path,
         *,
-        available: bool = True,
+        models: bool = True,
+        runtime: bool = True,
         error: DiarizationError | None = None,
     ) -> None:
         self.engine = create_sqlite_engine((tmp_path / "voz.db").absolute())
@@ -210,7 +220,7 @@ class Harness:
             SqliteMediaAssetRepository(self.engine),
             jobs,
             selections,
-            Availability(available),
+            Availability(models, runtime),
         )
         self.app = FastAPI()
         self.app.include_router(
@@ -376,22 +386,37 @@ def test_invalid_options_are_422_with_stable_code(
         harness.close()
 
 
-def test_unavailable_diarization_is_409_and_creates_nothing(tmp_path: Path) -> None:
-    harness = Harness(tmp_path, available=False)
+def test_missing_models_are_409_and_create_nothing(tmp_path: Path) -> None:
+    harness = Harness(tmp_path, models=False)
     try:
         status, body = harness.post(diarization={"enabled": True})
 
         assert status == 409
-        assert _detail(body)["code"] == "diarization_unavailable"
+        assert _detail(body)["code"] == "diarization_models_missing"
         assert (
             SqliteTranscriptionJobRepository(harness.engine).list_by_project(
                 harness.project.id
             )
             == ()
         )
-        # Not asking for diarization still works when it is unavailable.
+        # Not asking for diarization still works without the models.
         status, _ = harness.post(diarization={"enabled": False})
         assert status == 201
+    finally:
+        harness.close()
+
+
+def test_missing_runtime_is_diarization_unavailable(tmp_path: Path) -> None:
+    # No runtime wins over missing models: downloading them would not help.
+    harness = Harness(tmp_path, models=False, runtime=False)
+    try:
+        status, body = harness.post(diarization={"enabled": True})
+
+        assert status == 409
+        assert _detail(body)["code"] == "diarization_unavailable"
+        assert not SqliteTranscriptionJobRepository(harness.engine).list_by_project(
+            harness.project.id
+        )
     finally:
         harness.close()
 

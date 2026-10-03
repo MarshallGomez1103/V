@@ -80,6 +80,7 @@ class Store:
     def __init__(self, *installed: ModelDescriptor, fail: bool = False) -> None:
         self.installed = {item: 1000 for item in installed}
         self.removed: list[ModelDescriptor] = []
+        self.shared: dict[ModelDescriptor, int] = {}  # hardlinked with another cache
         self.fail = fail
 
     def is_installed(self, descriptor: ModelDescriptor) -> bool:
@@ -87,6 +88,10 @@ class Store:
 
     def disk_usage(self, descriptor: ModelDescriptor) -> int | None:
         return self.installed.get(descriptor)
+
+    def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None:
+        size = self.installed.get(descriptor)
+        return None if size is None else size - self.shared.get(descriptor, 0)
 
     def remove(self, descriptor: ModelDescriptor) -> int:
         if self.fail:
@@ -160,6 +165,18 @@ def test_list_reports_catalog_state_sizes_disk_and_external_origins() -> None:
     assert (base.size_bytes, base.installed, base.disk_bytes) == (100, False, None)
     assert [item.origin for item in base.external] == ["buzz"]
     assert (result.disk.models_bytes, result.disk.free_bytes) == (1000, 777)
+
+
+def test_hardlinked_imports_report_real_size_and_what_deleting_frees() -> None:
+    store = Store(TINY)
+    store.shared[TINY] = 1000  # imported from the Buzz cache: nothing to reclaim
+
+    result = ListModels(Catalog(), store).execute()
+
+    tiny = result.models[0]
+    assert tiny.disk_bytes == 1000  # real size of the files, never 0
+    assert (tiny.reclaimable_bytes, tiny.shared_bytes) == (0, 1000)
+    assert (result.disk.models_bytes, result.disk.reclaimable_bytes) == (1000, 0)
 
 
 def test_list_without_optional_ports_has_no_free_bytes_or_external() -> None:

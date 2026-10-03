@@ -192,6 +192,11 @@ transcription_jobs = Table(
     Column("created_at", String(40), nullable=False),
     Column("updated_at", String(40), nullable=False),
     Column("error_code", Text, nullable=True),
+    # First time the job left QUEUED, when the current state began, and progress
+    # inside that state (migration 0008); NULL for jobs that predate stage timing.
+    Column("started_at", String(40), nullable=True),
+    Column("stage_started_at", String(40), nullable=True),
+    Column("stage_progress", Float(), nullable=True),
     CheckConstraint(
         "progress >= 0.0 AND progress <= 1.0",
         name="progress_bounded",
@@ -267,6 +272,8 @@ transcription_job_selections = Table(
     # NULL for jobs created before profiles existed.
     Column("profile_json", Text, nullable=True),
     Column("glossary_json", Text, nullable=True),
+    # Optional style instruction for the ASR engine (migration 0008).
+    Column("prompt", Text, nullable=True),
 )
 
 project_glossaries = Table(

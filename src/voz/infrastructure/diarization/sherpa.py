@@ -8,6 +8,7 @@ downloaded here; callers pass installed paths (see ``models.py``).
 from __future__ import annotations
 
 import importlib
+import os
 import wave
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -37,6 +38,14 @@ _SAMPLE_RATE = 16_000
 DEFAULT_THRESHOLD = 0.3
 Progress = Callable[[int, int], int]
 """``(processed_chunks, num_chunks)``; a non-zero return aborts the run."""
+MAX_DEFAULT_THREADS = 8
+"""Measured on 11 min of audio (20-core CPU): 2 threads 147 s, 4 -> 85 s, 8 -> 70 s,
+19 -> 79 s. More threads stop paying off (and contend with ASR/the UI)."""
+
+
+def default_diarization_threads() -> int:
+    """All cores but one, capped where adding threads stopped helping."""
+    return min(MAX_DEFAULT_THREADS, max(1, (os.cpu_count() or 2) - 1))
 
 
 class _RawTurn(Protocol):
@@ -179,7 +188,7 @@ class SherpaOnnxDiarizationProvider:
         segmentation_model: Path,
         embedding_model: Path,
         threshold: float = DEFAULT_THRESHOLD,
-        num_threads: int = 2,
+        num_threads: int | None = None,
         engine_factory: _EngineFactory = _default_engine_factory,
     ) -> None:
         if threshold <= 0:
@@ -187,7 +196,9 @@ class SherpaOnnxDiarizationProvider:
         self._segmentation_model = Path(segmentation_model)
         self._embedding_model = Path(embedding_model)
         self._threshold = threshold
-        self._num_threads = num_threads
+        self._num_threads = (
+            default_diarization_threads() if num_threads is None else num_threads
+        )
         self._engine_factory = engine_factory
         self._engine: _Engine | None = None
         self._lock = RLock()
@@ -205,8 +216,14 @@ class SherpaOnnxDiarizationProvider:
         audio: BinaryIO,
         options: DiarizationOptions,
         cancellation: TranscriptionCancellationToken | None = None,
+        on_progress: Callable[[float], None] | None = None,
     ) -> DiarizationResult:
-        """Return acoustic turns for normalized audio; honour the speaker hint."""
+        """Return acoustic turns for normalized audio; honour the speaker hint.
+
+        ``on_progress`` receives 0..1 while the speaker embeddings are computed
+        (the first seconds, loading and segmentation, report nothing). A second
+        clustering pass for a speaker-count hint starts again from 0.
+        """
         self._raise_if_cancelled(cancellation)
         samples = _read_samples(audio)
         with self._lock:
@@ -218,7 +235,9 @@ class SherpaOnnxDiarizationProvider:
             engine = self._engine_for()
 
             def run(num_clusters: int) -> list[DiarizedTurn]:
-                return self._run(engine, samples, num_clusters, cancellation)
+                return self._run(
+                    engine, samples, num_clusters, cancellation, on_progress
+                )
 
             return DiarizationResult(turns=tuple(_solve(run, options.speakers)))
 
@@ -248,9 +267,14 @@ class SherpaOnnxDiarizationProvider:
         samples: Samples,
         num_clusters: int,
         cancellation: TranscriptionCancellationToken | None,
+        on_progress: Callable[[float], None] | None = None,
     ) -> list[DiarizedTurn]:
-        def progress(_done: int, _total: int) -> int:
-            return 1 if cancellation is not None and cancellation.is_cancelled() else 0
+        def progress(done: int, total: int) -> int:
+            if cancellation is not None and cancellation.is_cancelled():
+                return 1
+            if on_progress is not None and total > 0:
+                on_progress(min(1.0, done / total))
+            return 0
 
         try:
             raw = engine.diarize(

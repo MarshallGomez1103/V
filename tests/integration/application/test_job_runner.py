@@ -19,6 +19,8 @@ import pytest
 from sqlalchemy import Engine
 
 from voz.application.job_runner import (
+    PREPROCESS_END,
+    SPEAKERS_END,
     InferenceAudioPreparer,
     JobNotFound,
     JobRunner,
@@ -145,6 +147,11 @@ class Provider:
         return f"chunk-{self.calls}"
 
 
+def _after_chunks(done: int, total: int) -> float:
+    """Global progress without speakers: transcription spans 0.02 to 0.98."""
+    return PREPROCESS_END + (SPEAKERS_END - PREPROCESS_END) * done / total
+
+
 class Crash(BaseException):
     """Simulates a process kill: not an ``Exception``, so nothing records FAILED."""
 
@@ -161,6 +168,7 @@ class Preparer:
         project_id: UUID,
         media_asset_id: UUID,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: object = None,
     ) -> None:
         del cancellation
         self.calls.append((project_id, media_asset_id))
@@ -301,7 +309,7 @@ def test_provider_failure_persists_stable_code_not_message(tmp_path: Path) -> No
     assert finished is not None
     assert finished.state is TranscriptionJobState.FAILED
     assert finished.error_code == "transcription_provider_failed"
-    assert math.isclose(finished.progress, 1 / 3)
+    assert math.isclose(finished.progress, _after_chunks(1, 3))
     persisted = fixture.persisted()
     assert persisted.error_code == finished.error_code
     assert "/private/" not in (persisted.error_code or "")
@@ -320,7 +328,7 @@ def test_cancel_mid_transcription_stops_between_chunks(tmp_path: Path) -> None:
     assert finished.state is TranscriptionJobState.CANCELLED
     # Chunk 1 stays committed; chunk 2 was in flight and is discarded, not redone.
     assert provider.calls == 2
-    assert math.isclose(finished.progress, 1 / 3)
+    assert math.isclose(finished.progress, _after_chunks(1, 3))
     assert fixture.persisted().state is TranscriptionJobState.CANCELLED
     assert len(fixture.checkpoints.list_for_job(fixture.job.id)) == 1
     assert (

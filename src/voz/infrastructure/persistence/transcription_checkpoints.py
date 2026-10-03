@@ -174,7 +174,14 @@ def _job_values(job: TranscriptionJob) -> dict[str, object]:
         "created_at": job.created_at.astimezone(UTC).isoformat(),
         "updated_at": job.updated_at.astimezone(UTC).isoformat(),
         "error_code": job.error_code,
+        "started_at": _optional_iso(job.started_at),
+        "stage_started_at": _optional_iso(job.stage_started_at),
+        "stage_progress": job.stage_progress,
     }
+
+
+def _optional_iso(value: datetime | None) -> str | None:
+    return None if value is None else value.astimezone(UTC).isoformat()
 
 
 def _checkpoint_from_row(row: RowMapping) -> TranscriptionCheckpoint:

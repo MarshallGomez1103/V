@@ -37,6 +37,8 @@ class JobSelection:
     """Full decoding recipe used (S13.02); ``None`` for jobs from before profiles."""
     glossary: tuple[str, ...] = ()
     """Project glossary at creation time, frozen so the job can be repeated."""
+    prompt: str | None = None
+    """Style instruction for the ASR engine (initial prompt); ``None`` means none."""
 
     def __post_init__(self) -> None:
         if not isinstance(cast(object, self.job_id), UUID):

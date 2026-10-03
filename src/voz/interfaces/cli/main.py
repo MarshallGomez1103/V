@@ -136,13 +136,21 @@ def run_server(*, host: str, port: int, open_browser: bool) -> None:
     if open_browser:
         start_browser_opener(base_url)
 
+    servers: list[uvicorn.Server] = []
+
+    def stop_server() -> None:
+        """``POST /api/shutdown``: same graceful path as Ctrl+C."""
+        for server in servers:
+            server.should_exit = True
+
     config = uvicorn.Config(
-        app=create_app(),
+        app=create_app(request_shutdown=stop_server),
         host=host,
         port=port,
         log_level="info",
     )
-    uvicorn.Server(config).run()
+    servers.append(uvicorn.Server(config))
+    servers[0].run()
 
 
 HOST_OPTION = typer.Option(

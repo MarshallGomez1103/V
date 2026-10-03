@@ -136,6 +136,12 @@ class TranscriptionJob:
     created_at: datetime
     updated_at: datetime
     error_code: str | None = None
+    started_at: datetime | None = None
+    """When the job first left ``QUEUED`` (picked up by the worker)."""
+    stage_started_at: datetime | None = None
+    """When the current state began; ``None`` for jobs from before stage timing."""
+    stage_progress: float | None = None
+    """Progress inside the current stage (0..1); ``None`` when it has no measure."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", _require_uuid(self.id, field_name="id"))
@@ -175,6 +181,15 @@ class TranscriptionJob:
             object.__setattr__(self, "error_code", _require_error_code(self.error_code))
             if self.state is not TranscriptionJobState.FAILED:
                 raise ValueError("error_code is only valid for a failed job")
+
+        for name in ("started_at", "stage_started_at"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_aware_timestamp(value, field_name=name)
+        if self.stage_progress is not None:
+            object.__setattr__(
+                self, "stage_progress", _require_progress(self.stage_progress)
+            )
 
     @classmethod
     def create(
@@ -241,6 +256,15 @@ class TranscriptionJob:
             error_code=(
                 error_code if validated_target is TranscriptionJobState.FAILED else None
             ),
+            started_at=(
+                timestamp
+                if self.state is TranscriptionJobState.QUEUED
+                and validated_target is TranscriptionJobState.PROBING
+                and self.started_at is None
+                else self.started_at
+            ),
+            stage_started_at=timestamp,
+            stage_progress=None,
         )
 
     def with_progress(self, progress: object, *, at: datetime | None = None) -> Self:
@@ -258,3 +282,51 @@ class TranscriptionJob:
             raise ValueError("progress timestamp cannot be earlier than updated_at")
 
         return replace(self, progress=validated_progress, updated_at=timestamp)
+
+    def with_stage_progress(
+        self,
+        stage_progress: object,
+        *,
+        progress: object | None = None,
+        at: datetime | None = None,
+    ) -> Self:
+        """Return a snapshot with progress inside the current stage.
+
+        The stage fraction never decreases within a stage; the global ``progress``
+        (when given) is raised to at least its current value.
+        """
+
+        if not self.state.is_processable:
+            raise ValueError("progress can only change while a job is processable")
+        validated_stage = _require_progress(stage_progress)
+        if self.stage_progress is not None and validated_stage < self.stage_progress:
+            raise ValueError("stage progress cannot decrease")
+        global_progress = (
+            self.progress
+            if progress is None
+            else max(self.progress, _require_progress(progress))
+        )
+        timestamp = self._monotonic_timestamp(at, "progress")
+        return replace(
+            self,
+            progress=global_progress,
+            stage_progress=validated_stage,
+            updated_at=timestamp,
+        )
+
+    def restart_stage(self, *, at: datetime | None = None) -> Self:
+        """Restart the clock of the current stage (work redone after a recovery)."""
+
+        if not self.state.is_processable:
+            raise ValueError("a stage can only restart while a job is processable")
+        timestamp = self._monotonic_timestamp(at, "stage")
+        return replace(
+            self, stage_started_at=timestamp, stage_progress=None, updated_at=timestamp
+        )
+
+    def _monotonic_timestamp(self, at: datetime | None, label: str) -> datetime:
+        timestamp = at if at is not None else datetime.now(UTC)
+        _require_aware_timestamp(timestamp, field_name="at")
+        if timestamp < self.updated_at:
+            raise ValueError(f"{label} timestamp cannot be earlier than updated_at")
+        return timestamp

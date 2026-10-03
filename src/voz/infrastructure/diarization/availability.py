@@ -24,8 +24,14 @@ class SherpaDiarizationAvailability:
         self._store = store
         self._has_runtime = has_runtime
 
+    def runtime_available(self) -> bool:
+        return self._has_runtime()
+
+    def models_installed(self) -> bool:
+        return self._store.is_installed()
+
     def is_available(self) -> bool:
-        return self._store.is_installed() and self._has_runtime()
+        return self.models_installed() and self.runtime_available()
 
 
 __all__ = ["SherpaDiarizationAvailability"]

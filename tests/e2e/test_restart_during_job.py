@@ -5,6 +5,7 @@ The first app exits its lifespan while the job is mid-way; the second one opens
 the same XDG directories and must finish the job without repeating a confirmed
 chunk and without duplicating segments.
 """
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
@@ -248,7 +249,7 @@ def test_closing_the_app_mid_job_resumes_without_repeating_or_duplicating(
         tmp_path, f"select state, progress from transcription_jobs where id='{job_id}'"
     )
     assert state == "TRANSCRIBING"
-    assert progress == PARK_AT_CALL / total
+    assert progress == pytest.approx(0.02 + 0.96 * PARK_AT_CALL / total)
     assert _rows(tmp_path, "select count(*) from transcription_checkpoints") == [
         (PARK_AT_CALL,)
     ]

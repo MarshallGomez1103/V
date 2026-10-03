@@ -119,6 +119,7 @@ class _FakeProvider:
         audio: BinaryIO,
         options: DiarizationOptions,
         cancellation: TranscriptionCancellationToken | None = None,
+        on_progress: object = None,
     ) -> DiarizationResult:
         if cancellation is not None and cancellation.is_cancelled():
             raise DiarizationError(DiarizationFailureCode.CANCELLED, "Cancelado")

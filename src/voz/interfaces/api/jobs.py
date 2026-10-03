@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from voz.application.create_transcription_job import (
     CreateJobError,
@@ -26,6 +27,9 @@ from voz.application.ports.repositories import (
     TranscriptionJobRepository,
     TranscriptRepository,
 )
+from voz.application.ports.transcription_checkpoint import (
+    TranscriptionCheckpointStore,
+)
 from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
@@ -35,6 +39,7 @@ from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
 )
+from voz.interfaces.api.job_views import timing_view
 from voz.interfaces.api.segments import segment_view
 
 _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
@@ -46,6 +51,8 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.INSUFFICIENT_VRAM: 409,
     CreateJobFailureCode.INSUFFICIENT_RAM: 409,
     CreateJobFailureCode.DIARIZATION_UNAVAILABLE: 409,
+    CreateJobFailureCode.DIARIZATION_MODELS_MISSING: 409,
+    CreateJobFailureCode.PROMPT_INVALID: 422,
     CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN: 422,
 }
 
@@ -63,6 +70,8 @@ class CreateJobRequest:
     """``{"enabled": bool, "speakers": {"exact"?, "minimum"?, "maximum"?}}``."""
     profile: str | None = None
     """Quality profile name (S13.02); ``None`` means ``default``."""
+    prompt: str | None = None
+    """Style instruction for the ASR engine; at most 600 characters once stripped."""
 
 
 def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
@@ -148,6 +157,7 @@ def selection_view(selection: JobSelection) -> dict[str, object]:
             else selection.quality_profile.to_dict()
         ),
         "glossary": list(selection.glossary),
+        "prompt": selection.prompt,
         "diarization": {
             "enabled": selection.diarization is not None,
             "speakers": {
@@ -159,9 +169,21 @@ def selection_view(selection: JobSelection) -> dict[str, object]:
     }
 
 
-def job_view(job: TranscriptionJob, selection: JobSelection) -> dict[str, object]:
-    """Path-free job projection consumed by the browser."""
-    completed = job.state is TranscriptionJobState.COMPLETED
+def job_view(
+    job: TranscriptionJob,
+    selection: JobSelection,
+    *,
+    has_transcript: bool | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Path-free job projection consumed by the browser.
+
+    ``has_transcript`` says whether the transcript row already exists (it does
+    from the end of transcription, before the speakers); ``None`` falls back to
+    "the job completed".
+    """
+    if has_transcript is None:
+        has_transcript = job.state is TranscriptionJobState.COMPLETED
     return {
         "id": str(job.id),
         "project_id": str(job.project_id),
@@ -170,11 +192,33 @@ def job_view(job: TranscriptionJob, selection: JobSelection) -> dict[str, object
         "progress": job.progress,
         "error_code": job.error_code,
         "diarization_error_code": selection.diarization_error_code,
-        "transcript_id": str(transcript_id_for(job.id)) if completed else None,
+        "transcript_id": str(transcript_id_for(job.id)) if has_transcript else None,
+        **timing_view(job, now),
         "selection": selection_view(selection),
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
     }
+
+
+_NO_TRANSCRIPT_YET = frozenset(
+    {
+        TranscriptionJobState.QUEUED,
+        TranscriptionJobState.PROBING,
+        TranscriptionJobState.PREPROCESSING,
+        TranscriptionJobState.TRANSCRIBING,
+    }
+)
+
+
+def job_has_transcript(
+    job: TranscriptionJob, transcripts: TranscriptRepository
+) -> bool:
+    """The transcript row exists from the end of transcription, before the speakers."""
+    if job.state is TranscriptionJobState.COMPLETED:
+        return True
+    if job.state in _NO_TRANSCRIPT_YET:
+        return False
+    return transcripts.get(transcript_id_for(job.id)) is not None
 
 
 def create_jobs_router(
@@ -185,6 +229,7 @@ def create_jobs_router(
     segments_repo: SegmentRepository,
     runner: JobRunner,
     speaker_turns_repo: SpeakerTurnRepository | None = None,
+    checkpoints: TranscriptionCheckpointStore | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["jobs"])
 
@@ -194,7 +239,9 @@ def create_jobs_router(
             raise _error(
                 500, "job_selection_missing", "The job has no persisted selection."
             )
-        return job_view(job, selection)
+        return job_view(
+            job, selection, has_transcript=job_has_transcript(job, transcripts_repo)
+        )
 
     def require_job(job_id: UUID) -> TranscriptionJob:
         job = jobs_repo.get(job_id)
@@ -212,6 +259,7 @@ def create_jobs_router(
                 language=request.language,
                 diarization=diarization,
                 profile=request.profile,
+                prompt=request.prompt,
             )
         except CreateJobError as error:
             extra: dict[str, object] = {}
@@ -229,7 +277,7 @@ def create_jobs_router(
                 **extra,
             ) from None
         runner.enqueue(created.job.id)
-        return job_view(created.job, created.selection)
+        return job_view(created.job, created.selection, has_transcript=False)
 
     def get_job(job_id: UUID) -> dict[str, object]:
         return view(require_job(job_id))
@@ -249,6 +297,20 @@ def create_jobs_router(
             raise _error(404, "job_not_found", "The job does not exist.") from None
         except JobTerminal:
             raise _error(409, "job_terminal", "The job already finished.") from None
+
+    def job_preview(job_id: UUID, after_ms: int = Query(0, ge=0)) -> dict[str, object]:
+        """Segments confirmed in checkpoints; ``after_ms`` asks only for newer ones."""
+        require_job(job_id)
+        confirmed = () if checkpoints is None else checkpoints.list_for_job(job_id)
+        return {
+            "segments": [
+                {"start_ms": item.start_ms, "end_ms": item.end_ms, "text": text}
+                for checkpoint in confirmed
+                if checkpoint.owned_end_ms > after_ms
+                for item in checkpoint.segments
+                if item.end_ms > after_ms and (text := item.text.strip())
+            ]
+        }
 
     def list_segments(transcript_id: UUID) -> dict[str, object]:
         if transcripts_repo.get(transcript_id) is None:
@@ -272,6 +334,7 @@ def create_jobs_router(
     router.add_api_route(
         "/jobs/{job_id}/cancel", cancel_job, methods=["POST"], status_code=202
     )
+    router.add_api_route("/jobs/{job_id}/preview", job_preview, methods=["GET"])
     router.add_api_route(
         "/transcripts/{transcript_id}/segments", list_segments, methods=["GET"]
     )
@@ -281,6 +344,7 @@ def create_jobs_router(
 __all__ = [
     "CreateJobRequest",
     "create_jobs_router",
+    "job_has_transcript",
     "job_view",
     "parse_diarization",
     "selection_view",

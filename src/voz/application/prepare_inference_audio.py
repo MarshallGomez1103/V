@@ -11,6 +11,7 @@ from voz.application.ports.media_normalization import (
     MediaNormalizationCancellationToken,
     MediaNormalizationError,
     MediaNormalizationFailureCode,
+    MediaNormalizationProgressCallback,
 )
 from voz.application.ports.media_probe import MediaProbePort
 from voz.application.ports.media_storage import MediaStoragePort
@@ -32,6 +33,7 @@ class PrepareInferenceAudio:
         project_id: UUID,
         media_asset_id: UUID,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: MediaNormalizationProgressCallback | None = None,
     ) -> None:
         media_asset = self.media_assets.get(media_asset_id)
         if media_asset is None or media_asset.project_id != project_id:
@@ -46,6 +48,7 @@ class PrepareInferenceAudio:
             probe_result = self.media_probe.probe(original)
         self.normalize.execute(
             imported_media=ImportedMedia(media_asset, probe_result),
+            on_progress=on_progress,
             cancellation=cancellation,
         )
 

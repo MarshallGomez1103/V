@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -30,6 +31,7 @@ from voz.application.ports.transcription_checkpoint import (
     TranscriptionCheckpoint,
     TranscriptionCheckpointStore,
 )
+from voz.application.progress_throttle import MIN_SAVE_INTERVAL_S, ProgressThrottle
 from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
@@ -59,6 +61,8 @@ class RecoverableTranscription:
     checkpoints: TranscriptionCheckpointStore
     jobs: TranscriptionJobRepository
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    monotonic: Callable[[], float] = time.monotonic
+    min_save_interval_s: float = MIN_SAVE_INTERVAL_S
 
     def execute(
         self,
@@ -70,7 +74,16 @@ class RecoverableTranscription:
         overlap_ms: int = 5_000,
         on_progress: ChunkProgressCallback | None = None,
         cancellation: TranscriptionCancellationToken | None = None,
+        progress_range: tuple[float, float] = (0.0, 1.0),
     ) -> RecoverableTranscriptionOutcome:
+        """Transcribe the missing chunks.
+
+        ``progress_range`` maps the stage onto the job's global progress (the first
+        value is where transcription starts, the second where it ends). Besides the
+        atomic checkpoint per chunk, ``stage_progress`` (chunks done plus the position
+        inside the current one) is saved
+        while a chunk is decoded, at most twice per second.
+        """
         if job.state is not TranscriptionJobState.TRANSCRIBING:
             raise ValueError("recoverable transcription requires a TRANSCRIBING job")
         chunks = plan_audio_chunks(
@@ -80,8 +93,11 @@ class RecoverableTranscription:
         )
         existing = tuple(self.checkpoints.list_for_job(job.id))
         self._validate_existing(existing, chunks, options)
-        if existing and job.progress != existing[-1].job_progress:
+        # In-chunk saves may leave the job ahead of its last checkpoint, never behind.
+        if existing and job.progress < existing[-1].job_progress:
             raise ValueError("job progress does not match its latest checkpoint")
+        low, high = progress_range
+        throttle = ProgressThrottle(self.min_save_interval_s, self.monotonic)
         output: list[TranscriptionSegment] = []
         language: str | None = None
         for checkpoint in existing:
@@ -89,6 +105,28 @@ class RecoverableTranscription:
             language = merge_transcription_language(language, checkpoint.language)
 
         current_job = job
+
+        def publish(stage: float) -> None:
+            """Throttled in-chunk progress; the checkpoint covers chunk ends."""
+            nonlocal current_job
+            if self._is_cancelled(cancellation) or not throttle.ready():
+                return
+            stage = max(stage, current_job.stage_progress or 0.0)
+            current_job = current_job.with_stage_progress(
+                stage,
+                progress=low + (high - low) * stage,
+                at=self._timestamp_not_before(current_job.updated_at),
+            )
+            self.jobs.save(current_job)
+
+        def position_callback(chunk: AudioChunk, done: int) -> Callable[[int], None]:
+            span = chunk.process_end_ms - chunk.process_start_ms
+
+            def on_position(local_ms: int) -> None:
+                publish((done + min(0.99, local_ms / span)) / len(chunks))
+
+            return on_position
+
         for chunk in chunks[len(existing) :]:
             if self._is_cancelled(cancellation):
                 return self._cancelled_outcome(
@@ -102,7 +140,11 @@ class RecoverableTranscription:
                 with self.audio_source.open(chunk.clip) as audio:
                     local_result = self.provider.transcribe(
                         audio=audio,
-                        options=replace(options, clip=None),
+                        options=replace(
+                            options,
+                            clip=None,
+                            on_position=position_callback(chunk, len(existing)),
+                        ),
                         cancellation=cancellation,
                     )
             except TranscriptionError as error:
@@ -129,8 +171,10 @@ class RecoverableTranscription:
             language = merge_transcription_language(language, result.language)
             completed_count = len(existing) + 1
             progress = completed_count / len(chunks)
-            current_job = current_job.with_progress(
-                max(current_job.progress, progress),
+            stage = max(progress, current_job.stage_progress or 0.0)
+            current_job = current_job.with_stage_progress(
+                stage,
+                progress=low + (high - low) * stage,
                 at=self._timestamp_not_before(current_job.updated_at),
             )
             checkpoint = TranscriptionCheckpoint(

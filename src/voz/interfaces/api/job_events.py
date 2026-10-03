@@ -36,8 +36,14 @@ def _event(name: str, data: dict[str, object]) -> bytes:
 
 def _fingerprint(
     job: TranscriptionJob,
-) -> tuple[TranscriptionJobState, float, datetime]:
-    return (job.state, job.progress, job.updated_at)
+) -> tuple[TranscriptionJobState, float, float | None, datetime | None, datetime]:
+    return (
+        job.state,
+        job.progress,
+        job.stage_progress,
+        job.stage_started_at,
+        job.updated_at,
+    )
 
 
 def create_job_events_router(

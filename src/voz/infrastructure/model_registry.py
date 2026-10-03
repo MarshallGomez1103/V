@@ -128,6 +128,11 @@ class RoutingModelStore:
             if item.is_file()
         )
 
+    def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None:
+        if not self._is_diarization(descriptor):
+            return self._files.reclaimable_usage(descriptor)
+        return self.disk_usage(descriptor)  # downloaded files are never shared
+
     def remove(self, descriptor: ModelDescriptor) -> int:
         if self._is_diarization(descriptor):
             return self._diarization.remove()

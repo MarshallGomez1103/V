@@ -78,12 +78,17 @@ class Store:
     def __init__(self, *installed: ModelDescriptor) -> None:
         self.installed = {item: 1000 for item in installed}
         self.removed: list[ModelDescriptor] = []
+        self.shared: dict[ModelDescriptor, int] = {}  # hardlinked with another cache
 
     def is_installed(self, descriptor: ModelDescriptor) -> bool:
         return descriptor in self.installed
 
     def disk_usage(self, descriptor: ModelDescriptor) -> int | None:
         return self.installed.get(descriptor)
+
+    def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None:
+        size = self.installed.get(descriptor)
+        return None if size is None else size - self.shared.get(descriptor, 0)
 
     def remove(self, descriptor: ModelDescriptor) -> int:
         self.removed.append(descriptor)
@@ -184,7 +189,11 @@ def test_get_models_serializes_the_documented_contract_without_paths() -> None:
     )
 
     assert status == 200
-    assert body["disk"] == {"models_bytes": 1000, "free_bytes": 777}
+    assert body["disk"] == {
+        "models_bytes": 1000,
+        "free_bytes": 777,
+        "reclaimable_bytes": 1000,
+    }
     models = cast(list[dict[str, object]], body["models"])
     assert models[0] == {
         "key": "faster-whisper:tiny",
@@ -202,10 +211,14 @@ def test_get_models_serializes_the_documented_contract_without_paths() -> None:
         "size_bytes": 15,
         "installed": True,
         "disk_bytes": 1000,
+        "reclaimable_bytes": 1000,
+        "shared_bytes": 0,
         "external": [{"origin": "hf-cache"}],
     }
     assert models[1]["installed"] is False
     assert models[1]["disk_bytes"] is None
+    assert models[1]["reclaimable_bytes"] is None
+    assert models[1]["shared_bytes"] is None
     assert models[1]["external"] == [{"origin": "buzz"}]
     assert "/" not in json.dumps({**models[1], "source": "", "display_name": ""})
 

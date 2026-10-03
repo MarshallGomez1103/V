@@ -173,6 +173,24 @@ def test_diarized_model_uses_diarized_json_and_keeps_speakers() -> None:
     assert [s.speaker for s in result.segments] == ["A", "B"]
 
 
+def test_prompt_is_sent_as_style_context_but_never_to_the_diarized_model() -> None:
+    fake = FakeOpenAITransport()
+    _provider(fake).transcribe(
+        audio=BytesIO(_wav(1_000)), options=_options(prompt="Usa tildes.")
+    )
+    assert _parts(fake.requests[0])[0]["prompt"] == "Usa tildes."
+
+    diarized = FakeOpenAITransport()
+    _provider(diarized).transcribe(
+        audio=BytesIO(_wav(1_000)), options=_options(DIARIZE, prompt="Usa tildes.")
+    )
+    assert "prompt" not in _parts(diarized.requests[0])[0]  # the API rejects it
+
+    plain = FakeOpenAITransport()
+    _provider(plain).transcribe(audio=BytesIO(_wav(1_000)), options=_options())
+    assert "prompt" not in _parts(plain.requests[0])[0]
+
+
 def test_request_repr_hides_key_and_audio() -> None:
     fake = FakeOpenAITransport()
     _provider(fake).transcribe(audio=BytesIO(_wav(200)), options=_options())

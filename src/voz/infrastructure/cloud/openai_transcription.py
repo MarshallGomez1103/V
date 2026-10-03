@@ -239,6 +239,9 @@ class OpenAITranscriptionProvider:
             fields.append(("timestamp_granularities[]", "segment"))
         if options.language is not None:
             fields.append(("language", options.language.split("-")[0].lower()))
+        # The diarized model rejects ``prompt``; the others take it as style context.
+        if options.prompt and not spec.diarized:
+            fields.append(("prompt", options.prompt))
         body, content_type = encode_multipart(
             fields, "file", "audio.wav", "audio/wav", wav
         )

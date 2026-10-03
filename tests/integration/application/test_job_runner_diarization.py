@@ -1,4 +1,5 @@
 """JobRunner diarization stage over real SQLite with fake engines (S6.13/S6.15)."""
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
@@ -99,6 +100,7 @@ class FakeAsr:
     def __init__(self, timeline: Timeline, *, slice_ms: int | None = None) -> None:
         self.timeline = timeline
         self.slice_ms = slice_ms
+        self.prompts: list[str | None] = []
 
     def transcribe(
         self,
@@ -107,7 +109,8 @@ class FakeAsr:
         options: TranscriptionOptions,
         cancellation: TranscriptionCancellationToken | None = None,
     ) -> TranscriptionResult:
-        del options, cancellation
+        del cancellation
+        self.prompts.append(options.prompt)
         with wave.open(audio, "rb") as source:
             duration_ms = source.getnframes() * 1_000 // source.getframerate()
         self.timeline.events.append("asr.transcribe")
@@ -135,11 +138,15 @@ class FakeDiarizer:
         result: DiarizationResult = TWO_SPEAKERS,
         error: BaseException | None = None,
         before: Callable[[], object] | None = None,
+        fractions: tuple[float, ...] = (),
+        after_progress: Callable[[], object] | None = None,
     ) -> None:
         self.timeline = timeline
         self.result = result
         self.error = error
         self.before = before
+        self.fractions = fractions
+        self.after_progress = after_progress
         self.options: list[DiarizationOptions] = []
 
     def diarize(
@@ -148,6 +155,7 @@ class FakeDiarizer:
         audio: BinaryIO,
         options: DiarizationOptions,
         cancellation: TranscriptionCancellationToken | None = None,
+        on_progress: Callable[[float], None] | None = None,
     ) -> DiarizationResult:
         self.timeline.events.append("diarize")
         self.options.append(options)
@@ -155,6 +163,11 @@ class FakeDiarizer:
             assert source.getframerate() == 16_000
         if self.before is not None:
             self.before()
+        for fraction in self.fractions:
+            assert on_progress is not None
+            on_progress(fraction)
+        if self.after_progress is not None:
+            self.after_progress()
         if cancellation is not None and cancellation.is_cancelled():
             raise DiarizationError(DiarizationFailureCode.CANCELLED, "cancelled")
         if self.error is not None:
@@ -169,6 +182,7 @@ class NoPreparer:
         project_id: object,
         media_asset_id: object,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: object = None,
     ) -> None:
         raise AssertionError("derivative already exists")
 
@@ -264,6 +278,7 @@ def world(
     wav: Path = WAV_FIXTURE,
     duration_ms: int = 250,
     slice_ms: int | None = None,
+    prompt: str | None = None,
 ) -> World:
     engine = create_sqlite_engine((tmp_path / "voz.db").absolute())
     upgrade_to_head(engine)  # the real migration, including 0005
@@ -284,6 +299,7 @@ def world(
             language=None,
             created_at=BASE_TIME,
             diarization=diarization,
+            prompt=prompt,
         )
     )
     root = tmp_path / "data"
@@ -403,7 +419,7 @@ def test_assignment_failure_keeps_the_transcript(tmp_path: Path) -> None:
     fixture.engine.dispose()
 
 
-def test_cancel_during_diarization_cancels_without_transcript(tmp_path: Path) -> None:
+def test_cancel_during_diarization_cancels_but_keeps_the_text(tmp_path: Path) -> None:
     fixture = world(tmp_path)
     runner = fixture.runner(None)
     diarizer = FakeDiarizer(
@@ -417,12 +433,15 @@ def test_cancel_during_diarization_cancels_without_transcript(tmp_path: Path) ->
     assert finished.state is TranscriptionJobState.CANCELLED
     assert fixture.persisted().state is TranscriptionJobState.CANCELLED
     assert fixture.selection().diarization_error_code is None
+    # The text was already persisted when diarization began: cancelling the
+    # speakers does not throw the transcription away.
     assert (
         SqliteTranscriptRepository(fixture.engine).get(
             transcript_id_for(fixture.job.id)
         )
-        is None
+        is not None
     )
+    assert fixture.segment_speakers() == [None, None, None]
     fixture.engine.dispose()
 
 
@@ -446,7 +465,7 @@ def test_shutdown_during_diarization_leaves_job_resumable(tmp_path: Path) -> Non
     fixture.engine.dispose()
 
 
-def test_resume_in_persisting_rediarizes_without_duplicating_speakers(
+def test_resume_in_persisting_keeps_speakers_without_rediarizing(
     tmp_path: Path,
 ) -> None:
     fixture = world(tmp_path)
@@ -463,9 +482,8 @@ def test_resume_in_persisting_rediarizes_without_duplicating_speakers(
 
     assert resumed is not None
     assert resumed.state is TranscriptionJobState.COMPLETED
-    assert (
-        fixture.timeline.events.count("diarize") == 2
-    )  # the turns died with the process
+    # Speakers are assigned inside DIARIZING now, so nothing is redone.
+    assert fixture.timeline.events.count("diarize") == 1
     assert fixture.timeline.events.count("asr.transcribe") == 3  # ASR not repeated
     assert fixture.segment_speakers() == ["Speaker 1", "Speaker 2", "Speaker 2"]
     assert (
@@ -476,6 +494,133 @@ def test_resume_in_persisting_rediarizes_without_duplicating_speakers(
         )
         == 2
     )
+    fixture.engine.dispose()
+
+
+def test_text_is_persisted_and_visible_before_speakers_are_assigned(
+    tmp_path: Path,
+) -> None:
+    fixture = world(tmp_path)
+    seen: list[tuple[TranscriptionJobState, int, list[str | None]]] = []
+
+    def look() -> None:
+        seen.append(
+            (
+                fixture.persisted().state,
+                len(
+                    SqliteSegmentRepository(fixture.engine).list_by_transcript(
+                        transcript_id_for(fixture.job.id)
+                    )
+                ),
+                fixture.segment_speakers(),
+            )
+        )
+
+    runner = fixture.runner(FakeDiarizer(fixture.timeline, before=look))
+
+    finished = runner.run_job(fixture.job.id)
+
+    # While the speakers were being computed the whole text was already stored,
+    # with nobody assigned yet; afterwards the same rows got their speakers.
+    assert seen == [(TranscriptionJobState.DIARIZING, 3, [None, None, None])]
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.COMPLETED
+    assert fixture.segment_speakers() == ["Speaker 1", "Speaker 2", "Speaker 2"]
+    segments = SqliteSegmentRepository(fixture.engine).list_by_transcript(
+        transcript_id_for(fixture.job.id)
+    )
+    assert len(segments) == 3  # assigned in place, not duplicated
+    fixture.engine.dispose()
+
+
+def test_diarization_failure_still_leaves_the_text_stored(tmp_path: Path) -> None:
+    fixture = world(tmp_path)
+    error = DiarizationError(DiarizationFailureCode.PROVIDER_FAILED, "boom")
+    runner = fixture.runner(FakeDiarizer(fixture.timeline, error=error))
+
+    finished = runner.run_job(fixture.job.id)
+
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.COMPLETED
+    assert fixture.selection().diarization_error_code == "diarization_provider_failed"
+    assert fixture.segment_speakers() == [None, None, None]
+    fixture.engine.dispose()
+
+
+def test_stage_progress_timing_and_weighted_global_progress(tmp_path: Path) -> None:
+    fixture = world(tmp_path)
+    during: list[TranscriptionJob] = []
+    diarizer = FakeDiarizer(
+        fixture.timeline,
+        fractions=(0.5,),
+        after_progress=lambda: during.append(fixture.persisted()),
+    )
+    runner = fixture.runner(diarizer)
+
+    finished = runner.run_job(fixture.job.id)
+
+    (mid,) = during
+    assert mid.state is TranscriptionJobState.DIARIZING
+    assert mid.stage_progress == 0.5
+    assert mid.progress == pytest.approx(0.8 + 0.18 * 0.5)  # speakers: 0.8..0.98
+    assert mid.started_at is not None
+    assert mid.stage_started_at is not None
+    assert mid.started_at <= mid.stage_started_at <= mid.updated_at
+    assert finished is not None and finished.progress == 1.0
+    assert finished.stage_progress is None
+    # Transcription ends where the speakers start, never at 100 %.
+    checkpoints = SqliteTranscriptionCheckpointStore(fixture.engine).list_for_job(
+        fixture.job.id
+    )
+    assert checkpoints[-1].job_progress == pytest.approx(0.8)
+    assert [c.job_progress for c in checkpoints] == sorted(
+        c.job_progress for c in checkpoints
+    )
+    fixture.engine.dispose()
+
+
+def test_global_progress_never_reads_complete_while_diarizing(tmp_path: Path) -> None:
+    fixture = world(tmp_path)
+    during: list[TranscriptionJob] = []
+    runner = fixture.runner(
+        FakeDiarizer(
+            fixture.timeline, after_progress=lambda: during.append(fixture.persisted())
+        )
+    )
+
+    runner.run_job(fixture.job.id)
+
+    assert during[0].state is TranscriptionJobState.DIARIZING
+    assert during[0].progress == pytest.approx(0.8)
+
+
+def test_cancel_after_progress_is_not_overwritten_by_a_late_save(
+    tmp_path: Path,
+) -> None:
+    fixture = world(tmp_path)
+    runner = fixture.runner(None)
+    diarizer = FakeDiarizer(
+        fixture.timeline,
+        fractions=(0.3,),
+        before=lambda: runner.cancel(fixture.job.id),
+    )
+    runner.diarization_provider_for = lambda: diarizer
+
+    finished = runner.run_job(fixture.job.id)
+
+    assert finished is not None
+    assert finished.state is TranscriptionJobState.CANCELLED
+    assert fixture.persisted().state is TranscriptionJobState.CANCELLED
+    fixture.engine.dispose()
+
+
+def test_style_prompt_reaches_the_asr_engine(tmp_path: Path) -> None:
+    fixture = world(tmp_path, diarization=None, prompt="Usa tildes y signos.")
+    runner = fixture.runner(None)
+
+    runner.run_job(fixture.job.id)
+
+    assert fixture.asr.prompts and set(fixture.asr.prompts) == {"Usa tildes y signos."}
     fixture.engine.dispose()
 
 

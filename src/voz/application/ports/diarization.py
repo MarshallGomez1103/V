@@ -8,6 +8,7 @@ speakers when it persists a transcript's diarization.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import BinaryIO, Protocol, cast, runtime_checkable
@@ -141,8 +142,12 @@ class DiarizationProvider(Protocol):
         audio: BinaryIO,
         options: DiarizationOptions,
         cancellation: TranscriptionCancellationToken | None = None,
+        on_progress: Callable[[float], None] | None = None,
     ) -> DiarizationResult:
-        """Return acoustic turns; raise ``DiarizationError`` on typed failures."""
+        """Return acoustic turns; raise ``DiarizationError`` on typed failures.
+
+        ``on_progress`` (optional) receives a 0..1 fraction of the work done.
+        """
         ...
 
 

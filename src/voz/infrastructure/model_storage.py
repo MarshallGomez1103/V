@@ -386,6 +386,13 @@ class FileSystemModelStore:
             return None
         return self._tree_size(directory, exclusive=False)
 
+    def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None:
+        """Bytes deleting the model would free (hardlinked files free nothing)."""
+        directory = self._directory_for(descriptor)
+        if not self._is_registered(directory, descriptor):
+            return None
+        return self._tree_size(directory, exclusive=True)
+
     def _directory_for(self, descriptor: ModelDescriptor) -> Path:
         digest = hashlib.sha256(
             "\0".join(

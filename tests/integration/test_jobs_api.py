@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import BinaryIO, ClassVar, cast
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi import FastAPI
 from starlette.types import Message
 
@@ -19,7 +20,7 @@ from voz.application.get_transcription_options import (
     GetTranscriptionOptions,
     option_identity,
 )
-from voz.application.job_runner import JobRunner
+from voz.application.job_runner import JobRunner, transcript_id_for
 from voz.application.ports.media_normalization import (
     MediaNormalizationCancellationToken,
 )
@@ -44,6 +45,8 @@ from voz.domain.entities.processing_profile import (
     ProcessingProfileName,
 )
 from voz.domain.entities.project import Project
+from voz.domain.entities.transcript import Transcript
+from voz.domain.entities.transcription_job import TranscriptionJobState
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.persistence.database import create_sqlite_engine
 from voz.infrastructure.persistence.repositories import (
@@ -105,6 +108,7 @@ class Runtime:
 
 class Provider:
     provider_id = "fake-asr"
+    prompts: ClassVar[list[str | None]] = []
 
     def transcribe(
         self,
@@ -113,7 +117,8 @@ class Provider:
         options: TranscriptionOptions,
         cancellation: TranscriptionCancellationToken | None = None,
     ) -> TranscriptionResult:
-        del audio, options, cancellation
+        del audio, cancellation
+        Provider.prompts.append(options.prompt)
         words = (TranscriptionWord(0, 100, " ho"), TranscriptionWord(100, 250, "la"))
         return TranscriptionResult(
             (TranscriptionSegment(0, 250, "hola", words=words),), "es"
@@ -127,6 +132,7 @@ class Preparer:
         project_id: UUID,
         media_asset_id: UUID,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: object = None,
     ) -> None:
         raise AssertionError("derivative already exists")
 
@@ -173,7 +179,13 @@ class Harness:
         self.app = FastAPI()
         self.app.include_router(
             create_jobs_router(
-                create_job, jobs, selections, transcripts, segments, self.runner
+                create_job,
+                jobs,
+                selections,
+                transcripts,
+                segments,
+                self.runner,
+                checkpoints=SqliteTranscriptionCheckpointStore(self.engine),
             )
         )
 
@@ -423,5 +435,171 @@ def test_unknown_profile_is_a_typed_422_and_creates_no_job(tmp_path: Path) -> No
             "GET", "/api/jobs", query=f"project_id={harness.project.id}"
         )
         assert listed["jobs"] == []
+    finally:
+        harness.close()
+
+
+def test_prompt_is_stripped_snapshotted_and_given_to_the_engine(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    Provider.prompts.clear()
+    try:
+        status, created = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(prompt="  Clase de biología. Usa tildes.  "),
+        )
+        assert status == 201
+        selection = cast(dict[str, object], created["selection"])
+        assert selection["prompt"] == "Clase de biología. Usa tildes."
+
+        harness.runner.start()
+        assert harness.runner.wait_idle(10.0)
+
+        assert Provider.prompts == ["Clase de biología. Usa tildes."]
+        _, fetched = harness.request("GET", f"/api/jobs/{created['id']}")
+        assert cast(dict[str, object], fetched["selection"])["prompt"] == (
+            "Clase de biología. Usa tildes."
+        )
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize("prompt", [None, "", "   \n "])
+def test_blank_or_missing_prompt_is_null(tmp_path: Path, prompt: str | None) -> None:
+    harness = Harness(tmp_path)
+    try:
+        body = (
+            harness.create_body()
+            if prompt is None
+            else harness.create_body(prompt=prompt)
+        )
+        status, created = harness.request("POST", "/api/jobs", body=body)
+
+        assert status == 201
+        assert cast(dict[str, object], created["selection"])["prompt"] is None
+    finally:
+        harness.close()
+
+
+def test_prompt_limit_is_600_characters_after_strip(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, _ = harness.request(
+            "POST", "/api/jobs", body=harness.create_body(prompt=" " + "a" * 600 + " ")
+        )
+        assert status == 201
+
+        status, body = harness.request(
+            "POST", "/api/jobs", body=harness.create_body(prompt="a" * 601)
+        )
+        assert (status, _detail(body)["code"]) == (422, "job_prompt_invalid")
+        jobs = SqliteTranscriptionJobRepository(harness.engine)
+        assert len(jobs.list_by_project(harness.project.id)) == 1  # only the valid one
+    finally:
+        harness.close()
+
+
+def test_job_view_carries_stage_timing_fields(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        _, created = harness.request("POST", "/api/jobs", body=harness.create_body())
+        assert created["started_at"] is None  # still queued
+        assert created["stage_progress"] is None
+        assert created["eta_seconds"] is None
+
+        harness.runner.start()
+        assert harness.runner.wait_idle(10.0)
+        _, fetched = harness.request("GET", f"/api/jobs/{created['id']}")
+
+        assert isinstance(fetched["started_at"], str)
+        assert isinstance(fetched["stage_started_at"], str)
+        assert fetched["stage_progress"] is None  # a terminal job has no stage
+        assert fetched["eta_seconds"] is None
+    finally:
+        harness.close()
+
+
+def test_transcript_id_is_exposed_as_soon_as_the_text_exists(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        _, created = harness.request("POST", "/api/jobs", body=harness.create_body())
+        jobs = SqliteTranscriptionJobRepository(harness.engine)
+        job = jobs.get(UUID(str(created["id"])))
+        assert job is not None
+        for step, state in enumerate(
+            (
+                TranscriptionJobState.PROBING,
+                TranscriptionJobState.PREPROCESSING,
+                TranscriptionJobState.TRANSCRIBING,
+                TranscriptionJobState.ALIGNING,
+                TranscriptionJobState.DIARIZING,
+            ),
+            start=1,
+        ):
+            job = job.transition_to(state, at=job.updated_at + timedelta(seconds=step))
+            if state is TranscriptionJobState.TRANSCRIBING:
+                jobs.save(job)
+                _, view = harness.request("GET", f"/api/jobs/{job.id}")
+                assert view["transcript_id"] is None
+        job = job.with_stage_progress(0.5, progress=0.89, at=job.updated_at)
+        jobs.save(job)
+        SqliteTranscriptRepository(harness.engine).add(
+            Transcript(
+                job.project_id,
+                job.media_asset_id,
+                id=transcript_id_for(job.id),
+                language="es",
+                created_at=NOW,
+            )
+        )
+
+        _, view = harness.request("GET", f"/api/jobs/{job.id}")
+
+        assert view["state"] == "DIARIZING"
+        assert view["transcript_id"] == str(transcript_id_for(job.id))
+        assert view["progress"] == 0.89
+        assert view["stage_progress"] == 0.5
+        status, segments = harness.request(
+            "GET", f"/api/transcripts/{view['transcript_id']}/segments"
+        )
+        assert status == 200
+        assert segments == {"segments": []}
+    finally:
+        harness.close()
+
+
+def test_preview_lists_checkpointed_segments_and_only_the_new_ones(
+    tmp_path: Path,
+) -> None:
+    harness = Harness(tmp_path)
+    try:
+        _, created = harness.request("POST", "/api/jobs", body=harness.create_body())
+        path = f"/api/jobs/{created['id']}/preview"
+        assert harness.request("GET", path) == (200, {"segments": []})  # nothing yet
+
+        harness.runner.start()
+        assert harness.runner.wait_idle(10.0)
+
+        assert harness.request("GET", path) == (
+            200,
+            {"segments": [{"start_ms": 0, "end_ms": 250, "text": "hola"}]},
+        )
+        assert harness.request("GET", path, query="after_ms=100")[1]["segments"] != []
+        assert harness.request("GET", path, query="after_ms=250") == (
+            200,
+            {"segments": []},
+        )
+        status, _ = harness.request("GET", path, query="after_ms=-1")
+        assert status == 422
+    finally:
+        harness.close()
+
+
+def test_preview_of_an_unknown_job_is_404(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, body = harness.request("GET", f"/api/jobs/{uuid4()}/preview")
+
+        assert (status, _detail(body)["code"]) == (404, "job_not_found")
     finally:
         harness.close()

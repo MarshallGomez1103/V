@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, replace
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import BinaryIO, Protocol, cast, runtime_checkable
 
@@ -220,6 +221,12 @@ class TranscriptionOptions:
     """Hot terms that bias the engine (S13.01); engines without support ignore it."""
     quality_profile: QualityProfile | None = None
     """Decoding recipe (S13.02/S13.03); ``None`` keeps the engine's own defaults."""
+    prompt: str | None = None
+    """Style instruction that conditions the engine (initial prompt); not a chat
+    command. Engines without support ignore it."""
+    on_position: Callable[[int], None] | None = field(default=None, compare=False)
+    """Called with the end (ms, relative to the audio given) of the audio decoded so
+    far, so callers can show progress inside one provider call. Optional."""
 
     def __post_init__(self) -> None:
         raw_model = cast(object, self.model)
@@ -241,6 +248,9 @@ class TranscriptionOptions:
         raw_profile = cast(object, self.quality_profile)
         if raw_profile is not None and not isinstance(raw_profile, QualityProfile):
             raise TypeError("quality_profile must be a QualityProfile or None")
+        raw_prompt = cast(object, self.prompt)
+        if raw_prompt is not None and not isinstance(raw_prompt, str):
+            raise TypeError("prompt must be a string or None")
 
 
 @runtime_checkable

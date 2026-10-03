@@ -220,6 +220,7 @@ def selection_values(selection: JobSelection) -> dict[str, object]:
         "diarization_error_code": selection.diarization_error_code,
         "profile_json": _profile_json(selection.quality_profile),
         "glossary_json": _glossary_json(selection.glossary),
+        "prompt": selection.prompt,
     }
 
 
@@ -237,6 +238,7 @@ def _selection_from_row(row: RowMapping) -> JobSelection:
         ),
         quality_profile=_profile_from_json(row["profile_json"]),
         glossary=_glossary_from_json(row["glossary_json"]),
+        prompt=_optional_text(row["prompt"], field="prompt"),
     )
 
 

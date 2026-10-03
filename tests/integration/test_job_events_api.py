@@ -221,6 +221,10 @@ def test_stream_emits_each_change_and_ends_on_terminal_state() -> None:
         "progress": 0.0,
         "error_code": None,
         "transcript_id": None,
+        "started_at": None,
+        "stage_started_at": None,
+        "stage_progress": None,
+        "eta_seconds": None,
         "created_at": "2026-09-21T12:00:00+00:00",
         "updated_at": "2026-09-21T12:00:00+00:00",
     }
@@ -303,3 +307,34 @@ def test_client_disconnect_stops_the_stream_cleanly() -> None:
     assert status == 200
     assert [name for name, _ in parse_sse(body)] == ["job"]
     assert jobs.gets <= 2
+
+
+def test_stream_emits_stage_progress_and_eta_changes() -> None:
+    transcribing = advance(
+        queued_job(),
+        TranscriptionJobState.PROBING,
+        TranscriptionJobState.PREPROCESSING,
+        TranscriptionJobState.TRANSCRIBING,
+    )
+    assert transcribing.stage_started_at is not None
+    quarter = transcribing.with_stage_progress(
+        0.25, progress=0.2, at=transcribing.stage_started_at + timedelta(seconds=10)
+    )
+    half = quarter.with_stage_progress(0.5, progress=0.4, at=quarter.updated_at)
+    # Same timestamp and global progress: only the stage fraction differs.
+    assert half.updated_at == quarter.updated_at
+    finished = advance(
+        half, TranscriptionJobState.CANCELLING, TranscriptionJobState.CANCELLED
+    )
+    jobs = FakeJobs(transcribing, transcribing, quarter, half, finished)
+
+    _, _, body = asyncio.run(request(build_app(jobs), f"/api/jobs/{JOB_ID}/events"))
+
+    views = [
+        cast(dict[str, object], data) for name, data in parse_sse(body) if name == "job"
+    ]
+    assert [view["stage_progress"] for view in views] == [None, 0.25, 0.5, None]
+    assert views[0]["started_at"] == transcribing.started_at.isoformat()  # type: ignore[union-attr]
+    assert views[0]["stage_started_at"] == transcribing.stage_started_at.isoformat()  # type: ignore[union-attr]
+    assert views[0]["eta_seconds"] is None
+    assert views[1]["eta_seconds"] is not None

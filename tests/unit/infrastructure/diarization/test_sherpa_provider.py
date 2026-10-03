@@ -170,7 +170,7 @@ def test_engine_is_cached_between_runs_and_released_on_close(
     provider, _, loads = _provider(models)
     provider.diarize(audio=_wav(), options=DiarizationOptions())
     provider.diarize(audio=_wav(), options=DiarizationOptions())
-    assert loads == [2]
+    assert loads == [sherpa.default_diarization_threads()]
 
     provider.close()
     provider.close()
@@ -334,3 +334,58 @@ def test_real_engine_finds_at_least_two_speakers() -> None:
         provider.close()
 
     assert len({turn.cluster for turn in result.turns}) >= 2
+
+
+@pytest.mark.parametrize(
+    ("cpus", "expected"),
+    [(None, 1), (1, 1), (2, 1), (4, 3), (9, 8), (20, 8), (64, 8)],
+)
+def test_default_threads_use_all_cores_but_one_up_to_the_measured_cap(
+    monkeypatch: pytest.MonkeyPatch, cpus: int | None, expected: int
+) -> None:
+    monkeypatch.setattr(os, "cpu_count", lambda: cpus)
+
+    assert sherpa.default_diarization_threads() == expected
+
+
+def test_explicit_thread_count_wins_over_the_default(models: tuple[Path, Path]) -> None:
+    loads: list[int] = []
+
+    def factory(seg: Path, emb: Path, threads: int) -> _Engine:
+        loads.append(threads)
+        return _Engine()
+
+    SherpaOnnxDiarizationProvider(
+        segmentation_model=models[0],
+        embedding_model=models[1],
+        num_threads=3,
+        engine_factory=factory,
+    ).diarize(audio=_wav(), options=DiarizationOptions())
+
+    assert loads == [3]
+
+
+def test_on_progress_receives_fractions_from_the_engine_callback(
+    models: tuple[Path, Path],
+) -> None:
+    class Reporting(_Engine):
+        def diarize(
+            self,
+            samples: npt.NDArray[np.float32],
+            *,
+            num_clusters: int,
+            threshold: float,
+            progress: sherpa.Progress,
+        ) -> Sequence[_Raw]:
+            for done in (1, 5, 10):
+                progress(done, 10)
+            return []
+
+    provider, _, _ = _provider(models, Reporting())
+    fractions: list[float] = []
+
+    provider.diarize(
+        audio=_wav(), options=DiarizationOptions(), on_progress=fractions.append
+    )
+
+    assert fractions == [0.1, 0.5, 1.0]

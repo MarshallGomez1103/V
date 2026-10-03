@@ -105,6 +105,14 @@ def _timestamp_value(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
 
+def _optional_timestamp(row: RowMapping, key: str) -> datetime | None:
+    return None if row[key] is None else _timestamp(row, key)
+
+
+def _optional_timestamp_value(value: datetime | None) -> str | None:
+    return None if value is None else _timestamp_value(value)
+
+
 def _save(
     engine: Engine,
     table: Table,
@@ -322,6 +330,9 @@ def _job_values(job: TranscriptionJob) -> dict[str, object]:
         "created_at": _timestamp_value(job.created_at),
         "updated_at": _timestamp_value(job.updated_at),
         "error_code": job.error_code,
+        "started_at": _optional_timestamp_value(job.started_at),
+        "stage_started_at": _optional_timestamp_value(job.stage_started_at),
+        "stage_progress": job.stage_progress,
     }
 
 
@@ -335,6 +346,11 @@ def _job_from_row(row: RowMapping) -> TranscriptionJob:
         created_at=_timestamp(row, "created_at"),
         updated_at=_timestamp(row, "updated_at"),
         error_code=_optional_text(row, "error_code"),
+        started_at=_optional_timestamp(row, "started_at"),
+        stage_started_at=_optional_timestamp(row, "stage_started_at"),
+        stage_progress=(
+            None if row["stage_progress"] is None else _real(row, "stage_progress")
+        ),
     )
 
 

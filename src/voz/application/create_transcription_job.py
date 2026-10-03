@@ -45,7 +45,12 @@ class CreateJobFailureCode(StrEnum):
     INSUFFICIENT_VRAM = "insufficient_vram"
     INSUFFICIENT_RAM = "insufficient_ram"
     DIARIZATION_UNAVAILABLE = "diarization_unavailable"
+    DIARIZATION_MODELS_MISSING = "diarization_models_missing"
+    PROMPT_INVALID = "job_prompt_invalid"
     QUALITY_PROFILE_UNKNOWN = "quality_profile_unknown"
+
+
+MAX_PROMPT_CHARS = 600
 
 
 class CreateJobError(RuntimeError):
@@ -101,6 +106,7 @@ class CreateTranscriptionJob:
         language: str | None = None,
         diarization: DiarizationOptions | None = None,
         profile: str | None = None,
+        prompt: str | None = None,
     ) -> CreatedJob:
         if self.projects.get(project_id) is None:
             raise CreateJobError(
@@ -112,6 +118,12 @@ class CreateTranscriptionJob:
             raise CreateJobError(
                 CreateJobFailureCode.MEDIA_ASSET_NOT_FOUND,
                 "The media asset does not exist in this project.",
+            )
+        prompt = (prompt or "").strip() or None
+        if prompt is not None and len(prompt) > MAX_PROMPT_CHARS:
+            raise CreateJobError(
+                CreateJobFailureCode.PROMPT_INVALID,
+                f"The style prompt can have at most {MAX_PROMPT_CHARS} characters.",
             )
         quality_profile = get_profile(profile or DEFAULT_PROFILE_NAME)
         if quality_profile is None:
@@ -130,15 +142,8 @@ class CreateTranscriptionJob:
                 "A transcription job is already active for this media asset.",
             )
         self._check_memory(option, model)
-        if diarization is not None and not (
-            self.diarization_availability is not None
-            and self.diarization_availability.is_available()
-        ):
-            raise CreateJobError(
-                CreateJobFailureCode.DIARIZATION_UNAVAILABLE,
-                "Speaker diarization is not available. "
-                "Install its models and runtime, or disable it.",
-            )
+        if diarization is not None:
+            self._check_diarization()
 
         now = self.clock()
         job = TranscriptionJob.create(
@@ -159,6 +164,7 @@ class CreateTranscriptionJob:
             glossary=(
                 () if self.glossaries is None else self.glossaries.get(project_id)
             ),
+            prompt=prompt,
         )
         if self.job_writer is None:
             self.jobs.add(job)
@@ -166,6 +172,22 @@ class CreateTranscriptionJob:
         else:
             self.job_writer.add_with_selection(job, selection)
         return CreatedJob(job, selection)
+
+    def _check_diarization(self) -> None:
+        """Refuse before creating anything; missing models are fixable by download."""
+        availability = self.diarization_availability
+        if availability is None or not availability.runtime_available():
+            raise CreateJobError(
+                CreateJobFailureCode.DIARIZATION_UNAVAILABLE,
+                "Speaker diarization is not available. "
+                "Install its runtime, or disable it.",
+            )
+        if not availability.models_installed():
+            raise CreateJobError(
+                CreateJobFailureCode.DIARIZATION_MODELS_MISSING,
+                "The speaker models are not installed. "
+                "Download them in the model manager, or disable speakers.",
+            )
 
     def _check_memory(
         self, option: TranscriptionOption, model: ModelDescriptor
@@ -236,6 +258,7 @@ class CreateTranscriptionJob:
 
 
 __all__ = [
+    "MAX_PROMPT_CHARS",
     "CreateJobError",
     "CreateJobFailureCode",
     "CreateTranscriptionJob",

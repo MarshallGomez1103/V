@@ -712,6 +712,24 @@ def test_remove_of_imported_model_keeps_source_and_reports_only_freed_bytes(
     assert _fingerprint(cache) == before
 
 
+def test_hardlinked_import_reports_real_size_but_reclaims_only_its_own_files(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "buzz-cache"
+    snapshot = _hf_cache(cache)
+    store = _store(tmp_path)
+    store.import_local_snapshot(_descriptor(), _files(), snapshot)
+    directory = store.resolve_path(_descriptor())
+    weights = sum(item.size_bytes for item in _files())
+
+    used = store.disk_usage(_descriptor())
+    reclaimable = store.reclaimable_usage(_descriptor())
+
+    assert used is not None and used >= weights  # never "0 bytes"
+    assert reclaimable == (directory / ".voz-model.json").stat().st_size
+    assert store.reclaimable_usage(_descriptor("example/other-model")) is None
+
+
 def test_remove_can_delete_a_directory_whose_files_were_damaged(
     tmp_path: Path, origin: _Origin
 ) -> None:

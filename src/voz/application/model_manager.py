@@ -52,6 +52,7 @@ class ModelCatalog(Protocol):
 class ModelStore(Protocol):
     def is_installed(self, descriptor: ModelDescriptor) -> bool: ...
     def disk_usage(self, descriptor: ModelDescriptor) -> int | None: ...
+    def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None: ...
     def remove(self, descriptor: ModelDescriptor) -> int: ...
 
 
@@ -105,6 +106,12 @@ class ModelStatus:
     size_bytes: int
     installed: bool
     disk_bytes: int | None
+    reclaimable_bytes: int | None
+    """Bytes freed by deleting it: ``disk_bytes`` minus files shared (hardlinked)
+    with another tool's cache, which stay on disk. ``None`` when not installed."""
+    shared_bytes: int | None
+    """``disk_bytes - reclaimable_bytes``: the model's size that deleting would not
+    free because another copy (e.g. Buzz) still holds it."""
     external: tuple[ExternalOrigin, ...]
 
 
@@ -112,6 +119,8 @@ class ModelStatus:
 class DiskSummary:
     models_bytes: int
     free_bytes: int | None
+    reclaimable_bytes: int = 0
+    """Sum of ``reclaimable_bytes`` of the installed models."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +142,10 @@ class ListModels:
         for entry in self.catalog.entries():
             descriptor = entry.descriptor
             installed = self.store.is_installed(descriptor)
+            disk_bytes = self.store.disk_usage(descriptor) if installed else None
+            reclaimable = (
+                self.store.reclaimable_usage(descriptor) if installed else None
+            )
             origins = sorted(
                 {
                     item.origin
@@ -158,7 +171,13 @@ class ListModels:
                     else descriptor.profile.name.value,
                     size_bytes=sum(file.size_bytes for file in entry.files),
                     installed=installed,
-                    disk_bytes=self.store.disk_usage(descriptor) if installed else None,
+                    disk_bytes=disk_bytes,
+                    reclaimable_bytes=reclaimable,
+                    shared_bytes=(
+                        None
+                        if disk_bytes is None or reclaimable is None
+                        else max(0, disk_bytes - reclaimable)
+                    ),
                     external=tuple(ExternalOrigin(origin) for origin in origins),
                 )
             )
@@ -169,7 +188,8 @@ class ListModels:
             else self.disk_space.free_bytes(DiskLocation.ORIGINALS)
         )
         used = sum(item.disk_bytes or 0 for item in models)
-        return ModelList(tuple(models), DiskSummary(used, free))
+        reclaimable_total = sum(item.reclaimable_bytes or 0 for item in models)
+        return ModelList(tuple(models), DiskSummary(used, free, reclaimable_total))
 
 
 @dataclass(frozen=True, slots=True)

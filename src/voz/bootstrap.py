@@ -4,6 +4,7 @@ Framework and infrastructure wiring belongs here so that the domain remains
 independent of transport concerns.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
@@ -100,9 +101,13 @@ from voz.infrastructure.cloud.provider_info import (
     CLOUD_PROVIDER_INFO,
     CLOUD_PROVIDER_LABELS,
 )
+from voz.infrastructure.desktop_shortcut import LocalDesktopShortcut
 from voz.infrastructure.diarization.availability import SherpaDiarizationAvailability
 from voz.infrastructure.diarization.models import DiarizationModelStore
-from voz.infrastructure.diarization.sherpa import SherpaOnnxDiarizationProvider
+from voz.infrastructure.diarization.sherpa import (
+    SherpaOnnxDiarizationProvider,
+    default_diarization_threads,
+)
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
@@ -130,11 +135,12 @@ from voz.infrastructure.persistence.transcription_job_selections import (
     SqliteTranscriptionJobSelectionRepository,
 )
 from voz.infrastructure.secrets import ProviderSecrets
+from voz.interfaces.api.desktop_shortcut import create_desktop_shortcut_router
 from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
 from voz.interfaces.api.job_events import create_job_events_router
 from voz.interfaces.api.job_views import job_view as job_view_without_selection
-from voz.interfaces.api.jobs import create_jobs_router, job_view
+from voz.interfaces.api.jobs import create_jobs_router, job_has_transcript, job_view
 from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
 from voz.interfaces.api.model_tasks import create_model_tasks_router
@@ -143,6 +149,7 @@ from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.providers import create_providers_router
 from voz.interfaces.api.quality_profiles import create_quality_profiles_router
 from voz.interfaces.api.segments import create_segments_router
+from voz.interfaces.api.shutdown import create_shutdown_router
 from voz.interfaces.api.speakers import create_speakers_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
 from voz.interfaces.api.waveform import create_waveform_router
@@ -224,12 +231,15 @@ def create_app(
     transcription_options: GetTranscriptionOptions | None = None,
     paths: VozPaths | None = None,
     engine: Engine | None = None,
+    request_shutdown: Callable[[], None] | None = None,
 ) -> FastAPI:
     """Build the local VOZ HTTP application.
 
     Runtime data lives under XDG directories resolved from ``paths``; the
     SQLite schema is migrated to head on the first request lifecycle, never at
     import time. An injected ``engine`` is owned by the caller.
+    ``request_shutdown`` stops the hosting server (``POST /api/shutdown``);
+    without it that endpoint answers 501.
     """
     resolved_paths = resolve_voz_paths() if paths is None else paths
     owns_engine = engine is None
@@ -365,6 +375,7 @@ def create_app(
                 SherpaOnnxDiarizationProvider(
                     segmentation_model=model_paths.segmentation,
                     embedding_model=model_paths.embedding,
+                    num_threads=default_diarization_threads(),
                 )
             )
         return diarization_engines[0]
@@ -409,7 +420,9 @@ def create_app(
         selection = selections.get(job.id)
         if selection is None:
             return job_view_without_selection(job)
-        return job_view(job, selection)
+        return job_view(
+            job, selection, has_transcript=job_has_transcript(job, transcripts)
+        )
 
     class Lifespan:
         """Migrate on startup and dispose an owned engine on shutdown."""
@@ -449,6 +462,12 @@ def create_app(
         lifespan=lifespan,
     )
     application.include_router(health_router)
+    application.include_router(create_shutdown_router(request_shutdown))
+    application.include_router(
+        create_desktop_shortcut_router(
+            LocalDesktopShortcut(state_directory=resolved_paths.state)
+        )
+    )
     application.include_router(
         create_transcription_options_router(transcription_options)
     )
@@ -492,6 +511,7 @@ def create_app(
             segments,
             runner,
             SqliteSpeakerTurnRepository(resolved_engine),
+            checkpoints=SqliteTranscriptionCheckpointStore(resolved_engine),
         )
     )
     application.include_router(create_job_events_router(jobs, view=view))

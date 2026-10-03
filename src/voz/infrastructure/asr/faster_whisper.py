@@ -193,8 +193,9 @@ def _decoding_arguments(options: TranscriptionOptions) -> dict[str, object]:
     The glossary goes in ``hotwords`` rather than ``initial_prompt``: Faster
     Whisper prepends hotwords to the prompt of *every* decoding window, while
     ``initial_prompt`` only seeds the first one, and it leaves ``initial_prompt``
-    free. The library truncates oversized hotwords itself. VAD is ignored by the
-    library when explicit ``clip_timestamps`` are used (``options.clip``).
+    free for the user's style prompt. The library truncates oversized hotwords
+    itself. VAD is ignored by the library when explicit ``clip_timestamps`` are
+    used (``options.clip``).
     """
     arguments: dict[str, object] = {}
     profile = options.quality_profile
@@ -210,6 +211,10 @@ def _decoding_arguments(options: TranscriptionOptions) -> dict[str, object]:
             arguments["vad_parameters"] = profile.vad.to_dict()
     if options.glossary:
         arguments["hotwords"] = ", ".join(options.glossary)
+    if options.prompt:
+        # The style prompt seeds the first window after the hotwords the library
+        # prepends to every window (``hotwords`` then ``initial_prompt``).
+        arguments["initial_prompt"] = options.prompt
     return arguments
 
 
@@ -427,7 +432,10 @@ class FasterWhisperProvider:
             segments: list[TranscriptionSegment] = []
             for raw_segment in raw_segments:
                 self._raise_if_cancelled(cancellation)
-                segments.append(self._canonical_segment(raw_segment, word_timestamps))
+                segment = self._canonical_segment(raw_segment, word_timestamps)
+                segments.append(segment)
+                if options.on_position is not None:
+                    options.on_position(segment.end_ms)
         finally:
             # Faster Whisper yields lazily; a retained cancellation traceback
             # must not keep its suspended generator and resources alive.

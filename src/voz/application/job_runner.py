@@ -38,6 +38,7 @@ from voz.application.ports.inference_audio import (
 )
 from voz.application.ports.media_normalization import (
     MediaNormalizationCancellationToken,
+    MediaNormalizationProgress,
 )
 from voz.application.ports.repositories import (
     MediaAssetRepository,
@@ -61,6 +62,7 @@ from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
 )
+from voz.application.progress_throttle import ProgressThrottle
 from voz.application.quality_flags import quality_flags
 from voz.application.recoverable_transcription import RecoverableTranscription
 from voz.domain.entities.segment import Segment
@@ -73,6 +75,12 @@ from voz.domain.entities.word import Word
 
 DEFAULT_CHUNK_DURATION_MS = 30 * 60 * 1_000
 DEFAULT_OVERLAP_MS = 5_000
+
+# Global progress by stage: normalization, transcription, speakers, persistence.
+# Without speaker diarization the transcription takes the speakers' share too.
+PREPROCESS_END = 0.02
+TRANSCRIBE_END_WITH_SPEAKERS = 0.8
+SPEAKERS_END = 0.98
 
 
 class JobRunnerFailureCode(StrEnum):
@@ -101,6 +109,7 @@ class InferenceAudioPreparer(Protocol):
         project_id: UUID,
         media_asset_id: UUID,
         cancellation: MediaNormalizationCancellationToken | None = None,
+        on_progress: Callable[[MediaNormalizationProgress], None] | None = None,
     ) -> None: ...
 
 
@@ -333,7 +342,32 @@ class JobRunner:
                 return self._fail(job, JobRunnerFailureCode.DURATION_UNKNOWN.value)
             audio_source = self.audio_source_for(job.project_id, job.media_asset_id)
             result: TranscriptionResult | None = None
-            diarized: DiarizationResult | None = None
+            persisted = False
+            wants_speakers = _wants_diarization(selection)
+            transcribe_end = (
+                TRANSCRIBE_END_WITH_SPEAKERS if wants_speakers else SPEAKERS_END
+            )
+
+            def report(
+                stage: float, low: float, high: float, throttle: ProgressThrottle
+            ) -> None:
+                """Throttled stage progress; cancellation wins over a late write."""
+                nonlocal job
+                if token.is_cancelled() or not throttle.ready():
+                    return
+                job = self._save_stage_progress(job, stage, low + (high - low) * stage)
+
+            def ensure_transcript(current: JobSelection) -> TranscriptionResult:
+                """Persist the text as soon as it exists (idempotent on resume)."""
+                nonlocal result, persisted
+                if result is None:
+                    result = self._result_from_checkpoints(job.id)
+                if not persisted:
+                    self._persist_transcript(
+                        job, current, result, media_asset.duration_ms
+                    )
+                    persisted = True
+                return result
 
             while job.state is not TranscriptionJobState.COMPLETED:
                 if token.is_cancelled():
@@ -344,10 +378,18 @@ class JobRunner:
                 # exactly where it stopped; the transition follows the work.
                 if job.state is TranscriptionJobState.PREPROCESSING:
                     if not self._derivative_exists(audio_source):
+                        job = self._restart_stage(job)
+                        throttle = ProgressThrottle()
                         self.audio_preparer.prepare(
                             project_id=job.project_id,
                             media_asset_id=job.media_asset_id,
                             cancellation=token,
+                            on_progress=lambda sample, throttle=throttle: report(
+                                sample.processed_ms / sample.total_ms,
+                                0.0,
+                                PREPROCESS_END,
+                                throttle,
+                            ),
                         )
                 elif job.state is TranscriptionJobState.TRANSCRIBING:
                     outcome = RecoverableTranscription(
@@ -364,39 +406,51 @@ class JobRunner:
                             language=selection.language,
                             glossary=selection.glossary,
                             quality_profile=selection.quality_profile,
+                            prompt=selection.prompt,
                         ),
                         chunk_duration_ms=self.chunk_duration_ms,
                         overlap_ms=self.overlap_ms,
                         on_progress=self._on_progress,
                         cancellation=token,
+                        progress_range=(PREPROCESS_END, transcribe_end),
                     )
                     job = outcome.job
                     if outcome.cancelled:
                         return job
                     result = outcome.result
+                elif job.state is TranscriptionJobState.ALIGNING:
+                    # The text is final here: show it before the speakers exist.
+                    ensure_transcript(selection)
                 elif job.state is TranscriptionJobState.DIARIZING:
-                    if _wants_diarization(selection):
+                    ensure_transcript(
+                        selection
+                    )  # also for jobs recovered from older runs
+                    if wants_speakers:
+                        if job.stage_progress is not None:
+                            job = self._restart_stage(job)  # the work starts over
+                        throttle = ProgressThrottle()
                         diarized, selection = self._diarize(
-                            job, selection, audio_source, token
+                            job,
+                            selection,
+                            audio_source,
+                            token,
+                            lambda stage, throttle=throttle: report(
+                                stage,
+                                TRANSCRIBE_END_WITH_SPEAKERS,
+                                SPEAKERS_END,
+                                throttle,
+                            ),
                         )
+                        selection = self._assign_speakers(job, selection, diarized)
                 elif job.state is TranscriptionJobState.PERSISTING:
-                    if result is None:
-                        result = self._result_from_checkpoints(job.id)
-                    self._persist_transcript(
-                        job, selection, result, media_asset.duration_ms
-                    )
+                    # ponytail: a job that an older version left here keeps its
+                    # text but no speakers; newer runs assign them in DIARIZING.
+                    final = ensure_transcript(selection)
                     if selection.diarization is None:
                         selection = self._assign_provider_speakers(
-                            job, selection, result
+                            job, selection, final
                         )
-                    elif _wants_diarization(selection):
-                        if diarized is None:
-                            # Resumed after a crash: the turns were in memory only.
-                            diarized, selection = self._diarize(
-                                job, selection, audio_source, token
-                            )
-                        selection = self._assign_speakers(job, selection, diarized)
-                # QUEUED / PROBING / ALIGNING / MERGING: no work yet.
+                # QUEUED / PROBING / MERGING: no work yet.
                 # ponytail: the original was probed at import; PROBING exists for
                 # the state contract and future re-validation.
                 job = self._advance(job)
@@ -415,6 +469,7 @@ class JobRunner:
         selection: JobSelection,
         audio_source: InferenceAudioSource,
         token: _EventToken,
+        on_progress: Callable[[float], None] | None = None,
     ) -> tuple[DiarizationResult | None, JobSelection]:
         """Run diarization; a failure is recorded and never loses the transcript."""
         options = selection.diarization
@@ -431,7 +486,10 @@ class JobRunner:
             provider = self.diarization_provider_for()
             with audio_source.open() as audio:
                 result = provider.diarize(
-                    audio=audio, options=options, cancellation=stop
+                    audio=audio,
+                    options=options,
+                    cancellation=stop,
+                    on_progress=on_progress,
                 )
             return result, selection
         except Exception as error:
@@ -509,6 +567,20 @@ class JobRunner:
             TranscriptionJobState.PERSISTING: TranscriptionJobState.COMPLETED,
         }[job.state]
         return self._save(job.transition_to(successor, at=self._not_before(job)))
+
+    def _save_stage_progress(
+        self, job: TranscriptionJob, stage: float, progress: float
+    ) -> TranscriptionJob:
+        """Persist progress inside the current stage (callers throttle)."""
+        updated = job.with_stage_progress(
+            max(stage, job.stage_progress or 0.0),
+            progress=progress,
+            at=self._not_before(job),
+        )
+        return self._save(updated)
+
+    def _restart_stage(self, job: TranscriptionJob) -> TranscriptionJob:
+        return job.restart_stage(at=self._not_before(job))
 
     def _derivative_exists(self, audio_source: InferenceAudioSource) -> bool:
         try:

@@ -1,4 +1,5 @@
 """Integration tests for atomic chunk checkpoints, cancellation and resume."""
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
@@ -418,4 +419,152 @@ def test_checkpoints_written_before_word_timestamps_still_load(tmp_path: Path) -
 
     assert loaded.segments == (TranscriptionSegment(0, 1_000, " viejo"),)
     assert loaded.segments[0].words == ()
+    engine.dispose()
+
+
+class _PositionProvider(_Provider):
+    """Reports positions inside the chunk and records what the database held."""
+
+    def __init__(self, jobs: SqliteTranscriptionJobRepository, job_id: object) -> None:
+        super().__init__()
+        self.jobs = jobs
+        self.job_id = job_id
+        self.saved: list[tuple[float | None, float]] = []
+
+    def transcribe(
+        self,
+        *,
+        audio: BinaryIO,
+        options: TranscriptionOptions,
+        cancellation: TranscriptionCancellationToken | None = None,
+    ) -> TranscriptionResult:
+        data = audio.read()
+        start_ms, end_ms = (int(value) for value in data.decode().split(":"))
+        assert options.on_position is not None
+        for local_ms in ((end_ms - start_ms) // 2, end_ms - start_ms):
+            options.on_position(local_ms)
+            stored = self.jobs.get(self.job_id)  # type: ignore[arg-type]
+            assert stored is not None
+            self.saved.append((stored.stage_progress, stored.progress))
+        return super().transcribe(
+            audio=BytesIO(data), options=options, cancellation=cancellation
+        )
+
+
+def test_progress_inside_a_chunk_is_saved_throttled_and_weighted(
+    tmp_path: Path,
+) -> None:
+    job, engine = _seed_job((tmp_path / "voz.db").absolute())
+    jobs = SqliteTranscriptionJobRepository(engine)
+    provider = _PositionProvider(jobs, job.id)
+    clock = iter(range(10_000))  # monotonic seconds: one tick per query
+    now = {"t": 0.0}
+
+    def monotonic() -> float:
+        return now["t"]
+
+    coordinator = RecoverableTranscription(
+        provider,
+        _AudioSource(),
+        SqliteTranscriptionCheckpointStore(engine),
+        jobs,
+        clock=lambda: BASE_TIME + timedelta(seconds=next(clock)),
+        monotonic=monotonic,
+        min_save_interval_s=0.5,
+    )
+
+    outcome = coordinator.execute(
+        job=job,
+        duration_ms=65_000,
+        options=TranscriptionOptions(model=DESCRIPTOR),
+        chunk_duration_ms=30_000,
+        overlap_ms=5_000,
+        progress_range=(0.1, 0.9),
+    )
+
+    # Time never advances: only the first report of the whole run is written
+    # (the 2nd..Nth are within 0.5 s); chunk ends are always written atomically.
+    assert provider.saved[0][0] == pytest.approx(0.5 / 3)
+    assert provider.saved[0][1] == pytest.approx(0.1 + 0.8 * provider.saved[0][0])  # type: ignore[operator]
+    assert provider.saved[1][0] == provider.saved[0][0]  # throttled, unchanged
+    assert outcome.job.stage_progress == 1.0
+    assert outcome.job.progress == pytest.approx(0.9)
+    final = jobs.get(job.id)
+    assert final is not None and final.progress == pytest.approx(0.9)
+    checkpoints = SqliteTranscriptionCheckpointStore(engine).list_for_job(job.id)
+    assert [c.job_progress for c in checkpoints] == sorted(
+        c.job_progress for c in checkpoints
+    )
+    assert checkpoints[-1].job_progress == pytest.approx(0.9)
+    engine.dispose()
+
+
+def test_progress_inside_a_chunk_writes_again_after_the_interval(
+    tmp_path: Path,
+) -> None:
+    job, engine = _seed_job((tmp_path / "voz.db").absolute())
+    jobs = SqliteTranscriptionJobRepository(engine)
+    provider = _PositionProvider(jobs, job.id)
+    ticks = iter(float(i) for i in range(1_000))  # one second per throttle check
+    clock = iter(range(10_000))
+
+    RecoverableTranscription(
+        provider,
+        _AudioSource(),
+        SqliteTranscriptionCheckpointStore(engine),
+        jobs,
+        clock=lambda: BASE_TIME + timedelta(seconds=next(clock)),
+        monotonic=lambda: next(ticks),
+    ).execute(
+        job=job,
+        duration_ms=65_000,
+        options=TranscriptionOptions(model=DESCRIPTOR),
+        chunk_duration_ms=30_000,
+        overlap_ms=5_000,
+    )
+
+    stages = [stage for stage, _ in provider.saved]
+    assert stages[0] != stages[1]  # the second report was far enough to be written
+    engine.dispose()
+
+
+def test_resume_accepts_a_job_ahead_of_its_last_checkpoint(tmp_path: Path) -> None:
+    job, engine = _seed_job((tmp_path / "voz.db").absolute())
+    jobs = SqliteTranscriptionJobRepository(engine)
+    provider = _Provider()
+    checkpoints = SqliteTranscriptionCheckpointStore(engine)
+    clock = lambda: BASE_TIME + timedelta(seconds=1)  # noqa: E731
+    coordinator = RecoverableTranscription(
+        provider, _AudioSource(), checkpoints, jobs, clock=clock
+    )
+    options = TranscriptionOptions(model=DESCRIPTOR)
+    with pytest.raises(SimulatedCrash):
+        coordinator.execute(
+            job=job,
+            duration_ms=65_000,
+            options=options,
+            chunk_duration_ms=30_000,
+            overlap_ms=5_000,
+            on_progress=lambda progress: (_ for _ in ()).throw(SimulatedCrash),
+        )
+    stored = jobs.get(job.id)
+    assert stored is not None
+    # A mid-chunk save of the next chunk left the job ahead of the checkpoint.
+    ahead = stored.with_stage_progress(
+        0.5, progress=stored.progress + 0.1, at=BASE_TIME + timedelta(seconds=2)
+    )
+    jobs.save(ahead)
+
+    outcome = RecoverableTranscription(
+        _Provider(), _AudioSource(), checkpoints, jobs, clock=clock
+    ).execute(
+        job=ahead,
+        duration_ms=65_000,
+        options=options,
+        chunk_duration_ms=30_000,
+        overlap_ms=5_000,
+    )
+
+    assert outcome.job.progress == 1.0
+    assert outcome.completed_chunks == 3
     engine.dispose()
