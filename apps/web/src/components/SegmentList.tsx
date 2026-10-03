@@ -11,14 +11,17 @@ import { Button, IconButton, Search } from '@carbon/react'
 import { ArrowDown, ArrowUp, PlayFilledAlt, WarningAltFilled } from '@carbon/icons-react'
 
 import { getSegments, type TranscriptSegment } from '../api/jobs'
-import { flagLabel } from '../lib/qualityFlags'
+import type { Speaker } from '../api/speakers'
+import { useI18n } from '../i18n/i18n'
 import { findActiveIndex } from '../lib/activeSegment'
-import { scrollDelta } from '../lib/scrollDelta'
+import { formatStamp } from '../lib/formatTime'
+import { flagLabel } from '../lib/qualityFlags'
 import {
   buildSearchIndex,
   type SearchIndex,
   type TextRange,
 } from '../lib/segmentSearch'
+import { buildOffsets, scrollTarget, visibleRange } from '../lib/virtualRows'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
 import { Panel } from './Panel'
@@ -34,6 +37,10 @@ interface SegmentListProps {
   // Sustituye el texto de la fila (p. ej. un editor). Debe tener identidad
   // estable (useCallback) o las filas memoizadas se re-renderizan todas.
   renderText?: (segment: TranscriptSegment, query: string) => ReactNode
+  // Control de hablante de la fila (columna izquierda); misma regla de identidad.
+  renderSpeaker?: ((segment: TranscriptSegment) => ReactNode) | undefined
+  // Hablantes conocidos: dan el color de la fila y el nombre si no hay `renderSpeaker`.
+  speakers?: readonly Speaker[]
   // Cambiarlo recarga los segmentos (p. ej. tras reasignar speakers) sin
   // perder búsqueda ni scroll: se conserva la lista vieja hasta que llega la nueva.
   reloadKey?: number
@@ -42,29 +49,17 @@ interface SegmentListProps {
   onSegmentsLoaded?: (segments: TranscriptSegment[]) => void
   // Controles a la derecha del título del panel (modo, guardado, exportar).
   headerActions?: ReactNode
+  // Aviso encima de la lista (p. ej. «hablantes en proceso»).
+  notice?: ReactNode
 }
 
 type Outcome =
-  | { phase: 'error'; message: string }
+  | { phase: 'error'; message: string | null }
   | { phase: 'ready'; segments: TranscriptSegment[] }
 
 interface Loaded {
   transcriptId: string
   outcome: Outcome
-}
-
-function formatTimestamp(ms: number): string {
-  const total = Math.max(0, ms)
-  const minutes = Math.floor(total / 60_000)
-  const seconds = Math.floor((total % 60_000) / 1000)
-  const tenths = Math.floor((total % 1000) / 100)
-  return (
-    String(minutes).padStart(2, '0') +
-    ':' +
-    String(seconds).padStart(2, '0') +
-    '.' +
-    String(tenths)
-  )
 }
 
 function durationAttribute(ms: number): string {
@@ -80,6 +75,36 @@ const SCROLL_KEYS = new Set([
   'Home',
   'End',
 ])
+// Altura supuesta de una fila sin medir y vista supuesta cuando el navegador no mide.
+const ROW_ESTIMATE = 96
+const FALLBACK_VIEWPORT = 640
+const OVERSCAN = 6
+
+interface Measure {
+  heights: ReadonlyMap<number, number>
+  estimate: number
+}
+
+const NO_MEASURES: Measure = { heights: new Map(), estimate: ROW_ESTIMATE }
+
+/** Incorpora alturas medidas; devuelve el mismo objeto si nada cambió (sin re-render). */
+function withMeasures(previous: Measure, seen: readonly (readonly [number, number])[]): Measure {
+  let next: Map<number, number> | null = null
+  for (const [index, height] of seen) {
+    if (Math.abs((previous.heights.get(index) ?? 0) - height) > 1) {
+      next ??= new Map(previous.heights)
+      next.set(index, height)
+    }
+  }
+  if (next === null) {
+    return previous
+  }
+  let sum = 0
+  next.forEach((value) => {
+    sum += value
+  })
+  return { heights: next, estimate: Math.round(sum / next.size) }
+}
 
 function highlight(
   text: string,
@@ -112,12 +137,16 @@ function highlight(
 interface SegmentRowProps {
   segment: TranscriptSegment
   index: number
+  total: number
   active: boolean
   ranges: readonly TextRange[]
   currentRange: number
   query: string
+  color: string | undefined
+  speakerName: string | undefined
   onSeek: ((startMs: number) => void) | undefined
   renderText: SegmentListProps['renderText']
+  renderSpeaker: SegmentListProps['renderSpeaker']
 }
 
 // S5.15: memoizada; con props primitivas/estables, un cambio de currentMs solo
@@ -125,18 +154,21 @@ interface SegmentRowProps {
 const SegmentRow = memo(function SegmentRow({
   segment,
   index,
+  total,
   active,
   ranges,
   currentRange,
   query,
+  color,
+  speakerName,
   onSeek,
   renderText,
+  renderSpeaker,
 }: SegmentRowProps) {
+  const { t } = useI18n()
   const timestamp = (
     <time dateTime={durationAttribute(segment.start_ms)}>
-      {formatTimestamp(segment.start_ms) +
-        ' → ' +
-        formatTimestamp(segment.end_ms)}
+      {formatStamp(segment.start_ms) + ' → ' + formatStamp(segment.end_ms)}
     </time>
   )
   const flags = segment.quality.flags
@@ -145,28 +177,43 @@ const SegmentRow = memo(function SegmentRow({
     <li
       className={flagged ? 'segment-row has-flags' : 'segment-row'}
       data-segment-index={index}
+      aria-posinset={index + 1}
+      aria-setsize={total}
       aria-current={active ? 'true' : undefined}
+      style={color ? ({ '--voz-speaker': color } as React.CSSProperties) : undefined}
     >
-      {onSeek ? (
-        <button
-          type="button"
-          className="segment-seek"
-          onClick={() => {
-            onSeek(segment.start_ms)
-          }}
-          aria-label={'Reproducir desde ' + formatTimestamp(segment.start_ms)}
-        >
-          {timestamp}
-        </button>
-      ) : (
-        timestamp
-      )}
+      <div className="segment-meta">
+        {renderSpeaker ? (
+          renderSpeaker(segment)
+        ) : speakerName ? (
+          <span className="segment-speaker">
+            <span className="segment-speaker__chip" aria-hidden="true" />
+            {speakerName}
+          </span>
+        ) : null}
+        {onSeek ? (
+          <button
+            type="button"
+            className="segment-seek"
+            onClick={() => {
+              onSeek(segment.start_ms)
+            }}
+            aria-label={t('seg.playFrom', { time: formatStamp(segment.start_ms) })}
+          >
+            {timestamp}
+          </button>
+        ) : (
+          timestamp
+        )}
+      </div>
       {flagged ? (
         <span
           className="segment-flag"
           role="img"
-          aria-label={'Por revisar: ' + flags.map(flagLabel).join(', ')}
-          title={flags.map(flagLabel).join(', ')}
+          aria-label={t('seg.flagged', {
+            flags: flags.map((flag) => flagLabel(flag, t)).join(', '),
+          })}
+          title={flags.map((flag) => flagLabel(flag, t)).join(', ')}
         >
           <WarningAltFilled size={16} aria-hidden="true" />
         </span>
@@ -190,40 +237,32 @@ function isEditable(target: EventTarget): boolean {
   )
 }
 
-function scrollRowIntoView(container: HTMLElement | null, index: number) {
-  const row = container?.querySelector<HTMLElement>(
-    '[data-segment-index="' + index + '"]',
-  )
-  if (!container || !row) {
-    return
-  }
-  // Mueve solo el contenedor de la lista (scrollIntoView movería la página).
-  const top = scrollDelta(
-    container.getBoundingClientRect(),
-    row.getBoundingClientRect(),
-  )
-  if (top !== 0) {
-    container.scrollBy?.({ top, behavior: 'smooth' })
-  }
-}
-
 interface TranscriptViewProps {
   segments: TranscriptSegment[]
+  speakers: readonly Speaker[]
   onSeek: SegmentListProps['onSeek']
   currentMs: number | undefined
   renderText: SegmentListProps['renderText']
+  renderSpeaker: SegmentListProps['renderSpeaker']
 }
 
 function TranscriptView({
   segments,
+  speakers,
   onSeek,
   currentMs,
   renderText,
+  renderSpeaker,
 }: TranscriptViewProps) {
+  const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   const [matchIndex, setMatchIndex] = useState(0)
   const [follow, setFollow] = useState(true)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewport, setViewport] = useState(0)
+  // Alturas medidas por fila y la estimación (media) para las que aún no se midieron.
+  const [measure, setMeasure] = useState<Measure>(NO_MEASURES)
 
   const search: SearchIndex = useMemo(
     () => buildSearchIndex(segments, query),
@@ -234,17 +273,86 @@ function TranscriptView({
     hitCount > 0 ? (search.hits[matchIndex % hitCount] ?? null) : null
   const activeIndex =
     currentMs === undefined ? -1 : findActiveIndex(segments, currentMs)
+  const speakerById = useMemo(
+    () => new Map(speakers.map((speaker) => [speaker.id, speaker])),
+    [speakers],
+  )
+
+  const offsets = useMemo(
+    () => buildOffsets(segments.length, (i) => measure.heights.get(i) ?? measure.estimate),
+    [segments.length, measure],
+  )
+  const view = viewport > 0 ? viewport : FALLBACK_VIEWPORT
+  const range = visibleRange(offsets, scrollTop, view, OVERSCAN)
+  const total = offsets[segments.length] ?? 0
+
+  // Mide la vista y las filas pintadas; las alturas reales sustituyen a la estimación.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    let frame = 0
+    const refresh = () => {
+      frame = 0
+      setViewport(container.clientHeight)
+      const seen: [number, number][] = []
+      container.querySelectorAll<HTMLElement>('[data-segment-index]').forEach((row) => {
+        if (row.offsetHeight > 0) {
+          seen.push([Number(row.dataset.segmentIndex), row.offsetHeight])
+        }
+      })
+      setMeasure((previous) => withMeasures(previous, seen))
+    }
+    const schedule = () => {
+      if (frame === 0) {
+        frame = requestAnimationFrame(refresh)
+      }
+    }
+    const observer = new ResizeObserver(schedule)
+    observer.observe(container)
+    container.querySelectorAll('[data-segment-index]').forEach((row) => {
+      observer.observe(row)
+    })
+    schedule()
+    return () => {
+      observer.disconnect()
+      if (frame !== 0) {
+        cancelAnimationFrame(frame)
+      }
+    }
+  }, [range.start, range.end])
+
+  function scrollToIndex(index: number) {
+    const container = containerRef.current
+    if (!container) {
+      return
+    }
+    const top = container.scrollTop
+    const height = container.clientHeight > 0 ? container.clientHeight : FALLBACK_VIEWPORT
+    const target = scrollTarget(offsets, index, top, height)
+    if (target === null) {
+      return
+    }
+    // Deja la fila a un cuarto de la vista para leer lo que viene después.
+    const destination = Math.max(0, (offsets[index] ?? 0) - height / 4)
+    const far = Math.abs(destination - top) > height * 3
+    container.scrollTo?.({ top: destination, behavior: far ? 'auto' : 'smooth' })
+  }
 
   useEffect(() => {
     if (follow && activeIndex >= 0) {
-      scrollRowIntoView(containerRef.current, activeIndex)
+      scrollToIndex(activeIndex)
     }
+    // scrollToIndex lee posiciones vigentes; solo importa cuándo cambia el activo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow, activeIndex])
 
   useEffect(() => {
     if (currentHit) {
-      scrollRowIntoView(containerRef.current, currentHit.segment)
+      scrollToIndex(currentHit.segment)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentHit])
 
   function step(delta: number) {
@@ -266,15 +374,41 @@ function TranscriptView({
     }
   }
 
+  const rows: ReactNode[] = []
+  for (let index = range.start; index < range.end; index += 1) {
+    const segment = segments[index]
+    if (!segment) {
+      break
+    }
+    const speaker = segment.speaker_id === null ? undefined : speakerById.get(segment.speaker_id)
+    rows.push(
+      <SegmentRow
+        key={segment.id}
+        segment={segment}
+        index={index}
+        total={segments.length}
+        active={index === activeIndex}
+        ranges={search.ranges.get(index) ?? NO_RANGES}
+        currentRange={currentHit?.segment === index ? currentHit.range : -1}
+        query={search.query}
+        color={speaker?.color}
+        speakerName={speaker?.name}
+        onSeek={onSeek}
+        renderText={renderText}
+        renderSpeaker={renderSpeaker}
+      />,
+    )
+  }
+
   return (
     <>
       <div className="segment-tools">
         <Search
           size="md"
           className="segment-search"
-          labelText="Buscar en la transcripción"
-          closeButtonLabelText="Limpiar búsqueda"
-          placeholder="Buscar en el texto"
+          labelText={t('seg.search.label')}
+          closeButtonLabelText={t('seg.search.clear')}
+          placeholder={t('seg.search.placeholder')}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value)
@@ -289,13 +423,13 @@ function TranscriptView({
           {search.query === ''
             ? ''
             : hitCount === 0
-              ? 'Sin coincidencias'
-              : (matchIndex % hitCount) + 1 + ' de ' + hitCount}
+              ? t('seg.search.none')
+              : t('seg.search.count', { current: (matchIndex % hitCount) + 1, total: hitCount })}
         </span>
         <IconButton
           kind="ghost"
           size="md"
-          label="Coincidencia anterior"
+          label={t('seg.search.prev')}
           disabled={hitCount === 0}
           onClick={() => {
             step(-1)
@@ -306,7 +440,7 @@ function TranscriptView({
         <IconButton
           kind="ghost"
           size="md"
-          label="Coincidencia siguiente"
+          label={t('seg.search.next')}
           disabled={hitCount === 0}
           onClick={() => {
             step(1)
@@ -323,7 +457,7 @@ function TranscriptView({
               setFollow(true)
             }}
           >
-            Seguir reproducción
+            {t('seg.follow')}
           </Button>
         ) : null}
       </div>
@@ -333,8 +467,11 @@ function TranscriptView({
         ref={containerRef}
         className="segments-scroll"
         role="region"
-        aria-label="Lista de segmentos"
+        aria-label={t('seg.list')}
         tabIndex={0}
+        onScroll={(event) => {
+          setScrollTop(event.currentTarget.scrollTop)
+        }}
         onWheel={pauseFollow}
         onTouchStart={pauseFollow}
         onPointerDown={(event) => {
@@ -354,25 +491,16 @@ function TranscriptView({
           }
         }}
       >
-        {/* ponytail: content-visibility:auto evita layout/pintado de filas
-            fuera de pantalla, pero los nodos DOM no se acotan. Si 10k
-            segmentos se miden lentos, pasar a @tanstack/react-virtual. */}
-        <ol className="segments">
-          {segments.map((segment, index) => (
-            <SegmentRow
-              key={segment.id}
-              segment={segment}
-              index={index}
-              active={index === activeIndex}
-              ranges={search.ranges.get(index) ?? NO_RANGES}
-              currentRange={
-                currentHit?.segment === index ? currentHit.range : -1
-              }
-              query={search.query}
-              onSeek={onSeek}
-              renderText={renderText}
-            />
-          ))}
+        {/* Solo se pintan las filas visibles (más un margen): una transcripción de
+            horas con miles de segmentos sigue abriéndose al instante. */}
+        <ol
+          className="segments"
+          style={{
+            paddingBlockStart: offsets[range.start] ?? 0,
+            paddingBlockEnd: Math.max(0, total - (offsets[range.end] ?? total)),
+          }}
+        >
+          {rows}
         </ol>
       </div>
     </>
@@ -384,13 +512,18 @@ export function SegmentList({
   onSeek,
   currentMs,
   renderText,
+  renderSpeaker,
+  speakers = [],
   reloadKey = 0,
   onSegmentsLoaded,
   headerActions,
+  notice,
 }: SegmentListProps) {
+  const { t, tn } = useI18n()
   // El estado se asocia al id cargado; si no coincide con la prop, seguimos
   // cargando. Así el efecto nunca llama a setState de forma sincrónica.
   const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const onLoadedRef = useRef(onSegmentsLoaded)
   useEffect(() => {
     onLoadedRef.current = onSegmentsLoaded
@@ -416,10 +549,7 @@ export function SegmentList({
           transcriptId,
           outcome: {
             phase: 'error',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'No se pudieron cargar los segmentos.',
+            message: error instanceof Error ? error.message : null,
           },
         })
       })
@@ -427,7 +557,7 @@ export function SegmentList({
     return () => {
       controller.abort()
     }
-  }, [transcriptId, reloadKey])
+  }, [transcriptId, reloadKey, attempt])
 
   if (transcriptId === null) {
     return null
@@ -441,32 +571,44 @@ export function SegmentList({
   return (
     <Panel
       titleId="segments-title"
-      title="Transcripción"
+      title={t('seg.title')}
       description={
         state.phase === 'ready' && state.segments.length > 0
-          ? state.segments.length === 1
-            ? '1 segmento'
-            : state.segments.length + ' segmentos'
+          ? tn('seg.count', state.segments.length)
           : undefined
       }
       actions={headerActions}
       className="voz-segments"
     >
+      {notice}
       {state.phase === 'loading' ? (
         <div role="status">
-          <Busy description="Cargando la transcripción…" />
+          <Busy description={t('seg.loading')} />
         </div>
       ) : state.phase === 'error' ? (
-        <Notice kind="error" title={state.message} />
+        <Notice
+          kind="error"
+          title={t('seg.error.title')}
+          subtitle={state.message ?? t('seg.error.generic')}
+          action={{
+            label: t('common.retry'),
+            onClick: () => {
+              setLoaded(null)
+              setAttempt((current) => current + 1)
+            },
+          }}
+        />
       ) : state.segments.length === 0 ? (
-        <p className="voz-field-note">La transcripción no contiene segmentos.</p>
+        <p className="voz-field-note">{t('seg.empty')}</p>
       ) : (
         <TranscriptView
           key={transcriptId}
           segments={state.segments}
+          speakers={speakers}
           onSeek={onSeek}
           currentMs={currentMs}
           renderText={renderText}
+          renderSpeaker={renderSpeaker}
         />
       )}
     </Panel>

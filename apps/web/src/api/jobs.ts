@@ -1,3 +1,5 @@
+import { translate, translateCode } from '../i18n/i18n'
+
 // ponytail: duplicado con api/jobEvents.ts hasta que root unifique
 export const JOB_STATES = [
   'QUEUED',
@@ -40,6 +42,10 @@ export interface JobSelection {
   // glosario congelado en ese momento (ausentes en jobs anteriores).
   quality_profile?: { name: string; version: number; [key: string]: unknown } | null
   glossary?: string[]
+  // Instrucciones de estilo con las que se creó el job (null/ausente = ninguna).
+  prompt?: string | null
+  // Hablantes pedidos al crear el job (ausente en jobs anteriores).
+  diarization?: { enabled?: boolean; [key: string]: unknown } | null
 }
 
 export interface JobView {
@@ -55,6 +61,13 @@ export interface JobView {
   selection?: JobSelection
   created_at: string
   updated_at: string
+  // Reloj y progreso por etapa; todos opcionales/null mientras el backend no los envíe.
+  started_at?: string | null
+  stage_started_at?: string | null
+  /** 0..1 dentro de la etapa actual (también DIARIZING); null si no se puede medir. */
+  stage_progress?: number | null
+  /** Segundos restantes estimados a la hora de `updated_at`. */
+  eta_seconds?: number | null
 }
 
 export interface CreateJobInput {
@@ -64,6 +77,8 @@ export interface CreateJobInput {
   language: string | null
   // Perfil de calidad (S13.02); ausente = `default`.
   profile?: string
+  // Instrucciones de estilo para el motor (máx. 600 caracteres); ausente = ninguna.
+  prompt?: string
   // Diarización opcional (S6); ausente o enabled=false = desactivada.
   diarization?: {
     enabled: boolean
@@ -111,24 +126,8 @@ export class JobApiError extends Error {
   }
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  project_not_found: 'El proyecto ya no existe.',
-  media_asset_not_found: 'La grabación ya no existe en el proyecto.',
-  option_unknown: 'La opción de transcripción elegida no está disponible.',
-  option_not_startable:
-    'Esta opción todavía no se puede iniciar en este equipo.',
-  job_already_active: 'Ya hay una transcripción en curso para esta grabación.',
-  job_terminal: 'La transcripción ya terminó y no se puede cancelar.',
-  quality_profile_unknown: 'El perfil de calidad elegido no existe.',
-  transcript_not_found: 'La transcripción ya no existe.',
-  invalid_response: 'La API devolvió una respuesta inesperada.',
-}
-
 export function messageForCode(code: string): string {
-  return (
-    ERROR_MESSAGES[code] ??
-    'No se pudo completar la operación (código ' + code + ').'
-  )
+  return translateCode('err.job.', code, 'err.job.generic')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,6 +136,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string'
+}
+
+function isOptionalNumber(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'number'
 }
 
 function isJobState(value: unknown): value is JobState {
@@ -160,7 +167,11 @@ export function isJobView(value: unknown): value is JobView {
     isNullableString(value.transcript_id) &&
     (value.selection === undefined || isRecord(value.selection)) &&
     typeof value.created_at === 'string' &&
-    typeof value.updated_at === 'string'
+    typeof value.updated_at === 'string' &&
+    isOptionalString(value.started_at) &&
+    isOptionalString(value.stage_started_at) &&
+    isOptionalNumber(value.stage_progress) &&
+    isOptionalNumber(value.eta_seconds)
   )
 }
 
@@ -223,10 +234,7 @@ async function errorFromResponse(response: Response): Promise<JobApiError> {
   }
 
   const code = 'http_' + response.status
-  return new JobApiError(
-    code,
-    'La API respondió con estado ' + response.status + '.',
-  )
+  return new JobApiError(code, translate('err.http', { status: response.status }))
 }
 
 async function request<T>(
@@ -276,6 +284,20 @@ export function getJob(id: string, signal?: AbortSignal): Promise<JobView> {
     { headers: JSON_HEADERS, ...(signal ? { signal } : {}) },
     isJobView,
   )
+}
+
+function isJobList(value: unknown): value is { jobs: JobView[] } {
+  return isRecord(value) && Array.isArray(value.jobs) && value.jobs.every(isJobView)
+}
+
+/** Trabajos de un proyecto, del más reciente al más antiguo. */
+export async function listJobs(projectId: string, signal?: AbortSignal): Promise<JobView[]> {
+  const payload = await request(
+    '/api/jobs?project_id=' + encodeURIComponent(projectId),
+    { headers: JSON_HEADERS, ...(signal ? { signal } : {}) },
+    isJobList,
+  )
+  return payload.jobs
 }
 
 export function cancelJob(id: string): Promise<JobView> {

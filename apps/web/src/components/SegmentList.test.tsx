@@ -8,7 +8,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  Reflect.deleteProperty(HTMLElement.prototype, 'scrollBy')
+  Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
 })
 
 function seg(
@@ -139,22 +139,15 @@ describe('SegmentList', () => {
 
   // --- S5.11 / S5.13 / S5.15 ---
 
+  // La lista se reparte en filas de ~96 px (estimación sin medir); la vista mide 100 px.
   const scrolls = () => {
-    const scrollBy = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
-      value: scrollBy,
+      value: scrollTo,
     })
-    // Contenedor visible entre 0 y 100 px; la fila i ocupa [200i, 200i+50].
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(
-      function (this: Element) {
-        const index = this.getAttribute('data-segment-index')
-        const top = index === null ? 0 : Number(index) * 200
-        const bottom = index === null ? 100 : top + 50
-        return { top, bottom } as DOMRect
-      },
-    )
-    return scrollBy
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100)
+    return scrollTo
   }
 
   const timeline = [
@@ -192,17 +185,17 @@ describe('SegmentList', () => {
   })
 
   it('autoscroll suave al segmento activo dentro del contenedor', async () => {
-    const scrollBy = scrolls()
+    const scrollTo = scrolls()
     stubFetch({ segments: timeline })
     const { rerender } = render(<SegmentList transcriptId="tr-1" currentMs={0} />)
     await screen.findByRole('list')
-    expect(scrollBy).not.toHaveBeenCalled() // fila 0 ya visible
+    expect(scrollTo).not.toHaveBeenCalled() // fila 0 ya visible
 
     rerender(<SegmentList transcriptId="tr-1" currentMs={3200} />)
 
     // fila 2: [400, 450] frente a un contenedor [0, 100] -> baja 350 px.
-    expect(scrollBy).toHaveBeenCalledTimes(1)
-    expect(scrollBy).toHaveBeenCalledWith({ top: 350, behavior: 'smooth' })
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenCalledWith({ top: 167, behavior: 'smooth' })
   })
 
   it.each([
@@ -210,23 +203,23 @@ describe('SegmentList', () => {
     ['táctil', (region: HTMLElement) => fireEvent.touchStart(region)],
     ['teclado', (region: HTMLElement) => fireEvent.keyDown(region, { key: 'PageDown' })],
   ])('el gesto manual (%s) pausa el autoscroll y "Seguir reproducción" lo reanuda', async (_name, gesture) => {
-    const scrollBy = scrolls()
+    const scrollTo = scrolls()
     stubFetch({ segments: timeline })
     const { rerender } = render(<SegmentList transcriptId="tr-1" currentMs={0} />)
     await screen.findByRole('list')
 
     gesture(screen.getByRole('region', { name: /lista de segmentos/i }))
     rerender(<SegmentList transcriptId="tr-1" currentMs={3200} />)
-    expect(scrollBy).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: /seguir reproducción/i }))
 
-    expect(scrollBy).toHaveBeenCalledWith({ top: 350, behavior: 'smooth' })
+    expect(scrollTo).toHaveBeenCalledWith({ top: 167, behavior: 'smooth' })
     expect(screen.queryByRole('button', { name: /seguir reproducción/i })).toBeNull()
   })
 
   it('enfocar un editor dentro de una fila pausa el autoscroll', async () => {
-    const scrollBy = scrolls()
+    const scrollTo = scrolls()
     stubFetch({ segments: timeline })
     const renderText = (segment: TranscriptSegment) => (
       <textarea aria-label={'Editar ' + segment.id} defaultValue={segment.text} />
@@ -241,12 +234,12 @@ describe('SegmentList', () => {
       <SegmentList transcriptId="tr-1" currentMs={3200} renderText={renderText} />,
     )
 
-    expect(scrollBy).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /seguir reproducción/i })).toBeDefined()
   })
 
   it('enfocar el botón de una marca de tiempo NO pausa el autoscroll', async () => {
-    const scrollBy = scrolls()
+    const scrollTo = scrolls()
     stubFetch({ segments: timeline })
     const onSeek = vi.fn()
     const { rerender } = render(
@@ -257,7 +250,7 @@ describe('SegmentList', () => {
     screen.getAllByRole('button', { name: /reproducir desde/i })[0]?.focus()
     rerender(<SegmentList transcriptId="tr-1" currentMs={3200} onSeek={onSeek} />)
 
-    expect(scrollBy).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
   })
 
   it('busca sin distinguir mayúsculas ni tildes y resalta con <mark>', async () => {
@@ -305,7 +298,7 @@ describe('SegmentList', () => {
   })
 
   it('la coincidencia actual se desplaza a la vista y pausa el autoscroll', async () => {
-    const scrollBy = scrolls()
+    const scrollTo = scrolls()
     stubFetch({ segments: timeline })
     const { rerender } = render(<SegmentList transcriptId="tr-1" currentMs={0} />)
     await screen.findByRole('list')
@@ -313,11 +306,11 @@ describe('SegmentList', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'final' } })
 
     // Coincidencia en la fila 2 -> desplaza el contenedor.
-    expect(scrollBy).toHaveBeenLastCalledWith({ top: 350, behavior: 'smooth' })
-    scrollBy.mockClear()
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 167, behavior: 'smooth' })
+    scrollTo.mockClear()
 
     rerender(<SegmentList transcriptId="tr-1" currentMs={1200} />)
-    expect(scrollBy).not.toHaveBeenCalled() // autoscroll pausado por la búsqueda
+    expect(scrollTo).not.toHaveBeenCalled() // autoscroll pausado por la búsqueda
     expect(screen.getByRole('button', { name: /seguir reproducción/i })).toBeDefined()
   })
 
@@ -363,12 +356,15 @@ describe('SegmentList', () => {
     )
 
     const list = await screen.findByRole('list', undefined, { timeout: 15_000 })
-    expect(list.children).toHaveLength(10_000)
+    // Ventana: solo se pintan las filas visibles (más margen), no las 10.000.
+    expect(list.children.length).toBeGreaterThan(5)
+    expect(list.children.length).toBeLessThan(40)
+    expect(list.children[0]?.getAttribute('aria-setsize')).toBe('10000')
     expect(list.querySelector('[aria-current="true"]')?.textContent).toContain(
       'segmento 5',
     )
     expect(list.children[0]?.className).toBe('segment-row')
-    expect(renderText).toHaveBeenCalledTimes(10_000)
+    expect(renderText.mock.calls.length).toBeLessThan(40)
 
     renderText.mockClear()
     rerender(<SegmentList transcriptId="big" currentMs={6100} renderText={renderText} />)
@@ -412,5 +408,63 @@ describe('SegmentList', () => {
       expect.objectContaining({ id: 's1' }),
       flagged,
     ])
+  })
+
+  it('al desplazarse pinta las filas de esa zona y suelta las anteriores', async () => {
+    const many = Array.from({ length: 1312 }, (_, i) =>
+      seg('s' + i, i * 1000, i * 1000 + 900, 'segmento ' + i),
+    )
+    stubFetch({ segments: many })
+    render(<SegmentList transcriptId="big" />)
+    const list = await screen.findByRole('list')
+    expect(list.querySelector('[data-segment-index="0"]')).not.toBeNull()
+    expect(list.querySelector('[data-segment-index="1000"]')).toBeNull()
+
+    const box = screen.getByRole('region', { name: /lista de segmentos/i })
+    box.scrollTop = 96 * 1000
+    fireEvent.scroll(box)
+
+    expect(list.querySelector('[data-segment-index="1000"]')).not.toBeNull()
+    expect(list.querySelector('[data-segment-index="0"]')).toBeNull()
+    // El relleno conserva la altura total para que la barra de desplazamiento no cambie.
+    expect(Number.parseFloat((list).style.paddingBlockStart)).toBeGreaterThan(90_000)
+  })
+
+  it('un error de carga se explica y Reintentar vuelve a pedir los segmentos', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ segments: [seg('s1', 0, 1000, 'Hola.')] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<SegmentList transcriptId="tr-1" />)
+
+    expect(await screen.findByText('No se pudo cargar la transcripción')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByText('Hola.')).toBeDefined()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('muestra el hablante de cada fila con su color y el aviso opcional', async () => {
+    stubFetch({
+      segments: [{ ...seg('s1', 0, 1000, 'Hola.'), speaker_id: 'sp1' }, seg('s2', 1000, 2000, 'Chao.')],
+    })
+    render(
+      <SegmentList
+        transcriptId="tr-1"
+        speakers={[{ id: 'sp1', name: 'Ana', color: '#112233', segment_count: 1 }]}
+        notice={<p>Hablantes en proceso</p>}
+      />,
+    )
+
+    const items = await screen.findAllByRole('listitem')
+    expect(within(items[0]!).getByText('Ana')).toBeDefined()
+    expect(items[0]?.getAttribute('style')).toContain('--voz-speaker: #112233')
+    expect(items[1]?.getAttribute('style')).toBeNull()
+    expect(screen.getByText('Hablantes en proceso')).toBeDefined()
   })
 })

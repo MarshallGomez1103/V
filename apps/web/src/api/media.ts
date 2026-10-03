@@ -1,3 +1,4 @@
+import { translate, translateCode } from '../i18n/i18n'
 import { parseErrorCode } from './errors'
 
 export interface MediaAssetSummary {
@@ -19,20 +20,8 @@ export class UploadError extends Error {
   }
 }
 
-const UPLOAD_MESSAGES: Record<string, string> = {
-  filename_invalid: 'El nombre del archivo no es válido.',
-  project_not_found: 'El proyecto ya no existe.',
-  media_too_large: 'El archivo supera el tamaño permitido.',
-  media_unsupported: 'FFmpeg no reconoce este archivo como audio o video.',
-  media_corrupt: 'El archivo parece dañado o incompleto.',
-  media_storage_unavailable: 'No hay espacio o acceso al almacenamiento local.',
-  media_import_failed: 'La importación falló en el servidor local.',
-  network_error: 'No se pudo conectar con el servidor local.',
-  aborted: 'La importación fue cancelada.',
-}
-
 export function describeUploadError(code: string): string {
-  return UPLOAD_MESSAGES[code] ?? 'No se pudo importar el archivo.'
+  return translateCode('err.upload.', code, 'err.upload.generic')
 }
 
 export interface UploadOptions {
@@ -104,7 +93,7 @@ export function uploadMedia(
           resolve(body)
         } else {
           reject(
-            new UploadError('invalid_response', 'La API devolvió un archivo inválido.'),
+            new UploadError('invalid_response', translate('err.upload.invalid_response')),
           )
         }
         return

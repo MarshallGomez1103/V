@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActionableNotification, Tag } from '@carbon/react'
 
 import { getHealth, type HealthPayload } from '../api/health'
+import { useI18n } from '../i18n/i18n'
 import { Busy } from './Busy'
+import { Term } from './Hint'
 import './HealthStatus.scss'
 
 type CheckState =
@@ -11,6 +13,7 @@ type CheckState =
   | { phase: 'unavailable' }
 
 export function HealthStatus() {
+  const { t } = useI18n()
   const [state, setState] = useState<CheckState>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
@@ -46,9 +49,9 @@ export function HealthStatus() {
         hideCloseButton
         hasFocus={false}
         role="alert"
-        title="Sin conexión"
-        subtitle="Inicia el servidor local para conectar la interfaz."
-        actionButtonLabel="Volver a comprobar"
+        title={t('health.offline.title')}
+        subtitle={t('health.offline.subtitle')}
+        actionButtonLabel={t('health.retry')}
         onActionButtonClick={retry}
       />
     )
@@ -57,14 +60,14 @@ export function HealthStatus() {
   return (
     <div className="voz-health" role="status" aria-live="polite">
       {state.phase === 'loading' ? (
-        <Busy description="Comprobando el servidor de este equipo…" />
+        <Busy description={t('health.checking')} />
       ) : (
         <>
           <Tag type="green" size="sm">
-            Disponible
+            <Term definition="health.ok.hint">{t('health.ok')}</Term>
           </Tag>
           <span>
-            API local · 127.0.0.1
+            {t('health.detail')}
             {state.payload.version ? ' · v' + state.payload.version : ''}
           </span>
         </>

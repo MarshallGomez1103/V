@@ -1,3 +1,4 @@
+import { translate, translateCode } from '../i18n/i18n'
 import { isAbortError, readErrorCode } from './errors'
 
 export interface Speaker {
@@ -17,24 +18,8 @@ export class SpeakerApiError extends Error {
   }
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  transcript_not_found: 'La transcripción ya no existe.',
-  speaker_not_found: 'El hablante ya no existe.',
-  speaker_update_invalid:
-    'El nombre debe tener de 1 a 80 caracteres y el color ser #rrggbb.',
-  speaker_merge_invalid:
-    'Solo se pueden fusionar dos hablantes distintos de la misma transcripción.',
-  segment_not_found: 'El segmento ya no existe.',
-  segment_speaker_invalid:
-    'Ese hablante no pertenece a la transcripción del segmento.',
-  network_error: 'No se pudo conectar con el servidor.',
-  invalid_response: 'La API devolvió una respuesta inesperada.',
-}
-
 export function messageForSpeakerCode(code: string): string {
-  return (
-    ERROR_MESSAGES[code] ?? 'No se pudo completar la acción (código ' + code + ').'
-  )
+  return translateCode('err.speaker.', code, 'err.speaker.generic')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,7 +87,7 @@ async function request(
     ? new SpeakerApiError(code, messageForSpeakerCode(code))
     : new SpeakerApiError(
         'http_' + response.status,
-        'La API respondió con estado ' + response.status + '.',
+        translate('err.http', { status: response.status }),
       )
 }
 

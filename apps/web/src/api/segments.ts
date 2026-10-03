@@ -1,3 +1,4 @@
+import { translate, translateCode } from '../i18n/i18n'
 import { isAbortError, readErrorCode } from './errors'
 
 // Tipo mínimo propio: no depende de TranscriptSegment.
@@ -31,20 +32,8 @@ export class SegmentConflictError extends SegmentApiError {
   }
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  segment_not_found: 'El segmento ya no existe.',
-  segment_revision_conflict:
-    'El segmento cambió en otro lugar mientras lo editabas.',
-  segment_text_invalid: 'El texto del segmento no es válido.',
-  network_error: 'No se pudo conectar con el servidor.',
-  invalid_response: 'La API devolvió una respuesta inesperada.',
-}
-
 export function messageForSegmentCode(code: string): string {
-  return (
-    ERROR_MESSAGES[code] ??
-    'No se pudo guardar el segmento (código ' + code + ').'
-  )
+  return translateCode('err.segment.', code, 'err.segment.generic')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -84,7 +73,7 @@ async function errorFromResponse(response: Response): Promise<SegmentApiError> {
   }
   return new SegmentApiError(
     'http_' + response.status,
-    'La API respondió con estado ' + response.status + '.',
+    translate('err.http', { status: response.status }),
   )
 }
 

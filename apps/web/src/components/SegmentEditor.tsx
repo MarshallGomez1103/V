@@ -2,6 +2,8 @@ import { useSyncExternalStore } from 'react'
 import { Button } from '@carbon/react'
 
 import type { EditableSegment } from '../api/segments'
+import { useI18n } from '../i18n/i18n'
+import type { MessageKey } from '../i18n/messages'
 import { findMatches } from '../lib/segmentSearch'
 import type {
   SegmentDraftStatus,
@@ -18,16 +20,17 @@ interface SegmentEditorProps {
   query?: string
 }
 
-const STATUS_LABELS: Record<SegmentDraftStatus, string> = {
-  idle: '',
-  dirty: 'Sin guardar',
-  saving: 'Guardando…',
-  saved: 'Guardado',
-  error: 'Error al guardar',
-  conflict: 'Conflicto',
+const STATUS_LABELS: Record<SegmentDraftStatus, MessageKey | null> = {
+  idle: null,
+  dirty: 'editor.state.dirty',
+  saving: 'editor.state.saving',
+  saved: 'editor.state.saved',
+  error: 'editor.state.error',
+  conflict: 'editor.state.conflict',
 }
 
 export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProps) {
+  const { t } = useI18n()
   const draft = useSyncExternalStore(drafts.subscribe, () =>
     drafts.getDraft(segment.id),
   )
@@ -40,7 +43,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
   return (
     <div className="segment-editor" data-status={status}>
       <label className="segment-editor-label" htmlFor={inputId}>
-        Texto del segmento {segment.id}
+        {t('editor.label', { id: segment.id })}
       </label>
       <div className="segment-editor-field">
         {ranges.length > 0 ? (
@@ -75,7 +78,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
       </div>
       {status !== 'idle' && (
         <p className="segment-editor-state">
-          <span>{STATUS_LABELS[status]}</span>
+          <span>{STATUS_LABELS[status] ? t(STATUS_LABELS[status]) : ''}</span>
           {status === 'error' && (
             <>
               {draft?.errorMessage ? ' — ' + draft.errorMessage + ' ' : ' '}
@@ -86,7 +89,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
                   drafts.retry(segment.id)
                 }}
               >
-                Reintentar
+                {t('common.retry')}
               </Button>
             </>
           )}
@@ -97,7 +100,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
           <Notice
             kind="warning"
             role="status"
-            title="El segmento cambió en el servidor. Versión del servidor:"
+            title={t('editor.conflict.title')}
           />
           <blockquote className="segment-editor-server">
             {draft.conflict.text}
@@ -110,7 +113,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
                 drafts.keepMine(segment.id)
               }}
             >
-              Usar mi versión
+              {t('editor.useMine')}
             </Button>
             <Button
               kind="tertiary"
@@ -119,7 +122,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
                 drafts.discard(segment.id)
               }}
             >
-              Descartar
+              {t('editor.discard')}
             </Button>
           </div>
         </div>

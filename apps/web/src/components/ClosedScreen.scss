@@ -1,0 +1,30 @@
+@use '../styles/carbon' as *;
+
+.voz-closed {
+  display: grid;
+  min-block-size: 100vh;
+  place-items: center;
+  background: $background;
+  color: $text-primary;
+}
+
+.voz-closed__body {
+  display: grid;
+  justify-items: start;
+  gap: $spacing-04;
+  max-inline-size: 28rem;
+  padding: $spacing-07;
+}
+
+.voz-closed__title {
+  @include type-style('productive-heading-05');
+
+  margin: 0;
+}
+
+.voz-closed__text {
+  @include type-style('body-02');
+
+  margin: 0;
+  color: $text-secondary;
+}

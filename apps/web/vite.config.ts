@@ -20,7 +20,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8765',
+        // VOZ_API apunta el proxy a otro VOZ (p. ej. uno de pruebas con datos temporales).
+        target: process.env.VOZ_API ?? 'http://127.0.0.1:8765',
         changeOrigin: false,
       },
     },
@@ -29,5 +30,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Las consultas por rol sobre la app completa son lentas en jsdom.
+    testTimeout: 30_000,
   },
 })

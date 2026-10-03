@@ -31,3 +31,10 @@
   flex-wrap: wrap;
   gap: $spacing-03;
 }
+
+.voz-review__time {
+  @include type-style('code-01');
+
+  margin: 0;
+  color: $text-secondary;
+}

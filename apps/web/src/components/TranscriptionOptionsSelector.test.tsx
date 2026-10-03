@@ -97,8 +97,10 @@ describe('TranscriptionOptionsSelector', () => {
     expect(ready).toHaveProperty('disabled', false)
     expect(ready).toHaveProperty('checked', true)
     expect(screen.getByText('Recomendado')).toBeDefined()
-    expect(screen.getByText(/perfil: rápido/i)).toBeDefined()
-    expect(screen.getByText(/ejecución: gpu \(cuda\) · float16/i)).toBeDefined()
+    expect(ready.closest('.cds--radio-tile__wrapper')?.textContent).toContain('Perfil: Rápido')
+    expect(screen.getByTitle(/prioriza la velocidad/i)).toBeDefined()
+    expect(ready.closest('.cds--radio-tile__wrapper')?.textContent).toContain('Ejecución: GPU (CUDA) · float16')
+    expect(screen.getByTitle(/tarjeta gráfica nvidia/i)).toBeDefined()
 
     // La opción no disponible no es elegible: va en la lista plegada con su motivo.
     expect(screen.queryByRole('radio', { name: /large-v3/i })).toBeNull()

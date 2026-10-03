@@ -1,0 +1,23 @@
+@use '../styles/carbon' as *;
+
+.voz-style {
+  display: grid;
+  gap: $spacing-03;
+}
+
+.voz-style__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-03;
+}
+
+.voz-style__head .cds--label {
+  margin: 0;
+}
+
+.voz-style__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+}

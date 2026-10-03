@@ -4,6 +4,8 @@
  * publica el contrato: nunca paths, manifests ni internals del proveedor.
  */
 
+import { translate } from '../i18n/i18n'
+
 /** Permite los valores documentados con autocompletado sin rechazar códigos futuros. */
 type LooseUnion<T extends string> = T | (string & Record<never, never>)
 
@@ -176,15 +178,13 @@ async function toHttpError(
   if (response.status === 503 && code === 'transcription_options_unavailable') {
     return new TranscriptionOptionsError(
       code,
-      'El servidor no pudo inspeccionar los modelos locales. Vuelve a intentarlo en unos segundos.',
+      translate('err.options.unavailable'),
       response.status,
     )
   }
   return new TranscriptionOptionsError(
     code ?? 'http_error',
-    'No se pudieron consultar las opciones de transcripción (estado ' +
-      String(response.status) +
-      ').',
+    translate('err.options.http', { status: response.status }),
     response.status,
   )
 }
@@ -203,7 +203,7 @@ export async function getTranscriptionOptions(
   if (!isTranscriptionOptionsPayload(body)) {
     throw new TranscriptionOptionsError(
       'invalid_payload',
-      'La API devolvió opciones de transcripción con un formato inesperado.',
+      translate('err.options.invalid'),
     )
   }
   return body

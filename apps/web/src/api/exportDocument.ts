@@ -1,3 +1,5 @@
+import type { MessageKey } from '../i18n/messages'
+
 export type ExportFormat = 'txt' | 'markdown' | 'srt' | 'vtt' | 'json'
 
 export interface ExportOptions {
@@ -6,12 +8,12 @@ export interface ExportOptions {
   groupBySpeaker: boolean
 }
 
-export const EXPORT_FORMATS: readonly { id: ExportFormat; label: string }[] = [
-  { id: 'txt', label: 'Texto (.txt)' },
-  { id: 'markdown', label: 'Markdown (.md)' },
-  { id: 'srt', label: 'Subtítulos SRT (.srt)' },
-  { id: 'vtt', label: 'Subtítulos WebVTT (.vtt)' },
-  { id: 'json', label: 'JSON canónico (.json)' },
+export const EXPORT_FORMATS: readonly { id: ExportFormat; label: MessageKey }[] = [
+  { id: 'txt', label: 'export.txt' },
+  { id: 'markdown', label: 'export.markdown' },
+  { id: 'srt', label: 'export.srt' },
+  { id: 'vtt', label: 'export.vtt' },
+  { id: 'json', label: 'export.json' },
 ]
 
 /** Solo TXT y Markdown aceptan tiempos y agrupación; el backend rechaza el resto. */

@@ -15,3 +15,12 @@ describe('formatBytes', () => {
     expect(formatBytes(input)).toBe(expected)
   })
 })
+
+describe('formatBytes en inglés', () => {
+  it('usa punto decimal', async () => {
+    const { setLang } = await import('../i18n/i18n')
+    setLang('en')
+    expect(formatBytes(1_620_000_000)).toBe('1.6 GB')
+    setLang('es')
+  })
+})

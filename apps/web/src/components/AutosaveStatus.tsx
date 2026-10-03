@@ -8,15 +8,16 @@ import {
 } from '@carbon/icons-react'
 
 import type { SegmentDraftStore } from '../hooks/useSegmentDrafts'
+import { useI18n } from '../i18n/i18n'
 
 import './AutosaveStatus.scss'
 
 const LABELS = {
-  saved: 'Todo guardado',
-  saving: 'Guardando…',
-  dirty: 'Cambios sin guardar',
-  error: 'Error al guardar',
-  conflict: 'Conflicto: elige qué versión conservar',
+  saved: 'autosave.saved',
+  saving: 'autosave.saving',
+  dirty: 'autosave.dirty',
+  error: 'autosave.error',
+  conflict: 'autosave.conflict',
 } as const
 
 const ICONS = {
@@ -28,16 +29,17 @@ const ICONS = {
 } as const
 
 export function AutosaveStatus({ drafts }: { drafts: SegmentDraftStore }) {
+  const { t } = useI18n()
   const status = useSyncExternalStore(drafts.subscribe, drafts.getStatus)
   const Icon = ICONS[status]
 
   return (
     <p className={'voz-autosave voz-autosave--' + status} role="status">
       <Icon size={16} aria-hidden="true" />
-      <span>{LABELS[status]}</span>
+      <span>{t(LABELS[status])}</span>
       {status === 'error' && (
         <Button kind="ghost" size="sm" onClick={drafts.retryAll}>
-          Reintentar
+          {t('common.retry')}
         </Button>
       )}
     </p>

@@ -53,6 +53,9 @@
 @use '@carbon/styles/scss/components/toggletip';
 @use '@carbon/styles/scss/components/tooltip';
 @use '@carbon/styles/scss/components/ui-shell';
+// Después de Carbon: así sus reglas ganan por orden a las de los componentes.
+@use './accent';
+@use './shape';
 
 @include sans.light(normal, (Latin1, Pi));
 @include sans.regular((normal, italic), (Latin1, Pi));
@@ -60,14 +63,15 @@
 @include mono.regular(normal, (Latin1, Pi));
 @include mono.semibold(normal, (Latin1, Pi));
 
-// Tema por defecto: g100 (oscuro); g10 si el sistema prefiere claro. App.tsx
-// refleja la misma elección con la clase de zona en <html> (portales incluidos).
-:root {
+// Tema inicial antes de que cargue JS: g100 (oscuro); g10 si el sistema prefiere
+// claro. `:where` deja la especificidad en 0 para que la clase de zona que pone
+// appearance.ts en <html> (White, Gray 10, 90 o 100 elegido) siempre gane.
+:where(:root) {
   @include theme.theme(themes.$g100);
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :where(:root) {
     @include theme.theme(themes.$g10);
   }
 }

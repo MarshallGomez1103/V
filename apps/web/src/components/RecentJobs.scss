@@ -1,0 +1,66 @@
+@use '../styles/carbon' as *;
+
+.voz-recent {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voz-recent__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: $spacing-04;
+  padding-block: $spacing-04;
+  border-block-end: 1px solid $border-subtle-01;
+
+  &:last-child {
+    border-block-end: 0;
+  }
+}
+
+.voz-recent__info {
+  display: grid;
+  gap: $spacing-01;
+  min-inline-size: 0;
+}
+
+.voz-recent__name {
+  @include type-style('productive-heading-01');
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voz-recent__meta {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}
+
+@include breakpoint-down(md) {
+  .voz-recent__item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .voz-recent__item .cds--btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+.voz-recent__steps-title {
+  @include type-style('productive-heading-01');
+
+  margin: 0;
+}
+
+.voz-recent__steps {
+  @include type-style('body-compact-01');
+
+  margin: 0;
+  padding-inline-start: $spacing-06;
+  color: $text-secondary;
+}

@@ -179,4 +179,73 @@ describe('SpeakersPanel', () => {
       /La transcripción ya no existe/,
     )
   })
+
+  it('oculta los hablantes sin segmentos y lo cuenta', async () => {
+    stubApi({
+      [LIST]: () => ({
+        status: 200,
+        body: { speakers: [ANA, BETO, { id: 'c', name: 'Cata', color: '#000000', segment_count: 0 }] },
+      }),
+    })
+    render(<SpeakersPanel transcriptId="t1" />)
+
+    await screen.findByLabelText('Nombre de Ana')
+    expect(screen.queryByLabelText('Nombre de Cata')).toBeNull()
+    expect(screen.getByText('1 hablante sin segmentos no se muestra.')).toBeTruthy()
+  })
+
+  it('fusiona el par elegido, no solo el primero', async () => {
+    const GINA = { id: 'g', name: 'Gina', color: '#ff0000', segment_count: 4 }
+    const post = vi.fn((init: RequestInit) => {
+      void init
+      return { status: 200, body: { speaker: GINA } }
+    })
+    stubApi({
+      [LIST]: () => ({ status: 200, body: { speakers: [ANA, BETO, GINA] } }),
+      'POST /api/speakers/b/merge': post,
+    })
+    render(<SpeakersPanel transcriptId="t1" />)
+    await screen.findByLabelText('Nombre de Ana')
+
+    fireEvent.change(screen.getByLabelText('Fusionar a'), { target: { value: 'b' } })
+    fireEvent.change(screen.getByLabelText('dentro de'), { target: { value: 'g' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Fusionar' }))
+    expect(screen.getByText(/¿Fusionar «Beto» en «Gina»\?/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, fusionar' }))
+
+    await waitFor(() => {
+      expect(post).toHaveBeenCalled()
+    })
+    expect(post.mock.calls[0]?.[0].body).toBe(JSON.stringify({ into: 'g' }))
+  })
+
+  it('con un solo hablante no ofrece fusionar', async () => {
+    stubApi({ [LIST]: () => ({ status: 200, body: { speakers: [ANA] } }) })
+    render(<SpeakersPanel transcriptId="t1" />)
+    await screen.findByLabelText('Nombre de Ana')
+    expect(screen.queryByRole('button', { name: 'Fusionar' })).toBeNull()
+  })
+
+  it('mientras se calculan dice que se están identificando, no que no hay', async () => {
+    stubApi({ [LIST]: () => ({ status: 200, body: { speakers: [] } }) })
+    render(<SpeakersPanel transcriptId="t1" pending />)
+    expect(await screen.findByText('Identificando hablantes…')).toBeTruthy()
+    expect(screen.queryByText('Esta transcripción no tiene hablantes.')).toBeNull()
+  })
+
+  it('un fallo de carga ofrece reintentar', async () => {
+    let fail = true
+    stubApi({
+      [LIST]: () =>
+        fail
+          ? { status: 500, body: { detail: { code: 'boom', message: 'x' } } }
+          : { status: 200, body: { speakers: [ANA] } },
+    })
+    render(<SpeakersPanel transcriptId="t1" />)
+
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByLabelText('Nombre de Ana')).toBeTruthy()
+  })
 })

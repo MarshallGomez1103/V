@@ -10,18 +10,167 @@
   color: $text-secondary;
 }
 
-.voz-job__steps {
-  max-inline-size: 100%;
+// Indicador de etapas: bloques rectangulares con su propia barra de avance.
+.voz-stages {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: $spacing-03;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-@include breakpoint-down(md) {
-  .voz-job__steps {
-    flex-wrap: wrap;
-    row-gap: $spacing-03;
+.voz-stage {
+  display: grid;
+  gap: $spacing-02;
+  min-inline-size: 0;
+}
+
+.voz-stage__label {
+  @include type-style('productive-heading-01');
+
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  color: $text-secondary;
+}
+
+.voz-stage--current .voz-stage__label,
+.voz-stage--done .voz-stage__label {
+  color: $text-primary;
+}
+
+.voz-stage--failed .voz-stage__label {
+  color: $text-error;
+}
+
+.voz-stage__index {
+  @include type-style('code-01');
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: $spacing-06;
+  block-size: $spacing-06;
+  border: 1px solid $border-strong-01;
+}
+
+.voz-stage--current .voz-stage__index {
+  border-color: $interactive;
+  background: $interactive;
+  color: $text-on-color;
+}
+
+.voz-stage--done .voz-stage__index {
+  border-color: $support-success;
+  color: $support-success;
+}
+
+.voz-stage--failed .voz-stage__index {
+  border-color: $support-error;
+  color: $support-error;
+}
+
+.voz-stage__bar {
+  position: relative;
+  display: block;
+  block-size: 4px;
+  overflow: hidden;
+  background: $layer-accent-01;
+}
+
+.voz-stage__fill {
+  display: block;
+  block-size: 100%;
+  background: $interactive;
+  transition: inline-size 400ms ease-out;
+}
+
+.voz-stage--done .voz-stage__fill {
+  background: $support-success;
+}
+
+.voz-stage__bar--indeterminate .voz-stage__fill {
+  inline-size: 35%;
+  animation: voz-indeterminate 1.6s ease-in-out infinite;
+}
+
+@keyframes voz-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(290%);
   }
 }
 
-// Las etapas son informativas: se ven a color completo pero no se pulsan.
-.voz-job__steps button {
-  pointer-events: none;
+@media (prefers-reduced-motion: reduce) {
+  .voz-stage__bar--indeterminate .voz-stage__fill {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.4;
+  }
+
+  .voz-stage__fill {
+    transition: none;
+  }
+}
+
+.voz-stage__meta {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}
+
+.voz-job__say {
+  @include type-style('body-02');
+
+  margin: 0;
+  max-inline-size: 60ch;
+  color: $text-primary;
+}
+
+// Cifras del trabajo: una rejilla con 1px de junta, como las tablas de Carbon.
+.voz-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: $border-subtle-01;
+  border: 1px solid $border-subtle-01;
+}
+
+.voz-figure {
+  padding: $spacing-04 $spacing-05;
+  background: $layer-02;
+}
+
+.voz-figure__label {
+  @include type-style('label-01');
+
+  color: $text-secondary;
+}
+
+.voz-figure__value {
+  @include type-style('body-compact-02');
+
+  margin: $spacing-02 0 0;
+  overflow-wrap: anywhere;
+}
+
+.voz-figure__clock {
+  @include type-style('productive-heading-04');
+
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@include breakpoint-down(md) {
+  .voz-stages {
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

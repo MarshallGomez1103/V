@@ -1,0 +1,74 @@
+@use 'sass:map';
+
+// Color de acento: rampas oficiales de las paletas de Carbon. `data-accent` va en
+// <html> y en el contenedor de la app; los tokens interactivos se derivan de la
+// rampa, así que cambiar de acento no rompe el contraste. Azul = valores de Carbon.
+$ramps: (
+  'teal': (
+    20: #9ef0f0, 30: #3ddbd9, 40: #08bdba, 50: #009d9a, 60: #007d79, 70: #005d5d, 80: #004144,
+  ),
+  'green': (
+    20: #a7f0ba, 30: #6fdc8c, 40: #42be65, 50: #24a148, 60: #198038, 70: #0e6027, 80: #044317,
+  ),
+  'purple': (
+    20: #e8daff, 30: #d4bbff, 40: #be95ff, 50: #a56eff, 60: #8a3ffc, 70: #6929c4, 80: #491d8b,
+  ),
+  'magenta': (
+    20: #ffd6e8, 30: #ffafd2, 40: #ff7eb6, 50: #ee5396, 60: #d02670, 70: #9f1853, 80: #740937,
+  ),
+  'red': (
+    20: #ffd7d9, 30: #ffb3b8, 40: #ff8389, 50: #fa4d56, 60: #da1e28, 70: #a2191f, 80: #750e13,
+  ),
+  'orange': (
+    20: #ffd9be, 30: #ffb784, 40: #ff832b, 50: #eb6200, 60: #ba4e00, 70: #8a3800, 80: #5e2900,
+  ),
+  'neutral': (
+    20: #e0e0e0, 30: #c6c6c6, 40: #a8a8a8, 50: #8d8d8d, 60: #525252, 70: #393939, 80: #262626,
+  ),
+);
+
+@mixin light($ramp) {
+  --cds-interactive: #{map.get($ramp, 60)};
+  --cds-button-primary: #{map.get($ramp, 60)};
+  --cds-button-primary-hover: #{map.get($ramp, 70)};
+  --cds-button-primary-active: #{map.get($ramp, 80)};
+  --cds-button-tertiary: #{map.get($ramp, 60)};
+  --cds-button-tertiary-hover: #{map.get($ramp, 70)};
+  --cds-button-tertiary-active: #{map.get($ramp, 80)};
+  --cds-link-primary: #{map.get($ramp, 60)};
+  --cds-link-primary-hover: #{map.get($ramp, 70)};
+  --cds-link-secondary: #{map.get($ramp, 70)};
+  --cds-focus: #{map.get($ramp, 60)};
+  --cds-border-interactive: #{map.get($ramp, 60)};
+  --cds-icon-interactive: #{map.get($ramp, 60)};
+  --cds-highlight: #{map.get($ramp, 20)};
+  --cds-support-info: #{map.get($ramp, 70)};
+}
+
+@mixin dark($ramp) {
+  --cds-interactive: #{map.get($ramp, 50)};
+  --cds-button-primary: #{map.get($ramp, 60)};
+  --cds-button-primary-hover: #{map.get($ramp, 70)};
+  --cds-button-primary-active: #{map.get($ramp, 80)};
+  --cds-button-tertiary: #{map.get($ramp, 40)};
+  --cds-button-tertiary-hover: #{map.get($ramp, 60)};
+  --cds-button-tertiary-active: #{map.get($ramp, 80)};
+  --cds-link-primary: #{map.get($ramp, 40)};
+  --cds-link-primary-hover: #{map.get($ramp, 30)};
+  --cds-link-secondary: #{map.get($ramp, 30)};
+  --cds-border-interactive: #{map.get($ramp, 50)};
+  --cds-highlight: #{map.get($ramp, 80)};
+  --cds-support-info: #{map.get($ramp, 50)};
+}
+
+@each $name, $ramp in $ramps {
+  [data-accent='#{$name}'].cds--white,
+  [data-accent='#{$name}'].cds--g10 {
+    @include light($ramp);
+  }
+
+  [data-accent='#{$name}'].cds--g90,
+  [data-accent='#{$name}'].cds--g100 {
+    @include dark($ramp);
+  }
+}

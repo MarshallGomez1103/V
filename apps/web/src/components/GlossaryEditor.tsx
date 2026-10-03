@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Button, TextArea } from '@carbon/react'
 
 import { getGlossary, putGlossary, type Glossary } from '../api/glossary'
+import { useI18n } from '../i18n/i18n'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
 import './GlossaryEditor.scss'
@@ -13,7 +14,7 @@ export interface GlossaryEditorProps {
 
 /** `key` es el proyecto consultado: si no coincide con el actual, sigue cargando. */
 type LoadResult =
-  | { key: string; phase: 'error'; message: string }
+  | { key: string; phase: 'error'; message: string | null }
   | { key: string; phase: 'ready'; glossary: Glossary }
 
 /** Mismo criterio que el backend: recorta, descarta vacíos y duplicados. */
@@ -28,19 +29,18 @@ function parseTerms(text: string): string[] {
   return [...seen]
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : 'No se pudo completar la operación con el glosario.'
+function messageOf(error: unknown): string | null {
+  return error instanceof Error ? error.message : null
 }
 
 export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorProps) {
+  const { t, tn } = useI18n()
   const fieldId = useId()
   const [result, setResult] = useState<LoadResult | null>(null)
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null | undefined>(undefined)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -64,12 +64,12 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
   if (state === null) {
     return (
       <div aria-live="polite">
-        <Busy description="Cargando glosario…" />
+        <Busy description={t('gloss.loading')} />
       </div>
     )
   }
   if (state.phase === 'error') {
-    return <Notice kind="error" title={state.message} />
+    return <Notice kind="error" title={state.message ?? t('err.glossary.generic')} />
   }
 
   const { glossary } = state
@@ -81,12 +81,12 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
   async function save() {
     setSaving(true)
     setStatus(null)
-    setSaveError(null)
+    setSaveError(undefined)
     try {
       const saved = await putGlossary(projectId, terms)
       setText(saved.terms.join('\n'))
       setResult({ key: projectId, phase: 'ready', glossary: saved })
-      setStatus('Glosario guardado (' + String(saved.terms.length) + ' términos).')
+      setStatus(tn('gloss.saved', saved.terms.length))
     } catch (error: unknown) {
       setSaveError(messageOf(error))
     } finally {
@@ -95,29 +95,24 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
   }
 
   return (
-    <section className="voz-glossary" aria-label="Editor de glosario">
+    <section className="voz-glossary" aria-label={t('gloss.region')}>
       <TextArea
         id={fieldId}
-        labelText="Glosario del proyecto"
+        labelText={t('gloss.label')}
         rows={5}
         value={text}
         disabled={disabled || saving}
-        placeholder="Un término por línea (nombres propios, siglas, vocabulario técnico)"
-        helperText={
-          String(terms.length) +
-          ' de ' +
-          String(glossary.max_terms) +
-          ' términos, hasta ' +
-          String(glossary.max_term_length) +
-          ' caracteres cada uno. Ayuda al motor a acertar esas palabras; no cambia el texto transcrito.'
-        }
+        placeholder={t('gloss.placeholder')}
+        helperText={t('gloss.helper', {
+          count: terms.length,
+          max: glossary.max_terms,
+          length: glossary.max_term_length,
+        })}
         invalid={invalid}
         invalidText={
           tooMany
-            ? 'Hay demasiados términos (máximo ' + String(glossary.max_terms) + ').'
-            : 'Algún término supera los ' +
-              String(glossary.max_term_length) +
-              ' caracteres.'
+            ? t('gloss.tooMany', { max: glossary.max_terms })
+            : t('gloss.tooLong', { length: glossary.max_term_length })
         }
         onChange={(event) => {
           setText(event.target.value)
@@ -126,10 +121,12 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
       />
       <p className="voz-field-note">
         {glossary.applies_to.length > 0
-          ? 'Lo usan: ' + glossary.applies_to.join(', ') + '. Los demás motores lo ignoran.'
-          : 'Ningún motor instalado usa el glosario.'}
+          ? t('gloss.appliesTo', { engines: glossary.applies_to.join(', ') })
+          : t('gloss.appliesNone')}
       </p>
-      {saveError ? <Notice kind="error" title={saveError} /> : null}
+      {saveError !== undefined ? (
+        <Notice kind="error" title={saveError ?? t('err.glossary.generic')} />
+      ) : null}
       {status ? <Notice kind="success" title={status} /> : null}
       <div>
         <Button
@@ -138,7 +135,7 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
           disabled={disabled || saving || invalid}
           onClick={() => void save()}
         >
-          {saving ? 'Guardando…' : 'Guardar glosario'}
+          {saving ? t('gloss.saving') : t('gloss.save')}
         </Button>
       </div>
     </section>

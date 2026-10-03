@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 import { ActionableNotification, InlineNotification } from '@carbon/react'
 
+import { useI18n } from '../i18n/i18n'
+
 const KIND_LABELS = {
-  error: 'Error',
-  info: 'Información',
-  success: 'Correcto',
-  warning: 'Advertencia',
+  error: 'common.notice.error',
+  info: 'common.notice.info',
+  success: 'common.notice.success',
+  warning: 'common.notice.warning',
 } as const
 
 export interface NoticeProps {
@@ -31,13 +33,14 @@ export function Notice({
   className,
   children,
 }: NoticeProps) {
+  const { t } = useI18n()
   const common = {
     kind,
     lowContrast: true,
     hideCloseButton: true,
     role,
     title,
-    statusIconDescription: KIND_LABELS[kind],
+    statusIconDescription: t(KIND_LABELS[kind]),
     ...(subtitle === undefined ? {} : { subtitle }),
     ...(className === undefined ? {} : { className }),
   }

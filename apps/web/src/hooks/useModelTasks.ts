@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { isAbortError } from '../api/errors'
+import { translate } from '../i18n/i18n'
 import { listModelTasks, type TaskView } from '../api/models'
 
 export const POLL_INTERVAL_MS = 1000
@@ -74,7 +75,7 @@ export function useModelTasks(onCompleted?: (task: TaskView) => void): ModelTask
           setError(
             failure instanceof Error
               ? failure.message
-              : 'No se pudo consultar el estado de las tareas.',
+              : translate('err.model.tasks'),
           )
           setSettled((current) => current + 1)
         }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Select, SelectItem } from '@carbon/react'
 
 import { assignSegmentSpeaker, type Speaker } from '../api/speakers'
+import { translate, useI18n } from '../i18n/i18n'
 
 import './SegmentSpeakerSelect.scss'
 
@@ -18,6 +19,7 @@ export function SegmentSpeakerSelect({
   speakers,
   onChanged,
 }: SegmentSpeakerSelectProps) {
+  const { t } = useI18n()
   const [error, setError] = useState<string | null>(null)
   const current = speakers.find((speaker) => speaker.id === speakerId)
 
@@ -28,7 +30,7 @@ export function SegmentSpeakerSelect({
       onChanged?.()
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : 'No se pudo reasignar el hablante.',
+        caught instanceof Error ? caught.message : translate('err.speaker.reassign'),
       )
     }
   }
@@ -45,13 +47,13 @@ export function SegmentSpeakerSelect({
         size="sm"
         inline
         hideLabel
-        labelText={'Hablante del segmento ' + segmentId}
+        labelText={t('spk.ofSegment', { id: segmentId })}
         value={current?.id ?? ''}
         onChange={(event) => {
           void change(event.target.value)
         }}
       >
-        <SelectItem value="" text="Sin hablante" />
+        <SelectItem value="" text={t('spk.none.option')} />
         {speakers.map((speaker) => (
           <SelectItem key={speaker.id} value={speaker.id} text={speaker.name} />
         ))}

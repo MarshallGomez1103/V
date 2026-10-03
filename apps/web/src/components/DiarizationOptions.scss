@@ -5,9 +5,45 @@
   gap: $spacing-05;
 }
 
-.voz-diarization__mode {
+.voz-diarization__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-04;
+}
+
+.voz-diarization__mode,
+.voz-diarization__missing {
   display: grid;
-  gap: $spacing-05;
+  gap: $spacing-04;
+}
+
+.voz-diarization__missing .cds--btn {
+  justify-self: start;
+}
+
+.voz-diarization__download {
+  display: grid;
+  gap: $spacing-02;
+  justify-items: start;
+
+  > div {
+    inline-size: 100%;
+  }
+}
+
+.voz-diarization__ready {
+  @include type-style('helper-text-01');
+
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+  margin: 0;
+  color: $text-secondary;
+
+  svg {
+    color: $support-success;
+  }
 }
 
 .voz-diarization__range {

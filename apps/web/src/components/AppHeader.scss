@@ -10,16 +10,3 @@
 
   letter-spacing: 0.08em;
 }
-
-.voz-privacy {
-  display: flex;
-  align-items: center;
-  padding-inline: $spacing-03;
-}
-
-@include breakpoint-down(md) {
-  // En móvil el indicador conserva solo el icono y su estado accesible.
-  .voz-privacy .cds--tag {
-    max-inline-size: 9.5rem;
-  }
-}

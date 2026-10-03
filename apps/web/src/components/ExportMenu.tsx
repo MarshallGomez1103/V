@@ -13,6 +13,7 @@ import {
   exportDocumentUrl,
   type ExportFormat,
 } from '../api/exportDocument'
+import { useI18n } from '../i18n/i18n'
 
 export interface ExportMenuProps {
   transcriptId: string
@@ -31,6 +32,7 @@ function download(href: string): void {
 // S10.14: el navegador descarga directamente; las opciones de tiempos y de
 // agrupación solo las aplican TXT y Markdown (lo decide `exportDocumentUrl`).
 export function ExportMenu({ transcriptId }: ExportMenuProps) {
+  const { t } = useI18n()
   const [timestamps, setTimestamps] = useState(false)
   const [groupBySpeaker, setGroupBySpeaker] = useState(false)
 
@@ -39,23 +41,23 @@ export function ExportMenu({ transcriptId }: ExportMenuProps) {
   }
 
   return (
-    <MenuButton label="Exportar" kind="tertiary" size="md" menuAlignment="bottom-end">
+    <MenuButton label={t('export.label')} kind="tertiary" size="md" menuAlignment="bottom-end">
       <MenuItemSelectable
-        label="Incluir tiempos (TXT y Markdown)"
+        label={t('export.timestamps')}
         selected={timestamps}
         onChange={setTimestamps}
       />
       <MenuItemSelectable
-        label="Agrupar por hablante (TXT y Markdown)"
+        label={t('export.group')}
         selected={groupBySpeaker}
         onChange={setGroupBySpeaker}
       />
       <MenuItemDivider />
-      <MenuItemGroup label="Descargar como">
+      <MenuItemGroup label={t('export.downloadAs')}>
         {EXPORT_FORMATS.map((item) => (
           <MenuItem
             key={item.id}
-            label={item.label}
+            label={t(item.label)}
             renderIcon={Download}
             onClick={() => {
               exportAs(item.id)

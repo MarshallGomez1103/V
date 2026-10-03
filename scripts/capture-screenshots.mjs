@@ -43,6 +43,7 @@ async function launchChrome(port) {
     '--no-first-run',
     '--no-default-browser-check',
     '--force-color-profile=srgb',
+    ...(process.env.CHROME_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     '--lang=es',
     `--user-data-dir=${profile}`,
     `--remote-debugging-port=${port}`,
@@ -159,8 +160,15 @@ const clickText = (tag, text) =>
 // Los paneles de la UI (Carbon) son <section aria-labelledby="...-title">.
 const panel = (id) => `section[aria-labelledby="${id}"]`
 
+// Los botones de icono de la cabecera se identifican por su nombre accesible.
+const header = (label) => `header button[aria-label="${label}"]`
+
 try {
   await cdp.send('Page.enable')
+  // La UI elige idioma según el navegador (aquí inglés): las capturas van en español.
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: "try { localStorage.setItem('voz.lang', 'es') } catch { /* sin almacenamiento */ }",
+  })
   // La UI sigue al sistema (g100 oscuro / g10 claro): las capturas van en oscuro.
   await cdp.send('Emulation.setEmulatedMedia', {
     features: [{ name: 'prefers-color-scheme', value: 'dark' }],
@@ -196,9 +204,10 @@ try {
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })()`)
   await click('button[type=submit]')
-  await waitFor(`document.body.textContent.includes('Importación completa')`, 'la importacion')
+  // tras importar, la pantalla pasa a la configuración (reproductor + motor + opciones)
+  await waitFor(`document.getElementById('options-title')`, 'la configuracion')
   await waitFor(`document.querySelector('.voz-options input[type=radio], .voz-options__unavailable')`, 'las opciones de motor')
-  await sleep(800)
+  await sleep(1200)
 
   // selector de motor: elegir el modelo de la demo si esta disponible
   if (haveModel) {
@@ -216,7 +225,17 @@ try {
     if (!chosen) throw new Error('la opcion de motor ' + model + ' no esta disponible para iniciar')
     await sleep(300)
   }
-  await shot('02-selector-motor.png', panel('options-title'))
+  // configuración completa: reproductor, motor y calidad, opciones (hablantes, estilo, glosario)
+  await shot('02-selector-motor.png', '#main-content .voz-grid', { through: '.voz-actionbar' })
+
+  // «Detectar quién habla» sin el modelo de hablantes: se ofrece descargarlo en línea y
+  // Transcribir queda bloqueado con su explicación (el entorno de capturas no lo instala).
+  await page(`document.querySelector('button[role=switch]').click()`)
+  await waitFor(`document.querySelector('.voz-diarization__mode')`, 'las opciones de hablantes')
+  await sleep(1200)
+  await shot('03-hablantes-modelo.png', panel('extras-title'))
+  await page(`document.querySelector('button[role=switch]').click()`)
+  await sleep(300)
 
   if (haveModel) {
     // capturar el job en curso (opcional: con GPU puede terminar antes de verlo) y el terminado
@@ -227,7 +246,7 @@ try {
     while (Date.now() < limit) {
       const title = await page(`document.getElementById('job-title')?.textContent ?? ''`)
       if (!savedRunning && /cola|Analizando|Preparando|Transcribiendo|Alineando|Identificando|Uniendo|Guardando/.test(title)) {
-        await shot('03-job-en-curso.png', panel('job-title'))
+        await shot('04-job-en-curso.png', panel('job-title'))
         savedRunning = true
       }
       if (/completada|falló|cancelada/.test(title)) break
@@ -237,8 +256,8 @@ try {
     await waitFor(`document.querySelectorAll('.segments li').length > 0`, 'los segmentos')
     await sleep(800)
     console.log('palabras con timing en la UI: ' + (await page(`document.querySelectorAll('.segments .word').length`)))
-    await shot('04-job-terminado.png', panel('job-title'))
-    await shot('05-forma-de-onda.png', panel('audio-title'))
+    await shot('05-job-terminado.png', panel('job-title'))
+    await shot('06-reproduccion.png', panel('audio-title'))
     // la transcripcion: barra de modo/exportacion + segmentos + revision + hablantes
     // Las filas usan content-visibility:auto (solo se pintan a la vista): se desactiva
     // para recortar el panel entero sin hacer scroll.
@@ -248,7 +267,25 @@ try {
       document.head.append(style)
     })()`)
     await sleep(300)
-    await shot('06-transcripcion.png', panel('segments-title'), { through: panel('speakers-title') })
+    await shot('07-transcripcion.png', panel('segments-title'))
+    await shot('08-propiedades.png', panel('props-title'), { through: panel('review-title') })
+
+    // los mismos paneles en inglés, desde el selector de idioma de la cabecera
+    await click(header('Idioma'))
+    await sleep(300)
+    await clickText('button', 'English')
+    await sleep(600)
+    await shot('09-english.png', '#main-content .voz-grid', { through: panel('audio-title') })
+    // el menú sigue abierto tras elegir idioma
+    await clickText('button', 'Español')
+    await sleep(300)
+    await click(header('Idioma')) // cierra el menú
+
+    // ajustes: tema de Carbon, color de acento e icono de escritorio
+    await click(header('Ajustes'))
+    await sleep(600)
+    await shot('10-ajustes.png')
+    await click(header('Ajustes'))
   }
 
   // gestor de modelos (con el modelo importado si lo hubo)
@@ -256,7 +293,7 @@ try {
   await waitFor(`document.querySelector('.voz-models table')`, 'el gestor de modelos')
   await waitFor(`!document.querySelector('.voz-models [aria-busy="true"]')`, 'el gestor de modelos')
   await sleep(500)
-  await shot('07-gestor-modelos.png', '.voz-models')
+  await shot('11-gestor-modelos.png', '.voz-models')
 } finally {
   // matar `flatpak run` no cierra el Chrome del sandbox: se cierra por CDP
   await Promise.race([cdp.send('Browser.close').catch(() => undefined), sleep(2000)])

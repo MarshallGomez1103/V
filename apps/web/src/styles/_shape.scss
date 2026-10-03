@@ -1,0 +1,18 @@
+// Esquinas rectas: en VOZ nada es redondo ni en forma de píldora (etiquetas,
+// interruptores, botones de radio). Carbon trae estos componentes redondeados.
+.cds--tag,
+.cds--tag__label {
+  border-radius: 0;
+}
+
+.cds--toggle__switch,
+.cds--toggle__switch::before,
+.cds--toggle__appearance .cds--toggle__switch::before {
+  border-radius: 0;
+}
+
+.cds--radio-button__appearance,
+.cds--radio-button__appearance::before,
+.cds--radio-button:checked + .cds--radio-button__label .cds--radio-button__appearance::before {
+  border-radius: 0;
+}

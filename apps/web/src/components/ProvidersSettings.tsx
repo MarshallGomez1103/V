@@ -4,6 +4,7 @@ import { Button, Column, Form, Grid, Link, PasswordInput, Stack, Tag } from '@ca
 import { Save, TrashCan } from '@carbon/icons-react'
 
 import { isAbortError } from '../api/errors'
+import { translate, useI18n } from '../i18n/i18n'
 import {
   deleteProviderKey,
   listProviders,
@@ -23,9 +24,7 @@ type LoadState =
   | { phase: 'ready'; providers: ProviderView[] }
 
 function errorMessage(error: unknown): string {
-  return error instanceof ProviderApiError
-    ? error.message
-    : 'No se pudo completar la operación. Inténtalo de nuevo.'
+  return error instanceof ProviderApiError ? error.message : translate('err.provider.op')
 }
 
 interface ProviderRowProps {
@@ -34,6 +33,7 @@ interface ProviderRowProps {
 }
 
 function ProviderRow({ provider, onChanged }: ProviderRowProps) {
+  const { t } = useI18n()
   const { id, label, configured, privacy_url: privacyUrl } = provider
   const inputId = useId()
   const [key, setKey] = useState('')
@@ -62,7 +62,7 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
     if (key.trim() === '') {
       return
     }
-    void run(() => saveProviderKey(id, key.trim()), 'Clave guardada.')
+    void run(() => saveProviderKey(id, key.trim()), t('prov.saved'))
   }
 
   return (
@@ -72,7 +72,7 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
       title={label}
       actions={
         <Tag type={configured ? 'green' : 'gray'} size="md">
-          {configured ? 'Configurado' : 'No configurado'}
+          {configured ? t('prov.configured') : t('prov.notConfigured')}
         </Tag>
       }
     >
@@ -80,17 +80,13 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
         <Stack gap={5}>
           <PasswordInput
             id={inputId}
-            labelText={'Clave de API de ' + label}
-            showPasswordLabel="Mostrar la clave"
-            hidePasswordLabel="Ocultar la clave"
+            labelText={t('prov.keyLabel', { label })}
+            showPasswordLabel={t('prov.show')}
+            hidePasswordLabel={t('prov.hide')}
             autoComplete="off"
             spellCheck={false}
             value={key}
-            placeholder={
-              configured
-                ? 'Pega una clave nueva para reemplazarla'
-                : 'Pega tu clave'
-            }
+            placeholder={configured ? t('prov.placeholder.replace') : t('prov.placeholder.new')}
             disabled={busy}
             onChange={(event) => {
               setKey(event.target.value)
@@ -104,7 +100,7 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
               renderIcon={Save}
               disabled={busy || key.trim() === ''}
             >
-              Guardar
+              {t('common.save')}
             </Button>
             <Button
               kind="danger--tertiary"
@@ -112,10 +108,10 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
               renderIcon={TrashCan}
               disabled={busy || !configured}
               onClick={() => {
-                void run(() => deleteProviderKey(id), 'Clave eliminada.')
+                void run(() => deleteProviderKey(id), t('prov.deleted'))
               }}
             >
-              Eliminar
+              {t('common.delete')}
             </Button>
           </div>
         </Stack>
@@ -123,11 +119,10 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
       {error ? <Notice kind="error" title={error} /> : null}
       {done ? <Notice kind="success" title={done} /> : null}
       <p className="voz-field-note">
-        Tener la clave no envía nada: solo un trabajo que elijas con este
-        proveedor sube audio.{' '}
+        {t('prov.note')}{' '}
         {privacyUrl !== null && /^https?:\/\//.test(privacyUrl) ? (
           <Link href={privacyUrl} target="_blank" rel="noreferrer noopener">
-            {'Política de privacidad de ' + label}
+            {t('prov.privacy', { label })}
           </Link>
         ) : null}
       </p>
@@ -138,6 +133,7 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
 export function ProvidersSettings({
   onChanged,
 }: { onChanged?: () => void } = {}) {
+  const { t } = useI18n()
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
@@ -174,23 +170,19 @@ export function ProvidersSettings({
   return (
     <section className="voz-providers" aria-labelledby="providers-title">
       <h2 id="providers-title" className="voz-section-title">
-        Claves de API
+        {t('prov.title')}
       </h2>
-      <Notice
-        kind="info"
-        title="VOZ es local por defecto."
-        subtitle="Si añades una clave, podrás elegir un proveedor cloud para una transcripción concreta: tu audio saldrá de este equipo y se factura en tu cuenta del proveedor. Estas opciones son experimentales y nunca se recomiendan ni se eligen solas. La clave se guarda solo en este equipo y nunca se vuelve a mostrar."
-      />
+      <Notice kind="info" title={t('prov.info.title')} subtitle={t('prov.info.body')} />
       {state.phase === 'loading' ? (
         <div role="status">
-          <Busy description="Consultando proveedores…" />
+          <Busy description={t('prov.loading')} />
         </div>
       ) : state.phase === 'error' ? (
         <Notice
           kind="error"
           title={state.message}
           action={{
-            label: 'Reintentar',
+            label: t('common.retry'),
             onClick: () => {
               setState({ phase: 'loading' })
               reload()

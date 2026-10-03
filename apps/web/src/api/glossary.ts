@@ -2,6 +2,7 @@
  * Cliente del glosario por proyecto (S13.01): `GET`/`PUT /api/projects/{id}/glossary`.
  * Sesga al motor hacia esos términos; nunca reescribe el texto transcrito.
  */
+import { translate, translateCode } from '../i18n/i18n'
 import { readErrorCode } from './errors'
 
 export interface Glossary {
@@ -20,12 +21,6 @@ export class GlossaryError extends Error {
     this.name = 'GlossaryError'
     this.code = code
   }
-}
-
-const MESSAGES: Record<string, string> = {
-  glossary_invalid:
-    'El glosario no es válido: revisa el número de términos y su longitud.',
-  project_not_found: 'El proyecto ya no existe.',
 }
 
 function isGlossary(value: unknown): value is Glossary {
@@ -61,16 +56,10 @@ async function request(
   }
   if (!response.ok) {
     const code = readErrorCode(body) ?? 'http_' + String(response.status)
-    throw new GlossaryError(
-      code,
-      MESSAGES[code] ?? 'No se pudo completar la operación con el glosario.',
-    )
+    throw new GlossaryError(code, translateCode('err.glossary.', code, 'err.glossary.generic'))
   }
   if (!isGlossary(body)) {
-    throw new GlossaryError(
-      'invalid_response',
-      'La API devolvió un glosario con un formato inesperado.',
-    )
+    throw new GlossaryError('invalid_response', translate('err.glossary.invalid'))
   }
   return body
 }

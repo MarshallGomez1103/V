@@ -3,8 +3,12 @@ import { RadioButton, RadioButtonGroup, Tag } from '@carbon/react'
 
 import {
   getQualityProfiles,
+  type QualityProfile,
   type QualityProfilesPayload,
 } from '../api/qualityProfiles'
+import { useI18n } from '../i18n/i18n'
+import type { MessageKey } from '../i18n/messages'
+import { InfoTip, Term } from './Hint'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
 import './ProfileSelector.scss'
@@ -20,8 +24,34 @@ export interface ProfileSelectorProps {
 
 /** `key` es el idioma consultado: si no coincide con el actual, sigue cargando. */
 type LoadResult =
-  | { key: string; phase: 'error'; message: string }
+  | { key: string; phase: 'error'; message: string | null }
   | { key: string; phase: 'ready'; payload: QualityProfilesPayload }
+
+const KNOWN: Readonly<Record<string, { label: MessageKey; description: MessageKey }>> = {
+  default: { label: 'profile.default.label', description: 'profile.default.description' },
+  academic: { label: 'profile.academic.label', description: 'profile.academic.description' },
+}
+
+function TechnicalLine({ profile }: { profile: QualityProfile }) {
+  const { t } = useI18n()
+  const { parameters } = profile
+  return (
+    <span className="voz-profile__tech">
+      <span>
+        <Term definition="term.beam.def">{t('term.beam')}</Term>
+        {': ' + String(parameters.beam_size)}
+      </span>
+      <span>
+        <Term definition="term.vad.def">VAD</Term>
+        {': ' + (parameters.vad === null ? t('profile.vad.off') : t('profile.vad.on'))}
+      </span>
+      <span>
+        <Term definition="term.prevtext.def">{t('term.prevtext')}</Term>
+        {': ' + (parameters.condition_on_previous_text ? t('common.yes') : t('common.no'))}
+      </span>
+    </span>
+  )
+}
 
 export function ProfileSelector({
   value,
@@ -29,6 +59,7 @@ export function ProfileSelector({
   language = null,
   disabled = false,
 }: ProfileSelectorProps) {
+  const { t } = useI18n()
   const name = useId()
   const key = language ?? ''
   const [result, setResult] = useState<LoadResult | null>(null)
@@ -46,10 +77,7 @@ export function ProfileSelector({
         setResult({
           key,
           phase: 'error',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'No se pudieron consultar los perfiles de calidad.',
+          message: error instanceof Error ? error.message : null,
         })
       })
     return () => {
@@ -62,12 +90,12 @@ export function ProfileSelector({
   if (state === null) {
     return (
       <div className="voz-profile" aria-live="polite">
-        <Busy description="Cargando perfiles…" />
+        <Busy description={t('profile.loading')} />
       </div>
     )
   }
   if (state.phase === 'error') {
-    return <Notice kind="error" title={state.message} />
+    return <Notice kind="error" title={state.message ?? t('err.profiles.load')} />
   }
 
   const { payload } = state
@@ -77,7 +105,7 @@ export function ProfileSelector({
   return (
     <div className="voz-profile">
       <RadioButtonGroup
-        legendText="Perfil de calidad"
+        legendText={t('profile.legend')}
         name={name}
         orientation="vertical"
         valueSelected={selected}
@@ -86,40 +114,53 @@ export function ProfileSelector({
           onChange(String(next))
         }}
       >
-        {payload.profiles.map((profile) => (
-          <RadioButton
-            key={profile.name}
-            id={name + '-' + profile.name}
-            value={profile.name}
-            labelText={
-              <span className="voz-profile__option">
-                <span className="voz-profile__label">
-                  <strong>{profile.label}</strong>
-                  {recommendation.profile === profile.name ? (
-                    <Tag type="green" size="sm">
-                      Medido
-                    </Tag>
-                  ) : null}
+        {payload.profiles.map((profile) => {
+          const known = Object.hasOwn(KNOWN, profile.name) ? KNOWN[profile.name] : undefined
+          return (
+            <RadioButton
+              key={profile.name}
+              id={name + '-' + profile.name}
+              value={profile.name}
+              labelText={
+                <span className="voz-profile__option">
+                  <span className="voz-profile__label">
+                    <strong>{known ? t(known.label) : profile.label}</strong>
+                    {recommendation.profile === profile.name ? (
+                      <Tag type="green" size="sm">
+                        <Term definition="term.measured.def">{t('profile.measured')}</Term>
+                      </Tag>
+                    ) : null}
+                  </span>
+                  <span className="voz-profile__description">
+                    {known ? t(known.description) : profile.description}
+                  </span>
                 </span>
-                <span className="voz-profile__description">
-                  {profile.description}
-                </span>
-              </span>
-            }
-          />
-        ))}
+              }
+            />
+          )
+        })}
       </RadioButtonGroup>
-      <p className="voz-field-note" data-testid="profile-recommendation">
+      <ul className="voz-profile__techlist" aria-label={t('profile.tech')}>
+        {payload.profiles.map((profile) => {
+          const known = Object.hasOwn(KNOWN, profile.name) ? KNOWN[profile.name] : undefined
+          return (
+            <li key={profile.name}>
+              <strong>{known ? t(known.label) : profile.label}</strong>
+              <TechnicalLine profile={profile} />
+            </li>
+          )
+        })}
+      </ul>
+      <div className="voz-field-note" data-testid="profile-recommendation">
         {recommendation.measured
-          ? 'Recomendación (solo con mediciones reales): ' +
-            recommendation.evidence +
-            (recommendation.synthetic ? ' Orientativo, no representa audio real.' : '')
-          : 'No hay perfil recomendado (' + recommendation.evidence + ').'}
-      </p>
-      <p className="voz-field-note">
-        Solo afecta a Faster Whisper; whisper.cpp y los motores en la nube lo
-        ignoran.
-      </p>
+          ? t('profile.recommended') +
+            (recommendation.synthetic ? ' ' + t('profile.synthetic') : '')
+          : t('profile.noRecommendation')}{' '}
+        <InfoTip label="profile.evidence.label" align="top-start">
+          <p>{recommendation.evidence}</p>
+        </InfoTip>
+      </div>
+      <p className="voz-field-note">{t('profile.scope')}</p>
     </div>
   )
 }

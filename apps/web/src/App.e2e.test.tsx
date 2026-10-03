@@ -271,10 +271,10 @@ async function importAndTranscribe() {
   fireEvent.click(
     screen.getByRole('button', { name: 'Crear proyecto e importar' }),
   )
-  expect(await screen.findByText('Importación completa')).toBeDefined()
+  expect(await screen.findByRole('heading', { name: 'clase.wav' })).toBeDefined()
 
   // El motor viable único queda preseleccionado.
-  const radio = await screen.findByRole<HTMLInputElement>('radio')
+  const radio = await screen.findByRole<HTMLInputElement>('radio', { name: /motor de prueba/i })
   await waitFor(() => {
     expect(radio.checked).toBe(true)
   })

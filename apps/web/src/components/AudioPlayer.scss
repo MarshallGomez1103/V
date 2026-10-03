@@ -1,0 +1,99 @@
+@use '../styles/carbon' as *;
+
+.voz-player__transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.voz-player__clock {
+  @include type-style('code-02');
+
+  min-inline-size: 9ch;
+  padding-inline: $spacing-03;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.voz-player__sep {
+  color: $text-secondary;
+}
+
+.voz-player__position {
+  flex: 1 1 10rem;
+  min-inline-size: 8rem;
+}
+
+.voz-player__volume {
+  display: flex;
+  align-items: center;
+}
+
+.voz-player__volumebar {
+  inline-size: 5rem;
+}
+
+.voz-player__rate {
+  min-inline-size: 3.5rem;
+  justify-content: center;
+  padding-inline: $spacing-03;
+}
+
+// Barra rectangular: pista de 4 px con la parte recorrida llena y tirador en forma
+// de barra (el control nativo es una píldora con un círculo).
+.voz-range {
+  appearance: none;
+  block-size: 1.5rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+
+  &::-webkit-slider-runnable-track {
+    block-size: 4px;
+    background: linear-gradient(
+      to right,
+      $interactive 0 var(--voz-fill, 0%),
+      $layer-accent-01 var(--voz-fill, 0%) 100%
+    );
+    border-radius: 0;
+  }
+
+  &::-moz-range-track {
+    block-size: 4px;
+    background: $layer-accent-01;
+    border-radius: 0;
+  }
+
+  &::-moz-range-progress {
+    block-size: 4px;
+    background: $interactive;
+  }
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    inline-size: 6px;
+    block-size: 16px;
+    margin-block-start: -6px;
+    border: 0;
+    border-radius: 0;
+    background: $text-primary;
+  }
+
+  &::-moz-range-thumb {
+    inline-size: 6px;
+    block-size: 16px;
+    border: 0;
+    border-radius: 0;
+    background: $text-primary;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: 2px;
+  }
+
+  &:hover::-webkit-slider-thumb {
+    background: $interactive;
+  }
+}

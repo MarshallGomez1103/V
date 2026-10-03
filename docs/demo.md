@@ -4,7 +4,7 @@ Todas las imágenes de `docs/assets/screenshots/` son capturas de la interfaz de
 corriendo de verdad, sin maquetas. Se generan con un script, así que se pueden
 rehacer cuando cambie la UI.
 
-**Fecha:** 2026-10-02 (UI rehecha con IBM Carbon; capturas en tema oscuro). **Commit base:** `46f2e1d` (más los cambios sin commitear de
+**Fecha:** 2026-10-03 (UI Carbon con temas, acentos, español/inglés, progreso en vivo y línea de tiempo de hablantes; capturas en tema oscuro, español salvo la 09). **Commit base:** `46f2e1d` (más los cambios sin commitear de
 la oleada 5c-2 en el árbol de trabajo). **Máquina:** Bazzite `bazzite-nvidia-open`
 (Fedora 44, kernel 7.2.7), NVIDIA GeForce RTX 4060 Laptop, Chrome 154 (flatpak)
 en modo headless, ventana de 1440 px de ancho.
@@ -30,21 +30,26 @@ ingeniería», aunque el texto hablado decía «…entrega del proyecto…»).
 
 | Archivo | Qué muestra | Función real |
 | --- | --- | --- |
-| `01-inicio.png` | Pantalla de inicio (UI Shell de Carbon, tema oscuro g100): panel «Importar grabación», estado local de la API y nota de privacidad | Importación (S5), estado (`/api/health`) |
-| `02-selector-motor.png` | Panel «Configuración» tras importar el audio: solo los motores utilizables como `RadioTile` (aquí, Faster Whisper `turbo`), los no disponibles plegados en «Mostrar N motores no disponibles», perfil de calidad, interruptor «Detectar quién habla» y glosario | Selector de motor y opciones (`/api/transcription-options`) |
-| `03-job-en-curso.png` | El panel del job mientras corre, con etapas, barra de progreso y botón Cancelar | Job con estados por SSE (S5.05/S5.06). Solo se guarda si el script alcanza a verlo; con la GPU el job puede acabar antes |
-| `04-job-terminado.png` | El job completado: modelo, perfil y dispositivo (`cuda`) | Job y su selección reproducible |
-| `05-forma-de-onda.png` | Reproductor del original y forma de onda con zoom | Reproductor y waveform (S7) |
-| `06-transcripcion.png` | Modo Leer/Editar, estado de guardado, menú Exportar, búsqueda, segmentos con marcas de tiempo, cola de revisión y panel de hablantes | Segmentos, exportación, revisión |
-| `07-gestor-modelos.png` | Gestor de modelos (`DataTable`): `turbo` instalado (1,6 GB), `large-v3` «Ya está en este equipo» con «Usar copia local», el resto «No instalado» y la sección «Hablantes» | Gestor de modelos (S8), reutilización de una copia local |
+| `01-inicio.png` | Pantalla de inicio (UI Shell de Carbon): importar grabación, estado de la API y «Transcripciones guardadas» (con los pasos para empezar si aún no hay ninguna) | Importación (S5), `/api/health`, trabajos guardados (`/api/projects`, `/api/jobs`) |
+| `02-selector-motor.png` | Configuración tras importar: ficha y reproductor del original, «Motor y calidad» (motor, perfil y sus parámetros técnicos con tooltips), «Opciones» (hablantes, instrucciones de estilo, glosario) y el botón Transcribir | Selector de motor (`/api/transcription-options`), perfiles, glosario |
+| `03-hablantes-modelo.png` | «Detectar quién habla» activado sin el modelo de hablantes: aviso, botón «Descargar modelo de hablantes (33 MB)» en línea y Transcribir bloqueado hasta tenerlo | Modelo `diarization:*` del gestor de modelos |
+| `04-job-en-curso.png` | El job mientras corre: etapas con su avance, tiempo transcurrido, restante estimado, dispositivo y modelo, y una frase de lo que ocurre. Solo se guarda si el script alcanza a verlo; con la GPU el job puede acabar antes | Job por SSE (`started_at`, `stage_progress`, `eta_seconds`) |
+| `05-job-terminado.png` | El job completado: etapas, duración del trabajo, modelo, dispositivo (`cuda`) y perfil | Job y su selección reproducible |
+| `06-reproduccion.png` | Reproductor con controles Carbon (play/pausa, ±5 s, posición, volumen, velocidad) y forma de onda con zoom | Reproductor y waveform (S7) |
+| `07-transcripcion.png` | Lista de transcripción (hablante a la izquierda, tiempos por bloque, texto grande), modo Leer/Editar con autoguardado y búsqueda | Segmentos, edición (S5/S7) |
+| `08-propiedades.png` | Panel de propiedades (archivo, idioma, modelo, perfil, calidad, dispositivo), Exportar, Hablantes (renombrar, color, fusionar) y cola de revisión | Exportación, hablantes, revisión |
+| `09-english.png` | Los mismos paneles en inglés, desde el selector de idioma de la cabecera | i18n español/inglés |
+| `10-ajustes.png` | Menú de ajustes: tema (Automático, White, Gray 10, 90 y 100), color de acento e icono de escritorio | Preferencias en `localStorage`, `/api/desktop-shortcut` |
+| `11-gestor-modelos.png` | Gestor de modelos (`DataTable`): estados rectangulares con tooltip, tamaños reales (en catálogo y en disco), sección «Hablantes» | Gestor de modelos (S8) |
 
 ### Lo que estas capturas no muestran
 
-- **Hablantes separados.** La separación de hablantes necesita el modelo
-  `diarization:sherpa-default`, que no está instalado en esta máquina y no se
-  descargó para las capturas. El panel sale vacío («Esta transcripción no tiene
-  hablantes») y aparece «No instalado» en el gestor. Hasta capturarlo con el
-  modelo instalado, no se anuncia como demostrado.
+- **Hablantes separados.** El entorno de capturas es una carpeta temporal sin el
+  modelo `diarization:sherpa-default` (no se descarga para las capturas). Por eso
+  el panel de hablantes sale vacío y la línea de tiempo de hablantes no se ve en
+  estas imágenes; sí se ve el aviso de descarga (`03`). La línea de tiempo se
+  verificó aparte con una transcripción real de 1h47m (1.312 segmentos, 11
+  hablantes) en una copia de los datos.
 - **Palabras con timing.** El segmento se compone de palabras clicables (37 en esta
   demo, comprobado en el DOM por el script), pero a la vista se leen como texto
   normal: la palabra actual solo se resalta durante la reproducción.
@@ -61,7 +66,7 @@ Requisitos: `uv` con el entorno del proyecto ya sincronizado (extra `asr-local`:
 el script arranca el servidor con `uv run --no-sync` para no quitárselo), `node`
 22 o superior, `ffmpeg`, `espeak-ng`, Chrome en flatpak (`com.google.Chrome`) y el
 modelo `turbo` en el caché de Buzz. Sin ese modelo el script avisa y solo hace las
-capturas que no lo necesitan (`01`, `02` y `07`; esta ruta no se ha probado). Tarda unos
+capturas que no lo necesitan (`01` y `11`; esta ruta no se ha probado). Tarda unos
 10 segundos. Variables opcionales: `VOZ_CMD`, `CAPTURE_MODEL` (por defecto
 `turbo`) y `CHROME_CMD` (por defecto `flatpak run com.google.Chrome`).
 
@@ -82,5 +87,9 @@ Cómo funciona, por si hay que mantenerlo:
   cruzan sistemas de archivos).
 - Las filas de segmentos usan `content-visibility: auto`: solo se pintan a la
   vista, así que la captura de la transcripción hace scroll antes de recortar.
-- Si cambia la UI (paneles `options-title`, `job-title`, `audio-title`,
-  `segments-title`, `speakers-title` y la clase `.voz-models`), ajusta el `.mjs`.
+- Si cambia la UI (paneles `options-title`, `extras-title`, `job-title`,
+  `audio-title`, `segments-title`, `props-title`, `review-title`, la clase
+  `.voz-models` y los botones de la cabecera por su nombre accesible), ajusta el `.mjs`.
+- La UI elige idioma según el navegador: el script fija `voz.lang=es` en
+  `localStorage` antes de cargar. Con `CHROME_NO_SANDBOX=1` añade `--no-sandbox`
+  (para un Chromium local en vez del Chrome de flatpak).

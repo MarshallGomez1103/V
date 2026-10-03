@@ -3,6 +3,7 @@
  * Ver docs/quality-profiles.md. La recomendación viene solo de mediciones
  * reales; sin medición el backend lo dice y no recomienda nada.
  */
+import { translate } from '../i18n/i18n'
 import { readErrorCode } from './errors'
 
 export interface VadParameters {
@@ -109,14 +110,11 @@ export async function getQualityProfiles(
   if (!response.ok) {
     throw new QualityProfilesError(
       readErrorCode(body) ?? 'http_' + String(response.status),
-      'No se pudieron consultar los perfiles de calidad.',
+      translate('err.profiles.load'),
     )
   }
   if (!isPayload(body)) {
-    throw new QualityProfilesError(
-      'invalid_response',
-      'La API devolvió perfiles de calidad con un formato inesperado.',
-    )
+    throw new QualityProfilesError('invalid_response', translate('err.profiles.invalid'))
   }
   return body
 }

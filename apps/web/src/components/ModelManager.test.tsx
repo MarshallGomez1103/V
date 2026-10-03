@@ -136,12 +136,10 @@ describe('ModelManager', () => {
         .map((header) => header.textContent?.replace(/^Ordenar .* ascendente/, '')),
     ).toEqual(['Modelo', 'Estado', 'Perfil', 'Tamaño', 'Licencia', 'Acciones'])
     const names = dataRows().map((row) => within(row).getAllByRole('cell')[0]?.textContent)
-    expect(names).toEqual([
-      'Faster Whisper turboRecomendado',
-      'Faster Whisper large-v3',
-      'Faster Whisper tiny',
-    ])
-    expect(screen.getByText('Recomendado')).toBeDefined()
+    expect(names[0]).toMatch(/^Faster Whisper turboRecomendado/)
+    expect(names[1]).toBe('Faster Whisper large-v3')
+    expect(names[2]).toBe('Faster Whisper tiny')
+    expect(screen.getByRole('button', { name: 'Recomendado' })).toBeDefined()
     expect(screen.getByText('Calidad')).toBeDefined()
     expect(screen.getAllByRole('button', { name: /descargar \(1,6\sGB\)/i })).toHaveLength(2)
     expect(screen.getByText('Instalado')).toBeDefined()
@@ -557,8 +555,8 @@ describe('ModelManager', () => {
 
       await screen.findByRole('table')
       const [row] = dataRows() as [HTMLElement]
-      expect(row.textContent).toMatch(/requiere el extra diarization/i)
-      expect(within(row).queryByRole('button')).toBeNull()
+      expect(row.textContent).toMatch(/requiere el extra «diarization»/i)
+      expect(within(row).queryByRole('button', { name: /descargar|usar copia|eliminar/i })).toBeNull()
     })
 
     it('instalado permite eliminarlo con confirmación por clave', async () => {
@@ -592,6 +590,53 @@ describe('ModelManager', () => {
           '/api/models/diarization%3Asherpa-default?confirm=diarization%3Asherpa-default',
         )
       })
+    })
+  })
+
+  describe('tamaños y estados', () => {
+    it('muestra los bytes reales en disco y oculta un 0 B engañoso', async () => {
+      stubApi(
+        models([
+          model({ model_id: 'tiny', size_bytes: 77_003_619, installed: true, disk_bytes: 77_010_000 }),
+          model({ model_id: 'small', size_bytes: 486_212_372, installed: true, disk_bytes: 0 }),
+        ]),
+        tasks([]),
+      )
+      render(<ModelManager />)
+      await screen.findByRole('table')
+
+      expect(screen.getByText(/En disco: 77\sMB/)).toBeDefined()
+      expect(screen.queryByText(/En disco: 0\sB/)).toBeNull()
+    })
+
+    it('las etiquetas de estado son rectangulares y explican su significado', async () => {
+      stubApi(
+        models([
+          model({ model_id: 'tiny', installed: true, disk_bytes: 1_000_000 }),
+          model({ model_id: 'small', external: [{ origin: 'buzz' }] }),
+          model({ model_id: 'base' }),
+        ]),
+        tasks([]),
+      )
+      render(<ModelManager />)
+      await screen.findByRole('table')
+
+      for (const label of ['Instalado', 'Ya está en este equipo', 'No instalado']) {
+        expect(screen.getByRole('button', { name: label })).toBeDefined()
+      }
+      expect(document.body.textContent).not.toMatch(/buzz/i)
+    })
+
+    it('en inglés traduce encabezados, estados y acciones', async () => {
+      const { setLang } = await import('../i18n/i18n')
+      setLang('en')
+      stubApi(models([model({ model_id: 'tiny' })]), tasks([]))
+      render(<ModelManager />)
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Transcription engines' })).toBeDefined()
+      expect(screen.getByRole('columnheader', { name: /Status/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Not installed' })).toBeDefined()
+      expect(screen.getByRole('button', { name: /Download \(1.6\sGB\)/ })).toBeDefined()
     })
   })
 })

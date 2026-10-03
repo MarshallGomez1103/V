@@ -22,3 +22,34 @@
 
   color: $text-secondary;
 }
+
+.voz-profile__tech {
+  @include type-style('helper-text-01');
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-01 $spacing-04;
+  color: $text-helper;
+}
+
+.voz-profile__techlist {
+  display: grid;
+  gap: $spacing-02;
+  margin: 0;
+  padding: $spacing-03 0 0;
+  border-block-start: 1px solid $border-subtle-01;
+  list-style: none;
+
+  li {
+    @include type-style('helper-text-01');
+
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-01 $spacing-04;
+  }
+
+  strong {
+    min-inline-size: 5.5rem;
+    color: $text-primary;
+  }
+}

@@ -3,6 +3,8 @@ import { Button, Select, SelectItem, Tag } from '@carbon/react'
 import { WarningAltFilled } from '@carbon/icons-react'
 
 import type { TranscriptSegment } from '../api/jobs'
+import { useI18n } from '../i18n/i18n'
+import { formatStamp } from '../lib/formatTime'
 import { flagLabel, flaggedSegments } from '../lib/qualityFlags'
 import { Panel } from './Panel'
 import './ReviewQueue.scss'
@@ -18,6 +20,7 @@ const ALL = 'all'
 // S13.06: el estado "revisado" es local a la sesión (no se persiste; recargar
 // la página lo reinicia). ponytail: persistirlo exige un contrato de API nuevo.
 export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
+  const { t, tn } = useI18n()
   const [reviewed, setReviewed] = useState<ReadonlySet<string>>(new Set())
   const [filter, setFilter] = useState(ALL)
   const [position, setPosition] = useState(0)
@@ -58,34 +61,33 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
   return (
     <Panel
       titleId="review-title"
-      title="Revisión"
+      title={t('review.title')}
+      description={t('review.description')}
       className="voz-review"
       actions={
         <span role="status">
           <Tag type={count > 0 ? 'warm-gray' : 'green'} size="md">
-            {count === 1
-              ? '1 segmento por revisar'
-              : count + ' segmentos por revisar'}
+            {tn('review.count', count)}
           </Tag>
         </span>
       }
     >
       {flagged.length === 0 ? (
-        <p className="voz-field-note">Ningún segmento necesita revisión.</p>
+        <p className="voz-field-note">{t('review.none')}</p>
       ) : (
         <>
           <Select
             id={filterId}
-            labelText="Tipo"
+            labelText={t('review.kind')}
             value={filter}
             onChange={(event) => {
               setFilter(event.target.value)
               setPosition(0)
             }}
           >
-            <SelectItem value={ALL} text="Todos" />
+            <SelectItem value={ALL} text={t('review.all')} />
             {kinds.map((kind) => (
-              <SelectItem key={kind} value={kind} text={flagLabel(kind)} />
+              <SelectItem key={kind} value={kind} text={flagLabel(kind, t)} />
             ))}
           </Select>
 
@@ -93,12 +95,15 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
             <div className="voz-review__current">
               <p className="voz-review__flags">
                 <WarningAltFilled size={16} aria-hidden="true" />
-                {current.quality.flags.map(flagLabel).join(' · ')}
+                {current.quality.flags.map((flag) => flagLabel(flag, t)).join(' · ')}
+              </p>
+              <p className="voz-review__time">
+                {formatStamp(current.start_ms) + ' → ' + formatStamp(current.end_ms)}
               </p>
               <p className="voz-review__text">{current.text}</p>
             </div>
           ) : (
-            <p className="voz-field-note">Todo revisado en este filtro.</p>
+            <p className="voz-field-note">{t('review.allDone')}</p>
           )}
 
           <div className="voz-review__actions">
@@ -110,7 +115,7 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
                 go(index - 1)
               }}
             >
-              Anterior
+              {t('review.prev')}
             </Button>
             <Button
               kind="tertiary"
@@ -120,7 +125,7 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
                 go(index + 1)
               }}
             >
-              Siguiente
+              {t('review.next')}
             </Button>
             <Button
               kind="primary"
@@ -128,7 +133,7 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
               disabled={!current}
               onClick={markReviewed}
             >
-              Marcar como revisado
+              {t('review.markDone')}
             </Button>
           </div>
         </>

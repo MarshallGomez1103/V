@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { subscribeJobEvents, type JobView } from '../api/jobEvents'
+import { getJob } from '../api/jobs'
 
 export interface JobEventsState {
   job: JobView | null
@@ -31,11 +32,27 @@ export function useJobEvents(jobId: string | null): JobEventsState {
         jobId,
       }))
     }
-    return subscribeJobEvents(jobId, {
+    // Instantánea inmediata por HTTP: si el stream tarda o falla (p. ej. al reabrir un
+    // trabajo guardado) la pantalla igual muestra el estado del trabajo.
+    const controller = new AbortController()
+    void getJob(jobId, controller.signal)
+      .then((job) => {
+        setTracked((current) =>
+          current?.jobId === jobId && current.job !== null
+            ? current
+            : { ...(current?.jobId === jobId ? current : IDLE), job, jobId },
+        )
+      })
+      .catch(() => undefined)
+    const stop = subscribeJobEvents(jobId, {
       onJob: (job) => patch({ job, error: null }),
       onEnd: () => patch({ ended: true }),
       onError: (error) => patch({ error: error.message }),
     })
+    return () => {
+      controller.abort()
+      stop()
+    }
   }, [jobId])
 
   if (jobId === null || tracked === null || tracked.jobId !== jobId) {

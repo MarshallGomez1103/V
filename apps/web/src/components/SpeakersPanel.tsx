@@ -8,6 +8,7 @@ import {
   type Speaker,
 } from '../api/speakers'
 import { isAbortError } from '../api/errors'
+import { translate, useI18n } from '../i18n/i18n'
 
 import { Busy } from './Busy'
 import { Notice } from './Notice'
@@ -17,10 +18,12 @@ import './SpeakersPanel.scss'
 interface SpeakersPanelProps {
   transcriptId: string
   onChanged?: () => void
+  /** Los hablantes aún se están calculando: se dice en lugar de «no tiene hablantes». */
+  pending?: boolean
 }
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'No se pudo completar la acción.'
+  return error instanceof Error ? error.message : translate('err.speaker.action')
 }
 
 function without(record: Record<string, string>, key: string) {
@@ -32,13 +35,16 @@ export function SpeakersPanel(props: SpeakersPanelProps) {
   return <SpeakersPanelBody key={props.transcriptId} {...props} />
 }
 
-function SpeakersPanelBody({ transcriptId, onChanged }: SpeakersPanelProps) {
+function SpeakersPanelBody({ transcriptId, onChanged, pending = false }: SpeakersPanelProps) {
+  const { t, tn } = useI18n()
   const [speakers, setSpeakers] = useState<Speaker[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Nombre en edición por hablante y fusión pendiente de confirmar.
+  const [attempt, setAttempt] = useState(0)
+  // Nombre en edición por hablante y fusión elegida (origen → destino).
   const [names, setNames] = useState<Record<string, string>>({})
-  const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({})
-  const [confirming, setConfirming] = useState<string | null>(null)
+  const [source, setSource] = useState('')
+  const [target, setTarget] = useState('')
+  const [confirming, setConfirming] = useState(false)
 
   async function reload() {
     try {
@@ -51,7 +57,10 @@ function SpeakersPanelBody({ transcriptId, onChanged }: SpeakersPanelProps) {
   useEffect(() => {
     const controller = new AbortController()
     void listSpeakers(transcriptId, controller.signal)
-      .then(setSpeakers)
+      .then((items) => {
+        setSpeakers(items)
+        setError(null)
+      })
       .catch((caught: unknown) => {
         if (!isAbortError(caught)) {
           setError(messageOf(caught))
@@ -60,7 +69,7 @@ function SpeakersPanelBody({ transcriptId, onChanged }: SpeakersPanelProps) {
     return () => {
       controller.abort()
     }
-  }, [transcriptId])
+  }, [transcriptId, attempt])
 
   async function save(speaker: Speaker, changes: { name?: string; color?: string }) {
     try {
@@ -77,11 +86,12 @@ function SpeakersPanelBody({ transcriptId, onChanged }: SpeakersPanelProps) {
     }
   }
 
-  async function merge(source: Speaker, into: string) {
-    setConfirming(null)
+  async function merge(from: Speaker, into: Speaker) {
+    setConfirming(false)
     try {
-      await mergeSpeakers(source.id, into)
-      setMergeTargets((current) => without(current, source.id))
+      await mergeSpeakers(from.id, into.id)
+      setSource('')
+      setTarget('')
       setError(null)
       await reload()
       onChanged?.()
@@ -102,127 +112,148 @@ function SpeakersPanelBody({ transcriptId, onChanged }: SpeakersPanelProps) {
 
   if (speakers === null && error === null) {
     return (
-      <Panel titleId="speakers-title" title="Hablantes">
+      <Panel titleId="speakers-title" title={t('spk.title')}>
         <div aria-live="polite">
-          <Busy description="Cargando hablantes…" />
+          <Busy description={t('spk.loading')} />
         </div>
       </Panel>
     )
   }
 
-  const targetFor = (speaker: Speaker): Speaker | undefined => {
-    const others = speakers?.filter((item) => item.id !== speaker.id) ?? []
-    return others.find((item) => item.id === mergeTargets[speaker.id]) ?? others[0]
-  }
-  const mergeSource = speakers?.find((item) => item.id === confirming)
-  const mergeTarget = mergeSource ? targetFor(mergeSource) : undefined
+  // Los que no quedaron con ningún segmento no se pueden usar: se cuentan aparte.
+  const used = speakers?.filter((speaker) => speaker.segment_count > 0) ?? []
+  const unused = (speakers?.length ?? 0) - used.length
+  const from = used.find((item) => item.id === source) ?? used[0]
+  const into =
+    used.find((item) => item.id === target && item.id !== from?.id) ??
+    used.find((item) => item.id !== from?.id)
 
   return (
     <>
-      <Panel titleId="speakers-title" title="Hablantes">
-        {error !== null && <Notice kind="error" title={error} />}
-        {speakers?.length === 0 && (
-          <p className="voz-field-note">Esta transcripción no tiene hablantes.</p>
+      <Panel titleId="speakers-title" title={t('spk.title')} description={t('spk.description')}>
+        {error !== null && (
+          <Notice
+            kind="error"
+            title={error}
+            action={{
+              label: t('common.retry'),
+              onClick: () => {
+                setError(null)
+                setAttempt((current) => current + 1)
+              },
+            }}
+          />
         )}
+        {speakers?.length === 0 && pending ? (
+          <div role="status">
+            <Busy description={t('spk.pending')} />
+          </div>
+        ) : speakers?.length === 0 ? (
+          <p className="voz-field-note">{t('spk.none')}</p>
+        ) : null}
         <ul className="voz-speakers">
-          {speakers?.map((speaker) => {
-            const others = speakers.filter((item) => item.id !== speaker.id)
-            const target = targetFor(speaker)?.id ?? ''
-            return (
-              <li key={speaker.id} className="voz-speakers__item">
-                <input
-                  type="color"
-                  className="voz-speakers__color"
-                  aria-label={'Color de ' + speaker.name}
-                  value={speaker.color}
-                  onChange={(event) => {
-                    void save(speaker, { color: event.target.value })
-                  }}
-                />
-                <TextInput
-                  id={'speaker-name-' + speaker.id}
-                  size="md"
-                  hideLabel
-                  labelText={'Nombre de ' + speaker.name}
-                  maxLength={80}
-                  value={names[speaker.id] ?? speaker.name}
-                  onChange={(event) => {
-                    setNames({ ...names, [speaker.id]: event.target.value })
-                  }}
-                  onBlur={() => {
+          {used.map((speaker) => (
+            <li key={speaker.id} className="voz-speakers__item">
+              <input
+                type="color"
+                className="voz-speakers__color"
+                title={t('spk.color', { name: speaker.name })}
+                aria-label={t('spk.color', { name: speaker.name })}
+                value={speaker.color}
+                onChange={(event) => {
+                  void save(speaker, { color: event.target.value })
+                }}
+              />
+              <TextInput
+                id={'speaker-name-' + speaker.id}
+                size="md"
+                hideLabel
+                labelText={t('spk.name', { name: speaker.name })}
+                maxLength={80}
+                value={names[speaker.id] ?? speaker.name}
+                onChange={(event) => {
+                  setNames({ ...names, [speaker.id]: event.target.value })
+                }}
+                onBlur={() => {
+                  commitName(speaker)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
                     commitName(speaker)
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      commitName(speaker)
-                    } else if (event.key === 'Escape') {
-                      setNames((current) => without(current, speaker.id))
-                    }
-                  }}
-                />
-                <Tag type="gray" size="md">
-                  {speaker.segment_count === 1
-                    ? '1 segmento'
-                    : speaker.segment_count + ' segmentos'}
-                </Tag>
-                {others.length > 0 && (
-                  <div className="voz-speakers__merge">
-                    <Select
-                      id={'speaker-merge-' + speaker.id}
-                      size="md"
-                      hideLabel
-                      labelText={'Fusionar ' + speaker.name + ' en'}
-                      value={target}
-                      onChange={(event) => {
-                        setMergeTargets({
-                          ...mergeTargets,
-                          [speaker.id]: event.target.value,
-                        })
-                      }}
-                    >
-                      {others.map((item) => (
-                        <SelectItem key={item.id} value={item.id} text={item.name} />
-                      ))}
-                    </Select>
-                    <Button
-                      kind="tertiary"
-                      size="md"
-                      onClick={() => {
-                        setConfirming(speaker.id)
-                      }}
-                    >
-                      Fusionar
-                    </Button>
-                  </div>
-                )}
-              </li>
-            )
-          })}
+                  } else if (event.key === 'Escape') {
+                    setNames((current) => without(current, speaker.id))
+                  }
+                }}
+              />
+              <Tag type="gray" size="md">
+                {tn('spk.segments', speaker.segment_count)}
+              </Tag>
+            </li>
+          ))}
         </ul>
+        {unused > 0 ? (
+          <p className="voz-field-note">{tn('spk.unused', unused)}</p>
+        ) : null}
+        {used.length > 1 && from && into ? (
+          <fieldset className="voz-speakers__merge">
+            <legend className="cds--label">{t('spk.merge.legend')}</legend>
+            <Select
+              id="speaker-merge-from"
+              size="md"
+              labelText={t('spk.merge.from')}
+              value={from.id}
+              onChange={(event) => {
+                setSource(event.target.value)
+              }}
+            >
+              {used.map((item) => (
+                <SelectItem key={item.id} value={item.id} text={item.name} />
+              ))}
+            </Select>
+            <Select
+              id="speaker-merge-into"
+              size="md"
+              labelText={t('spk.merge.into')}
+              value={into.id}
+              onChange={(event) => {
+                setTarget(event.target.value)
+              }}
+            >
+              {used
+                .filter((item) => item.id !== from.id)
+                .map((item) => (
+                  <SelectItem key={item.id} value={item.id} text={item.name} />
+                ))}
+            </Select>
+            <Button
+              kind="tertiary"
+              size="md"
+              onClick={() => {
+                setConfirming(true)
+              }}
+            >
+              {t('spk.merge')}
+            </Button>
+          </fieldset>
+        ) : null}
       </Panel>
-      {mergeSource && mergeTarget ? (
+      {confirming && from && into ? (
         <Modal
           open
           danger
           size="xs"
-          closeButtonLabel="Cerrar"
-          modalHeading="Fusionar hablantes"
-          primaryButtonText="Sí, fusionar"
-          secondaryButtonText="Cancelar"
+          closeButtonLabel={t('common.close')}
+          modalHeading={t('spk.merge.title')}
+          primaryButtonText={t('spk.merge.confirm')}
+          secondaryButtonText={t('common.cancel')}
           onRequestClose={() => {
-            setConfirming(null)
+            setConfirming(false)
           }}
           onRequestSubmit={() => {
-            void merge(mergeSource, mergeTarget.id)
+            void merge(from, into)
           }}
         >
-          <p>
-            {'¿Fusionar «' +
-              mergeSource.name +
-              '» en «' +
-              mergeTarget.name +
-              '»? Sus segmentos pasarán al hablante de destino.'}
-          </p>
+          <p>{t('spk.merge.body', { from: from.name, to: into.name })}</p>
         </Modal>
       ) : null}
     </>

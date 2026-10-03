@@ -1,3 +1,4 @@
+import { translateCode } from '../i18n/i18n'
 import { parseErrorCode } from './errors'
 
 /** S5.09: peaks precalculados por el backend, `[min, max]` por bucket en [-1, 1]. */
@@ -18,16 +19,8 @@ export class WaveformApiError extends Error {
   }
 }
 
-const WAVEFORM_MESSAGES: Record<string, string> = {
-  media_asset_not_found: 'La grabación ya no existe.',
-  peaks_buckets_invalid: 'La resolución de la forma de onda no es válida.',
-  waveform_unavailable: 'No se pudo calcular la forma de onda de este audio.',
-  invalid_response: 'La API devolvió una forma de onda inválida.',
-  network_error: 'No se pudo conectar con el servidor local.',
-}
-
 export function describeWaveformError(code: string): string {
-  return WAVEFORM_MESSAGES[code] ?? 'No se pudo cargar la forma de onda.'
+  return translateCode('err.wave.', code, 'err.wave.load')
 }
 
 function isPeakPair(value: unknown): value is [number, number] {

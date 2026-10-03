@@ -2,7 +2,7 @@
 
 .voz-speakers {
   display: grid;
-  gap: $spacing-04;
+  gap: $spacing-03;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -10,9 +10,9 @@
 
 .voz-speakers__item {
   display: grid;
-  grid-template-columns: auto minmax(8rem, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: $spacing-04;
+  gap: $spacing-03;
 }
 
 .voz-speakers__color {
@@ -25,22 +25,19 @@
 }
 
 .voz-speakers__merge {
-  display: flex;
-  grid-column: 1 / -1;
-  align-items: center;
+  display: grid;
   gap: $spacing-03;
+  margin: 0;
+  padding: $spacing-04 0 0;
+  border: 0;
+  border-block-start: 1px solid $border-subtle-01;
+
+  .cds--btn {
+    justify-self: start;
+  }
 }
 
-.voz-speakers__merge .cds--select {
-  flex: 1 1 auto;
-}
-
-@include breakpoint-up(lg) {
-  .voz-speakers__item {
-    grid-template-columns: auto minmax(8rem, 1fr) auto minmax(14rem, 1.2fr);
-  }
-
-  .voz-speakers__merge {
-    grid-column: auto;
-  }
+.voz-speakers__item .cds--form-item,
+.voz-speakers__item .cds--text-input-wrapper {
+  inline-size: 100%;
 }

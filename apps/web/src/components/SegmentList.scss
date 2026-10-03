@@ -1,6 +1,6 @@
 @use '../styles/carbon' as *;
 
-// S5.11/S5.13/S5.15: barra de búsqueda, fila activa y contención por fila.
+// S5.11/S5.13/S5.15: búsqueda, fila activa y lista con ventana (solo se pintan las visibles).
 
 .segment-tools {
   display: flex;
@@ -22,7 +22,8 @@
 }
 
 .segments-scroll {
-  max-block-size: 60vh;
+  max-block-size: min(62vh, 44rem);
+  min-block-size: 12rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: $layer-02;
@@ -37,31 +38,53 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  box-sizing: content-box;
 }
 
-// ponytail: content-visibility:auto es la "virtualización" nativa (S5.15).
+// Fila: hablante y tiempos a la izquierda, texto grande a la derecha.
 .segments .segment-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  grid-template-columns: 11.5rem minmax(0, 1fr);
   align-items: start;
-  gap: $spacing-02 $spacing-05;
-  padding: $spacing-04 $spacing-05;
+  gap: $spacing-03 $spacing-06;
+  padding: $spacing-05 $spacing-05 $spacing-05 $spacing-05;
   border-block-end: 1px solid $border-subtle-02;
-  border-inline-start: 3px solid transparent;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 72px;
+  border-inline-start: 4px solid var(--voz-speaker, transparent);
 }
 
 .segments .segment-row[aria-current='true'] {
-  border-inline-start-color: $interactive;
   background: $layer-selected-02;
+  box-shadow: inset 4px 0 0 $interactive;
+}
+
+.segment-meta {
+  display: grid;
+  gap: $spacing-02;
+  justify-items: start;
+  min-inline-size: 0;
+}
+
+.segment-speaker {
+  @include type-style('productive-heading-01');
+
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.segment-speaker__chip {
+  flex: none;
+  inline-size: $spacing-04;
+  block-size: $spacing-04;
+  background: var(--voz-speaker, $border-strong-01);
 }
 
 .segment-seek {
   @include type-style('code-01');
 
-  padding: $spacing-02 $spacing-03;
+  padding: $spacing-01 $spacing-02;
+  margin-inline-start: -$spacing-02;
   border: 0;
   background: transparent;
   color: $link-primary;
@@ -91,12 +114,12 @@
 }
 
 .segment-text {
-  @include type-style('body-02');
-
-  grid-column: 2;
   margin: 0;
   min-inline-size: 0;
   overflow-wrap: anywhere;
+  font-size: 1.125rem;
+  line-height: 1.7;
+  letter-spacing: 0;
 }
 
 .segment-match {
@@ -111,7 +134,7 @@
 
 // S13.06: filas con pistas de calidad (el texto nunca se altera).
 .segments .segment-row.has-flags:not([aria-current='true']) {
-  border-inline-start-color: $support-warning;
+  box-shadow: inset -4px 0 0 $support-warning;
 }
 
 .segment-flag {
@@ -128,7 +151,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .segment-text {
-    grid-column: 1;
+  .segment-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $spacing-02 $spacing-05;
   }
 }

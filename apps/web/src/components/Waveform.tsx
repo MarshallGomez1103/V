@@ -19,7 +19,6 @@ import {
   clampZoom,
   columnPeaks,
   contentWidth,
-  formatClock,
   isVisibleX,
   MAX_ZOOM,
   MIN_ZOOM,
@@ -32,6 +31,8 @@ import {
   zoomOut,
 } from '../lib/waveformGeometry'
 import { isAbortError } from '../api/errors'
+import { formatSeconds } from '../lib/formatTime'
+import { useI18n } from '../i18n/i18n'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
 import './Waveform.scss'
@@ -40,6 +41,8 @@ export interface WaveformProps {
   mediaAssetId: string
   currentMs: number
   onSeek: (ms: number) => void
+  /** Duración total medida por el backend (sirve para grabaciones abiertas desde «guardadas»). */
+  onDuration?: ((ms: number) => void) | undefined
 }
 
 // Más buckets que el valor por defecto del backend (2000) para que el zoom alto
@@ -50,7 +53,7 @@ const FALLBACK_VIEWPORT_WIDTH = 640
 const CANVAS_HEIGHT = 96
 
 type Outcome =
-  | { phase: 'error'; message: string }
+  | { phase: 'error'; message: string | null }
   | { phase: 'ready'; data: WaveformPeaks }
 
 interface Loaded {
@@ -92,7 +95,12 @@ function drawColumns(
 // S5.09: canvas con peaks precalculados; S5.14: zoom 1x-32x con scroll
 // horizontal. El canvas mide solo la vista (sticky) y dibuja la porción
 // visible: así el zoom alto no choca con el límite de tamaño de los canvas.
-export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
+export function Waveform({ mediaAssetId, currentMs, onSeek, onDuration }: WaveformProps) {
+  const durationRef = useRef(onDuration)
+  useEffect(() => {
+    durationRef.current = onDuration
+  })
+  const { t } = useI18n()
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [zoom, setZoom] = useState(MIN_ZOOM)
   const [viewportWidth, setViewportWidth] = useState(0)
@@ -115,15 +123,13 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
     })
       .then((result) => {
         setLoaded({ mediaAssetId, outcome: { phase: 'ready', data: result } })
+        durationRef.current?.(result.duration_ms)
       })
       .catch((error: unknown) => {
         if (isAbortError(error) || controller.signal.aborted) {
           return
         }
-        const message =
-          error instanceof WaveformApiError
-            ? error.message
-            : 'No se pudo cargar la forma de onda.'
+        const message = error instanceof WaveformApiError ? error.message : null
         setLoaded({ mediaAssetId, outcome: { phase: 'error', message } })
       })
     return () => {
@@ -189,14 +195,14 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
   if (outcome === null) {
     return (
       <div className="waveform waveform--status" role="status">
-        <Busy description="Cargando forma de onda…" />
+        <Busy description={t('wave.loading')} />
       </div>
     )
   }
   if (outcome.phase === 'error') {
     return (
       <div className="waveform waveform--status">
-        <Notice kind="error" title={outcome.message} />
+        <Notice kind="error" title={outcome.message ?? t('err.wave.load')} />
       </div>
     )
   }
@@ -244,15 +250,15 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
     )
   }
 
-  const clock = formatClock(currentMs) + ' de ' + formatClock(durationMs)
+  const clock = t('wave.clock', { now: formatSeconds(currentMs / 1000), total: formatSeconds(durationMs / 1000) })
 
   return (
-    <section className="waveform" aria-label="Forma de onda">
+    <section className="waveform" aria-label={t('wave.region')}>
       <div className="waveform__toolbar">
         <IconButton
           kind="ghost"
           size="sm"
-          label="Alejar"
+          label={t('wave.zoomOut')}
           onClick={() => {
             changeZoom(zoomOut(zoom))
           }}
@@ -262,13 +268,14 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
         </IconButton>
         <input
           type="range"
-          className="waveform__slider"
+          className="waveform__slider voz-range"
           min={MIN_ZOOM}
           max={MAX_ZOOM}
           step={1}
           value={zoom}
-          aria-label="Zoom de la forma de onda"
-          aria-valuetext={String(zoom) + ' aumentos'}
+          style={{ '--voz-fill': String(((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100) + '%' } as React.CSSProperties}
+          aria-label={t('wave.zoom')}
+          aria-valuetext={t('wave.zoomValue', { zoom })}
           onChange={(event) => {
             changeZoom(Number(event.currentTarget.value))
           }}
@@ -276,7 +283,7 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
         <IconButton
           kind="ghost"
           size="sm"
-          label="Acercar"
+          label={t('wave.zoomIn')}
           onClick={() => {
             changeZoom(zoomIn(zoom))
           }}
@@ -292,7 +299,7 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
         className="waveform__scroller"
         role="slider"
         tabIndex={0}
-        aria-label="Posición en la grabación. Flechas izquierda y derecha saltan 5 segundos."
+        aria-label={t('wave.slider')}
         aria-valuemin={0}
         aria-valuemax={durationMs}
         aria-valuenow={Math.round(Math.min(Math.max(currentMs, 0), durationMs))}

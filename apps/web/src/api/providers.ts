@@ -3,6 +3,7 @@
  * estado de la clave, guardar/borrar y estimación de coste. La clave solo
  * viaja en `PUT`; ninguna respuesta la devuelve jamás.
  */
+import { translateCode } from '../i18n/i18n'
 import { readErrorCode } from './errors'
 
 export interface ProviderView {
@@ -22,26 +23,9 @@ export interface CloudEstimate {
   price_date: string
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  provider_not_found: 'Ese proveedor no existe.',
-  secrets_key_invalid:
-    'La clave no es válida: usa de 1 a 512 caracteres ASCII visibles, sin espacios.',
-  secrets_file_insecure:
-    'El archivo de secretos de VOZ no es seguro (debe ser un archivo normal con permisos 0600). Corrige sus permisos y reintenta.',
-  secrets_file_invalid:
-    'No se pudo leer el archivo de secretos de VOZ. Revísalo o bórralo y reintenta.',
-  secrets_write_failed:
-    'No se pudo guardar la clave en el disco. Revisa los permisos y el espacio.',
-  media_not_found: 'La grabación ya no existe.',
-  media_duration_unknown: 'No se conoce la duración de la grabación.',
-  invalid_response: 'La API devolvió una respuesta con formato inesperado.',
-}
-
-/** Mensaje en español por código estable; el código siempre queda visible en el fallback. */
+/** Mensaje por código estable; el código siempre queda visible en el texto genérico. */
 export function messageForProviderError(code: string): string {
-  return Object.hasOwn(ERROR_MESSAGES, code)
-    ? (ERROR_MESSAGES[code] ?? code)
-    : 'No se pudo completar la operación (código ' + code + ').'
+  return translateCode('err.provider.', code, 'err.provider.generic')
 }
 
 export class ProviderApiError extends Error {

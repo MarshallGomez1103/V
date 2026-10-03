@@ -1,0 +1,26 @@
+@use '../styles/carbon' as *;
+
+.voz-infotip {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.voz-infotip .cds--toggletip-content {
+  @include type-style('body-compact-01');
+
+  max-inline-size: 22rem;
+}
+
+.voz-infotip .cds--toggletip-content p + p {
+  margin-block-start: $spacing-03;
+}
+
+// Los términos con definición no cambian el flujo del texto.
+.cds--definition-term {
+  white-space: nowrap;
+}
+
+.voz-term {
+  border-block-end: 1px dotted currentcolor;
+  cursor: help;
+}

@@ -1,3 +1,4 @@
+import { translate, translateCode } from '../i18n/i18n'
 import { readErrorCode } from './errors'
 
 export interface Project {
@@ -16,13 +17,8 @@ export class ProjectError extends Error {
   }
 }
 
-const PROJECT_MESSAGES: Record<string, string> = {
-  project_name_invalid: 'El nombre del proyecto no es válido.',
-  project_not_found: 'El proyecto ya no existe.',
-}
-
 export function describeProjectError(code: string): string {
-  return PROJECT_MESSAGES[code] ?? 'No se pudo completar la operación con el proyecto.'
+  return translateCode('err.project.', code, 'err.project.generic')
 }
 
 function isProject(value: unknown): value is Project {
@@ -69,7 +65,7 @@ export async function createProject(
   const body = await readBody(response)
 
   if (!isProject(body)) {
-    throw new ProjectError('invalid_response', 'La API devolvió un proyecto inválido.')
+    throw new ProjectError('invalid_response', translate('err.project.invalid_project'))
   }
 
   return body
@@ -94,10 +90,7 @@ export async function listProjects(signal?: AbortSignal): Promise<Project[]> {
     !Array.isArray(body.projects) ||
     !body.projects.every(isProject)
   ) {
-    throw new ProjectError(
-      'invalid_response',
-      'La API devolvió una lista de proyectos inválida.',
-    )
+    throw new ProjectError('invalid_response', translate('err.project.invalid_list'))
   }
 
   return body.projects

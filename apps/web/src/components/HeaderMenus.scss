@@ -1,0 +1,167 @@
+@use '../styles/carbon' as *;
+
+.voz-headermenu {
+  display: flex;
+  align-items: center;
+}
+
+.voz-headermenu__content {
+  min-inline-size: 17rem;
+  padding: $spacing-03 0;
+  background: $layer-01;
+  color: $text-primary;
+  border: 1px solid $border-subtle-01;
+}
+
+.voz-menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voz-menu__item {
+  @include type-style('body-compact-01');
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  min-block-size: $spacing-08;
+  padding: 0 $spacing-05;
+  border: 0;
+  background: transparent;
+  color: $text-primary;
+  cursor: pointer;
+  text-align: start;
+
+  &:hover {
+    background: $layer-hover-01;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+
+  &[aria-pressed='true'] {
+    background: $layer-selected-01;
+  }
+}
+
+.voz-choices {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.voz-choices--accent {
+  margin-block-start: $spacing-03;
+  border-block-start: 1px solid $border-subtle-01;
+}
+
+.voz-choices__legend {
+  @include type-style('label-01');
+
+  padding: $spacing-03 $spacing-05 $spacing-02;
+  color: $text-secondary;
+}
+
+.voz-choice {
+  @include type-style('body-compact-01');
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  min-block-size: $spacing-08;
+  padding: 0 $spacing-05;
+  cursor: pointer;
+
+  &:hover {
+    background: $layer-hover-01;
+  }
+
+  &:has(.voz-choice__input:checked) {
+    background: $layer-selected-01;
+  }
+
+  &:has(.voz-choice__input:focus-visible) {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+// El radio nativo queda accesible pero invisible: la muestra cuadrada es la señal.
+.voz-choice__input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.voz-choice__swatch {
+  flex: none;
+  inline-size: $spacing-05;
+  block-size: $spacing-05;
+  border: 1px solid $border-strong-01;
+}
+
+// «Automático»: mitad oscuro, mitad claro.
+.voz-choice__swatch[data-system='true'] {
+  background: linear-gradient(135deg, #161616 50%, #ffffff 50%);
+}
+
+.voz-accents {
+  display: grid;
+  grid-template-columns: repeat(4, $spacing-07);
+  gap: $spacing-03;
+  padding: $spacing-03 $spacing-05 $spacing-04;
+}
+
+.voz-accent {
+  position: relative;
+  display: block;
+  inline-size: $spacing-07;
+  block-size: $spacing-07;
+  cursor: pointer;
+}
+
+.voz-accent__swatch {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 2px $layer-01;
+}
+
+.voz-accent:hover .voz-accent__swatch {
+  border-color: $border-strong-01;
+}
+
+.voz-accent:has(.voz-choice__input:checked) .voz-accent__swatch {
+  border-color: $text-primary;
+}
+
+.voz-accent:has(.voz-choice__input:focus-visible) .voz-accent__swatch {
+  outline: 2px solid $focus;
+  outline-offset: 2px;
+}
+
+.voz-shortcut {
+  margin-block-start: $spacing-03;
+  border-block-start: 1px solid $border-subtle-01;
+}
+
+.voz-shortcut__body {
+  display: grid;
+  gap: $spacing-03;
+  justify-items: start;
+  padding: $spacing-02 $spacing-05 $spacing-03;
+  max-inline-size: 17rem;
+
+  .cds--btn {
+    max-inline-size: 100%;
+  }
+}

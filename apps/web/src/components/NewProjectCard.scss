@@ -2,6 +2,9 @@
 
 // El área de soltar ocupa todo el ancho del panel (Carbon la limita a 20rem).
 .voz-dropzone {
+  display: grid;
+  gap: $spacing-03;
+
   .cds--file,
   .cds--file__drop-container {
     inline-size: 100%;
@@ -9,9 +12,18 @@
   }
 
   .cds--file__drop-container {
-    min-block-size: 8rem;
+    min-block-size: 10rem;
     align-items: center;
     justify-content: center;
     text-align: center;
   }
+}
+
+.voz-importfile {
+  display: grid;
+  gap: $spacing-02;
+}
+
+.voz-importfile__why {
+  margin-block-start: $spacing-03;
 }

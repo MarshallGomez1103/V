@@ -1,6 +1,8 @@
+import { getLang } from '../i18n/i18n'
+
 const UNITS = ['B', 'kB', 'MB', 'GB', 'TB'] as const
 
-/** Tamaño legible en unidades decimales con coma decimal: 1,6 GB, 77 MB. */
+/** Tamaño legible en unidades decimales: 1,6 GB en español, 1.6 GB en inglés. */
 export function formatBytes(bytes: number): string {
   let value = Math.max(0, bytes)
   let unit = 0
@@ -10,6 +12,7 @@ export function formatBytes(bytes: number): string {
   }
   // MB o menos: sin decimales; GB o más: un decimal (sin ",0").
   const decimals = unit >= 3 && value < 100 ? 1 : 0
-  const text = value.toFixed(decimals).replace('.', ',').replace(/,0$/, '')
-  return text + ' ' + UNITS[unit]
+  const separator = getLang() === 'es' ? ',' : '.'
+  const text = value.toFixed(decimals).replace('.', separator).replace(/[.,]0$/, '')
+  return text + '\u00a0' + UNITS[unit]
 }

@@ -26,6 +26,9 @@
 .segment-editor-backdrop {
   @include type-style('body-02');
 
+  font-size: 1.125rem;
+  line-height: 1.7;
+
   box-sizing: border-box;
   padding: $spacing-03 $spacing-04;
   border: 1px solid transparent;
@@ -42,6 +45,9 @@
 
 .segment-editor-input {
   @include type-style('body-02');
+
+  font-size: 1.125rem;
+  line-height: 1.7;
 
   position: relative;
   box-sizing: border-box;

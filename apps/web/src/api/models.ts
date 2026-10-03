@@ -2,6 +2,8 @@
  * Cliente tipado del gestor de modelos (docs/api/models.md): consulta, borrado,
  * instalación (descarga/importación) y tareas. Nunca rutas del host.
  */
+import { MESSAGES } from '../i18n/messages'
+import { translate, translateCode } from '../i18n/i18n'
 import { readErrorCode } from './errors'
 
 export interface ExternalSource {
@@ -77,45 +79,15 @@ export class ModelApiError extends Error {
   }
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  disk_space_insufficient:
-    'No hay espacio libre suficiente en el disco. Libera espacio y vuelve a intentarlo.',
-  model_installation_network_error:
-    'No se pudo conectar para descargar el modelo. Revisa tu conexión a Internet y reintenta.',
-  model_installation_http_error:
-    'El servidor de descarga respondió con un error. Inténtalo de nuevo más tarde.',
-  model_installation_download_failed:
-    'La descarga del modelo falló. Inténtalo de nuevo.',
-  model_installation_io_error:
-    'No se pudo escribir el modelo en el disco. Revisa los permisos y el espacio.',
-  model_installation_invalid_snapshot:
-    'Los archivos recibidos no corresponden al modelo esperado. Reintenta la instalación.',
-  model_installation_cancelled: 'La instalación fue cancelada.',
-  model_install_unconfirmed: 'Falta confirmar la instalación del modelo.',
-  model_unknown: 'Ese modelo no está en el catálogo.',
-  model_already_installed: 'Ese modelo ya está instalado.',
-  external_model_not_found:
-    'La copia local de este modelo ya no está disponible. Descárgalo desde HuggingFace.',
-  model_task_terminal: 'La tarea ya había terminado.',
-  model_task_not_found: 'La tarea ya no existe.',
-  model_delete_unconfirmed: 'Falta confirmar el borrado del modelo.',
-  model_not_installed: 'Ese modelo no está instalado.',
-  model_in_use:
-    'El modelo está en uso por una transcripción en curso. Espera a que termine o cancélala y vuelve a intentarlo.',
-  model_remove_failed: 'No se pudo borrar el modelo por un error de disco.',
-  model_task_failed: 'La tarea de instalación falló.',
-  invalid_response: 'La API devolvió una respuesta con formato inesperado.',
-}
-
-/** Mensaje en español por código estable; el código siempre queda visible en el fallback. */
+/** Mensaje por código estable; el código siempre queda visible en el texto genérico. */
 export function messageForModelError(code: string): string {
-  if (Object.hasOwn(ERROR_MESSAGES, code)) {
-    return ERROR_MESSAGES[code] ?? code
+  if (Object.hasOwn(MESSAGES, 'err.model.' + code)) {
+    return translateCode('err.model.', code, 'err.model.generic')
   }
   if (code.includes('checksum')) {
-    return 'Un archivo descargado no coincide con su suma de verificación (checksum). Se descartó; reintenta la descarga.'
+    return translate('err.model.checksum')
   }
-  return 'No se pudo completar la operación (código ' + code + ').'
+  return translate('err.model.generic', { code })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

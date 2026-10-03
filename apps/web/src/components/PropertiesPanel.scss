@@ -1,0 +1,46 @@
+@use '../styles/carbon' as *;
+
+.voz-props {
+  display: grid;
+  margin: 0;
+}
+
+.voz-props__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
+  gap: $spacing-04;
+  padding-block: $spacing-03;
+  border-block-end: 1px solid $border-subtle-01;
+
+  &:last-child {
+    border-block-end: 0;
+  }
+
+  dt {
+    @include type-style('label-01');
+
+    color: $text-secondary;
+  }
+
+  dd {
+    @include type-style('body-compact-01');
+
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.voz-props__prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.voz-props__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-04;
+}

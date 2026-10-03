@@ -31,10 +31,13 @@ import {
   type TaskView,
 } from '../api/models'
 import { isActiveTask, useModelTasks } from '../hooks/useModelTasks'
+import { translate, useI18n, type Translate } from '../i18n/i18n'
 import { formatBytes } from '../lib/formatBytes'
 import { compareModelIds } from '../lib/modelOrder'
 import { Busy } from './Busy'
+import { Term } from './Hint'
 import { Notice } from './Notice'
+import { ProcessingProfileLabel } from './TechTerms'
 import './ModelManager.scss'
 
 export interface ModelManagerProps {
@@ -50,23 +53,11 @@ type DialogState =
   | { kind: 'download'; model: ModelView }
   | { kind: 'delete'; model: ModelView }
 
-const PROFILE_LABELS: Record<string, string> = {
-  fast: 'Rápido',
-  quality: 'Calidad',
-}
-
 const RECOMMENDED_KEY = 'faster-whisper:turbo'
 
 /** Runtime externo que cada familia necesita, en lenguaje del usuario. */
-const REQUIRES_LABELS: Record<string, string> = {
-  'whisper-cli': 'whisper-cli',
-  diarization: 'el extra diarization',
-}
-
-function requiresLabel(requires: string): string {
-  return Object.hasOwn(REQUIRES_LABELS, requires)
-    ? (REQUIRES_LABELS[requires] ?? requires)
-    : requires
+function requiresLabel(requires: string, t: Translate): string {
+  return requires === 'diarization' ? t('mm.requires.diarization') : requires
 }
 
 /** faster-whisper primero, luego el resto de proveedores; dentro, orden de catálogo. */
@@ -76,9 +67,7 @@ function compareModels(a: ModelView, b: ModelView): number {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof ModelApiError
-    ? error.message
-    : 'No se pudo completar la operación. Inténtalo de nuevo.'
+  return error instanceof ModelApiError ? error.message : translate('err.model.op')
 }
 
 function taskPercent(task: TaskView): number | null {
@@ -87,22 +76,20 @@ function taskPercent(task: TaskView): number | null {
     : null
 }
 
-function describeTask(task: TaskView): string {
+function describeTask(task: TaskView, t: Translate): string {
   if (task.state === 'queued') {
-    return 'En cola…'
+    return t('mm.task.queued')
   }
-  const verb = task.method === 'import' ? 'Copiando desde este equipo' : 'Descargando'
+  const verb = task.method === 'import' ? t('mm.task.copying') : t('mm.task.downloading')
   const percent = taskPercent(task)
   return percent === null
     ? verb + '…'
-    : verb +
-        ': ' +
-        String(percent) +
-        ' % (' +
-        formatBytes(task.done_bytes) +
-        ' de ' +
-        formatBytes(task.total_bytes) +
-        ')'
+    : t('mm.task.progress', {
+        verb,
+        pct: percent,
+        done: formatBytes(task.done_bytes),
+        total: formatBytes(task.total_bytes),
+      })
 }
 
 /** Tarea más reciente de cada modelo, por clave (por fecha de creación ISO). */
@@ -142,39 +129,27 @@ function DownloadDialog({
   onClose: () => void
 }) {
   useRestoreFocus()
+  const { t } = useI18n()
   const insufficient = freeBytes !== null && freeBytes < model.size_bytes
+  const from =
+    model.kind === 'diarization' ? 'GitHub' : 'HuggingFace (' + String(model.source) + ')'
   return (
     <Modal
       open
       size="sm"
-      closeButtonLabel="Cerrar"
-      modalHeading={'Descargar ' + model.display_name}
-      primaryButtonText="Descargar"
-      secondaryButtonText="Cancelar"
+      closeButtonLabel={t('common.close')}
+      modalHeading={t('mm.download.title', { name: model.display_name })}
+      primaryButtonText={t('mm.download.confirm')}
+      secondaryButtonText={t('common.cancel')}
       onRequestClose={onClose}
       onRequestSubmit={onConfirm}
     >
-      <p>
-        Se descargarán <strong>{formatBytes(model.size_bytes)}</strong> desde{' '}
-        {model.kind === 'diarization' ? (
-          <strong>GitHub</strong>
-        ) : (
-          <>
-            <strong>HuggingFace</strong> ({model.source})
-          </>
-        )}
-        . Es la única vez que VOZ necesita Internet para este modelo: después
-        funciona sin conexión.
-      </p>
+      <p>{t('mm.download.body', { size: formatBytes(model.size_bytes), from })}</p>
       {insufficient ? (
         <Notice
           kind="warning"
           role="alert"
-          title={
-            'Solo quedan ' +
-            formatBytes(freeBytes) +
-            ' libres: la descarga probablemente falle por falta de espacio.'
-          }
+          title={t('mm.download.lowSpace', { free: formatBytes(freeBytes) })}
         />
       ) : null}
     </Modal>
@@ -191,6 +166,7 @@ function DeleteDialog({
   onClose: () => void
 }) {
   useRestoreFocus()
+  const { t } = useI18n()
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -217,10 +193,10 @@ function DeleteDialog({
       open
       danger
       size="sm"
-      closeButtonLabel="Cerrar"
-      modalHeading={'Eliminar ' + model.display_name}
-      primaryButtonText={busy ? 'Eliminando…' : 'Eliminar'}
-      secondaryButtonText="Cancelar"
+      closeButtonLabel={t('common.close')}
+      modalHeading={t('mm.delete.title', { name: model.display_name })}
+      primaryButtonText={busy ? t('mm.delete.busy') : t('common.delete')}
+      secondaryButtonText={t('common.cancel')}
       primaryButtonDisabled={!matches || busy}
       shouldSubmitOnEnter
       onRequestClose={onClose}
@@ -228,18 +204,13 @@ function DeleteDialog({
         submit()
       }}
     >
-      <p>
-        Se liberarán{' '}
-        <strong>{formatBytes(model.disk_bytes ?? model.size_bytes)}</strong> de
-        disco. Tus transcripciones se conservan, pero no podrás volver a usar
-        este modelo hasta instalarlo otra vez.
-      </p>
+      <p>{t('mm.delete.body', { size: formatBytes(model.disk_bytes ?? model.size_bytes) })}</p>
       <TextInput
         id={inputId}
         data-modal-primary-focus
         labelText={
           <>
-            Para confirmar, escribe <code>{model.model_id}</code>
+            {t('mm.delete.confirmLabel')} <code>{model.model_id}</code>
           </>
         }
         value={typed}
@@ -270,26 +241,33 @@ function localCopy(model: ModelView): boolean {
   return model.external.some((entry) => entry.origin === 'buzz')
 }
 
-function statusOf(model: ModelView): string {
+function statusOf(model: ModelView, t: Translate): string {
   return model.installed
-    ? 'Instalado'
+    ? t('mm.status.installed')
     : localCopy(model)
-      ? 'Ya está en este equipo'
-      : 'No instalado'
+      ? t('mm.status.local')
+      : t('mm.status.missing')
 }
 
 function StatusTag({ model }: { model: ModelView }) {
+  const { t } = useI18n()
+  const hint = model.installed
+    ? 'mm.status.installed.def'
+    : localCopy(model)
+      ? 'mm.status.local.def'
+      : 'mm.status.missing.def'
   return (
     <Tag
       size="md"
       type={model.installed ? 'green' : localCopy(model) ? 'cyan' : 'gray'}
     >
-      {statusOf(model)}
+      <Term definition={hint}>{statusOf(model, t)}</Term>
     </Tag>
   )
 }
 
 function NameCell({ model, task, notice }: Pick<ModelCellProps, 'model' | 'task' | 'notice'>) {
+  const { t } = useI18n()
   const failure =
     !model.installed && task?.state === 'failed'
       ? messageForModelError(task.error_code ?? 'model_task_failed')
@@ -302,17 +280,14 @@ function NameCell({ model, task, notice }: Pick<ModelCellProps, 'model' | 'task'
         <strong className="voz-model__name">{model.display_name}</strong>
         {model.key === RECOMMENDED_KEY ? (
           <Tag type="green" size="sm">
-            Recomendado
+            <Term definition="opt.recommended.def">{t('opt.recommended')}</Term>
           </Tag>
         ) : null}
       </div>
       {model.requires !== null ? (
         <span className="voz-model__sub">
-          {'Requiere ' +
-            requiresLabel(model.requires) +
-            (!model.installed && missingRuntime
-              ? ': sin él no se puede usar, así que no se ofrece instalarlo.'
-              : '')}
+          {t('mm.requires', { what: requiresLabel(model.requires, t) }) +
+            (!model.installed && missingRuntime ? t('mm.requires.blocked') : '')}
         </span>
       ) : null}
       {failure ? (
@@ -327,7 +302,7 @@ function NameCell({ model, task, notice }: Pick<ModelCellProps, 'model' | 'task'
           {notice}
         </span>
       ) : null}
-      {cancelled ? <span className="voz-model__sub">Instalación cancelada.</span> : null}
+      {cancelled ? <span className="voz-model__sub">{t('mm.cancelled')}</span> : null}
     </div>
   )
 }
@@ -341,6 +316,7 @@ function ActionsCell({
   onDelete,
   onCancel,
 }: Omit<ModelCellProps, 'notice'>) {
+  const { t } = useI18n()
   const helpId = useId()
   const missingRuntime = !model.runtime_available && model.requires !== null
   const active = task && isActiveTask(task) ? task : undefined
@@ -352,8 +328,8 @@ function ActionsCell({
         <ProgressBar
           size="small"
           hideLabel
-          label={'Progreso de ' + model.display_name}
-          helperText={describeTask(active)}
+          label={t('mm.progress', { name: model.display_name })}
+          helperText={describeTask(active, t)}
           {...(active.total_bytes > 0 && percent !== null
             ? { value: active.done_bytes, max: active.total_bytes }
             : {})}
@@ -365,7 +341,7 @@ function ActionsCell({
             onCancel(active)
           }}
         >
-          Cancelar
+          {t('common.cancel')}
         </Button>
       </div>
     )
@@ -382,16 +358,16 @@ function ActionsCell({
             aria-describedby={helpId}
             onClick={onImport}
           >
-            Usar copia local
+            {t('mm.useLocal')}
           </Button>
           <span className="voz-model__sub" id={helpId}>
-            Reutiliza archivos de otra app de este equipo sin descargar nada.
+            {t('mm.useLocal.help')}
           </span>
         </>
       ) : null}
       {!model.installed && !missingRuntime ? (
         <Button kind="tertiary" size="sm" disabled={busy} onClick={onDownload}>
-          Descargar ({formatBytes(model.size_bytes)})
+          {t('mm.download', { size: formatBytes(model.size_bytes) })}
         </Button>
       ) : null}
       {model.installed ? (
@@ -402,7 +378,7 @@ function ActionsCell({
           disabled={busy}
           onClick={onDelete}
         >
-          Eliminar
+          {t('common.delete')}
         </Button>
       ) : null}
     </div>
@@ -416,21 +392,12 @@ function sortLabel(
 ): string {
   const header = typeof args?.header === 'string' ? args.header : ''
   if (!args?.isSortHeader || args.sortDirection === 'NONE') {
-    return 'Ordenar las filas por ' + header + ' de forma ascendente'
+    return translate('mm.sort.asc', { header })
   }
   return args.sortDirection === 'ASC'
-    ? 'Ordenar las filas por ' + header + ' de forma descendente'
-    : 'Quitar el orden por ' + header
+    ? translate('mm.sort.desc', { header })
+    : translate('mm.sort.clear', { header })
 }
-
-const HEADERS = [
-  { key: 'name', header: 'Modelo' },
-  { key: 'status', header: 'Estado' },
-  { key: 'profile', header: 'Perfil' },
-  { key: 'size', header: 'Tamaño' },
-  { key: 'license', header: 'Licencia' },
-  { key: 'actions', header: 'Acciones' },
-]
 
 interface ModelTableProps {
   label: string
@@ -455,19 +422,28 @@ function ModelTable({
   onDeleteModel,
   onCancel,
 }: ModelTableProps) {
+  const { t } = useI18n()
+  const headers = [
+    { key: 'name', header: t('mm.col.model') },
+    { key: 'status', header: t('mm.col.status') },
+    { key: 'profile', header: t('mm.col.profile') },
+    { key: 'size', header: t('mm.col.size') },
+    { key: 'license', header: t('mm.col.license') },
+    { key: 'actions', header: t('mm.col.actions') },
+  ]
   const byKey = new Map(models.map((model) => [model.key, model]))
   const rows = models.map((model) => ({
     id: model.key,
     name: model.display_name,
-    status: statusOf(model),
-    profile: model.profile === null ? '' : (PROFILE_LABELS[model.profile] ?? model.profile),
+    status: statusOf(model, t),
+    profile: model.profile ?? '',
     size: model.size_bytes,
     license: model.license,
     actions: '',
   }))
 
   return (
-    <DataTable rows={rows} headers={HEADERS} isSortable size="lg">
+    <DataTable rows={rows} headers={headers} isSortable size="lg">
       {({ rows: tableRows, headers, getHeaderProps, getRowProps, getTableProps }) => (
         <TableContainer aria-label={label}>
           <Table {...getTableProps()} aria-label={label}>
@@ -508,16 +484,18 @@ function ModelTable({
                       <StatusTag model={model} />
                     </TableCell>
                     <TableCell>
-                      {model.profile === null
-                        ? '—'
-                        : (PROFILE_LABELS[model.profile] ?? model.profile)}
+                      {model.profile === null ? (
+                        '—'
+                      ) : (
+                        <ProcessingProfileLabel name={model.profile} />
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="voz-model__size">
                         <span>{formatBytes(model.size_bytes)}</span>
-                        {model.installed && model.disk_bytes !== null ? (
+                        {model.installed && model.disk_bytes !== null && model.disk_bytes > 0 ? (
                           <span className="voz-model__sub">
-                            {'En disco: ' + formatBytes(model.disk_bytes)}
+                            {t('mm.onDisk', { size: formatBytes(model.disk_bytes) })}
                           </span>
                         ) : null}
                       </div>
@@ -552,6 +530,7 @@ function ModelTable({
 }
 
 export function ModelManager({ onModelsChanged }: ModelManagerProps) {
+  const { t } = useI18n()
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
   const [reload, setReload] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -662,49 +641,46 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   return (
     <section className="voz-models" aria-labelledby={headingId}>
       <h2 id={headingId} className="voz-section-title">
-        Motores de transcripción
+        {t('mm.engines')}
       </h2>
 
       {state.phase === 'loading' ? (
         <div aria-live="polite">
-          <Busy description="Consultando los modelos de este equipo…" />
+          <Busy description={t('opt.loading')} />
         </div>
       ) : state.phase === 'error' ? (
         <Notice
           kind="error"
-          title="No se pudieron consultar los modelos"
+          title={t('mm.error.title')}
           subtitle={state.message}
-          action={{ label: 'Reintentar', onClick: retry }}
+          action={{ label: t('common.retry'), onClick: retry }}
         />
       ) : (
         <>
           <p className="voz-models__disk">
-            Los modelos instalados ocupan{' '}
-            <strong>{formatBytes(state.payload.disk.models_bytes)}</strong>
-            {' · '}Espacio libre:{' '}
+            {t('mm.disk.used')} <strong>{formatBytes(state.payload.disk.models_bytes)}</strong>
+            {' · '}
+            {t('mm.disk.free')}{' '}
             <strong>
               {state.payload.disk.free_bytes === null
-                ? 'no disponible'
+                ? t('mm.disk.unknown')
                 : formatBytes(state.payload.disk.free_bytes)}
             </strong>
           </p>
           {tasksError && polling ? (
             <Notice
               kind="error"
-              title="No se pudo actualizar el progreso; se sigue intentando."
+              title={t('mm.tasks.error')}
             />
           ) : null}
-          {asr.length > 0 ? renderTable('Motores de transcripción', asr) : null}
+          {asr.length > 0 ? renderTable(t('mm.engines'), asr) : null}
           {speakers.length > 0 ? (
             <section aria-labelledby={speakersId} className="voz-models__speakers">
               <h2 id={speakersId} className="voz-section-title">
-                Hablantes
+                {t('spk.title')}
               </h2>
-              <p className="voz-section-description">
-                Permite activar «Detectar quién habla» en las transcripciones.
-                Funciona sin conexión una vez instalado.
-              </p>
-              {renderTable('Modelos de hablantes', speakers)}
+              <p className="voz-section-description">{t('mm.speakers.desc')}</p>
+              {renderTable(t('mm.speakers.table'), speakers)}
             </section>
           ) : null}
         </>

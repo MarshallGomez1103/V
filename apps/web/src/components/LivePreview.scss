@@ -1,0 +1,46 @@
+@use '../styles/carbon' as *;
+
+.voz-preview__scroll {
+  max-block-size: 22rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: $layer-02;
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+.voz-preview__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voz-preview__row {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: $spacing-05;
+  padding: $spacing-04 $spacing-05;
+  border-block-end: 1px solid $border-subtle-02;
+}
+
+.voz-preview__time {
+  @include type-style('code-01');
+
+  color: $text-secondary;
+}
+
+.voz-preview__text {
+  @include type-style('body-02');
+
+  overflow-wrap: anywhere;
+}
+
+@include breakpoint-down(md) {
+  .voz-preview__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: $spacing-02;
+  }
+}

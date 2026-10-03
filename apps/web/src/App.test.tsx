@@ -81,13 +81,15 @@ describe('App', () => {
     expect(healthCalls()).toBe(2)
   })
 
-  it('muestra el UI Shell con la navegación y el indicador de privacidad', () => {
+  it('muestra el UI Shell con la navegación y las acciones globales', () => {
     stubFetch()
     render(<App />)
 
     const banner = screen.getByRole('banner', { name: 'VOZ' })
     expect(within(banner).getByText('VOZ')).toBeDefined()
-    expect(within(banner).getByText('Local y privado')).toBeDefined()
+    for (const name of ['Idioma', 'Ajustes', 'Cerrar servidor']) {
+      expect(within(banner).getByRole('button', { name })).toBeDefined()
+    }
     const nav = within(banner).getByRole('navigation', {
       name: 'Secciones de VOZ',
     })

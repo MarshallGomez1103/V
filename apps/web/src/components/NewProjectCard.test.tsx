@@ -167,11 +167,28 @@ describe('NewProjectCard', () => {
     })
 
     expect(onImported).toHaveBeenCalledWith({ project, media })
-    expect(await screen.findByText(/importación completa/i)).toBeDefined()
-    expect(screen.getByText('02:05')).toBeDefined()
-    expect(screen.getByText('Audio')).toBeDefined()
-    expect(screen.getByText('abcdef01')).toBeDefined()
-    expect(screen.queryByText(media.sha256)).toBeNull()
+    // Al terminar, la pantalla pasa a la configuración: el formulario ya no se muestra
+    // como «importando» y se puede volver a importar.
+    expect(screen.queryByRole('progressbar')).toBeNull()
+  })
+
+  it('en inglés habla inglés y sugiere el nombre en ese idioma', async () => {
+    const { setLang } = await import('../i18n/i18n')
+    setLang('en')
+    stubCreateProject()
+    render(<NewProjectCard onImported={vi.fn()} />)
+
+    expect(screen.getByLabelText<HTMLInputElement>(/project name/i).value).toMatch(
+      /^Recording /,
+    )
+    expect(screen.getByRole('button', { name: /create project and import/i })).toBeDefined()
+    expect(screen.getByText(/choose a file to continue/i)).toBeDefined()
+  })
+
+  it('explica por qué el botón está bloqueado', () => {
+    stubCreateProject()
+    render(<NewProjectCard onImported={vi.fn()} />)
+    expect(screen.getByText('Elige un archivo para continuar.')).toBeDefined()
   })
 
   it('selecciona el archivo soltado en la zona y avisa si eran varios', () => {

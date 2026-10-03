@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
+import { translate } from '../i18n/i18n'
 import {
   SegmentConflictError,
   updateSegment,
@@ -219,7 +220,7 @@ export class SegmentDraftStore {
             errorMessage:
               error instanceof Error
                 ? error.message
-                : 'No se pudo guardar el segmento.',
+                : translate('err.segment.save'),
           })
         }
         return

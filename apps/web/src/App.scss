@@ -10,12 +10,32 @@
 
 .voz-content {
   flex: 1 1 auto;
-  padding-block: $spacing-07 $spacing-09;
+  padding-block: $spacing-07 $spacing-10;
 }
 
-// Todas las rejillas apilan sus filas con la misma separación que la gutter.
+// Todas las rejillas apilan sus filas con la misma separación que la gutter, y los
+// paneles de una misma fila miden lo mismo de alto.
 .voz-grid {
   row-gap: $spacing-05;
+}
+
+.voz-grid > .cds--css-grid-column {
+  display: grid;
+  align-content: start;
+}
+
+.voz-grid > .cds--css-grid-column > .cds--layer-one,
+.voz-grid > .cds--css-grid-column > .cds--layer-two {
+  min-block-size: 0;
+}
+
+.voz-banner {
+  margin-block-end: $spacing-05;
+}
+
+.voz-banner .cds--inline-notification {
+  max-inline-size: none;
+  inline-size: 100%;
 }
 
 .voz-page__header {
@@ -39,18 +59,27 @@
 .voz-workspace {
   display: grid;
   gap: $spacing-05;
+  align-content: start;
 }
 
-.voz-footer {
-  @include type-style('helper-text-01');
+.voz-after {
+  margin-block-start: $spacing-05;
+}
 
+.voz-actionbar {
+  display: grid;
+  gap: $spacing-04;
+}
+
+.voz-actionbar__row {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: $spacing-03;
-  padding: $spacing-05 $spacing-06;
-  border-block-start: 1px solid $border-subtle-00;
-  color: $text-secondary;
+  align-items: center;
+  gap: $spacing-05;
+}
+
+.voz-actionbar__row .voz-field-note {
+  max-inline-size: 48ch;
 }
 
 // Utilidades compartidas por los componentes.
@@ -95,10 +124,7 @@
   }
 }
 
-// Con una transcripción en marcha, en pantallas estrechas el resultado va antes
-// que la configuración (que ya no se puede editar).
-@include breakpoint-down(lg) {
-  .voz-grid--job .voz-col-config {
-    order: 1;
-  }
+// El contenido de los acordeones usa todo el ancho del panel (Carbon deja 4rem a la derecha).
+.voz-app .cds--accordion__content {
+  padding-inline-end: $spacing-02;
 }

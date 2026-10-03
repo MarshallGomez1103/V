@@ -13,14 +13,16 @@ import {
   getTranscriptionOptions,
   type BlockingReason,
   type BlockingReasonCode,
-  type ExecutionDecision,
-  type ProcessingProfile,
   type TranscriptionOption,
 } from '../api/transcriptionOptions'
 import { getEstimate, type CloudEstimate } from '../api/providers'
+import { localeOf, useI18n, type Translate } from '../i18n/i18n'
+import type { MessageKey } from '../i18n/messages'
 import { compareModelIds } from '../lib/modelOrder'
 import { CloudBadge } from './CloudBadge'
 import { Busy } from './Busy'
+import { DeviceLabel, PrecisionLabel, ProcessingProfileLabel } from './TechTerms'
+import { Term } from './Hint'
 import { Notice } from './Notice'
 import './TranscriptionOptionsSelector.scss'
 
@@ -59,42 +61,22 @@ type EstimateState = { phase: 'loading' } | EstimateResult
 
 type LoadState =
   | { phase: 'loading' }
-  | { phase: 'error'; message: string }
+  | { phase: 'error'; message: string | null }
   | { phase: 'ready'; options: CloudAwareOption[] }
 
-const BLOCKING_REASON_LABELS: Record<BlockingReasonCode, string> = {
-  model_not_registered: 'Modelo no instalado',
-  model_files_missing: 'Faltan archivos del modelo',
-  revision_unpinned: 'Revisión no fijada',
-  runtime_unavailable: 'Runtime Faster Whisper no instalado',
-  execution_unavailable: 'Sin dispositivo compatible',
-  transcription_unavailable: 'Transcripción no disponible',
+const BLOCKING_REASON_LABELS: Record<BlockingReasonCode, MessageKey> = {
+  model_not_registered: 'opt.block.model_not_registered',
+  model_files_missing: 'opt.block.model_files_missing',
+  revision_unpinned: 'opt.block.revision_unpinned',
+  runtime_unavailable: 'opt.block.runtime_unavailable',
+  execution_unavailable: 'opt.block.execution_unavailable',
+  transcription_unavailable: 'opt.block.transcription_unavailable',
 }
 
-const PROFILE_LABELS: Record<string, string> = {
-  fast: 'Rápido',
-  quality: 'Calidad',
-}
-
-const DEVICE_LABELS: Record<string, string> = {
-  cuda: 'GPU (CUDA)',
-  cpu: 'CPU',
-}
-
-function describeBlockingReason(reason: BlockingReason): string {
+function describeBlockingReason(reason: BlockingReason, t: Translate): string {
   return Object.hasOwn(BLOCKING_REASON_LABELS, reason)
-    ? BLOCKING_REASON_LABELS[reason as BlockingReasonCode]
+    ? t(BLOCKING_REASON_LABELS[reason as BlockingReasonCode])
     : reason
-}
-
-function describeProfile(profile: ProcessingProfile): string {
-  return PROFILE_LABELS[profile.name] ?? profile.name
-}
-
-function describeExecution(execution: ExecutionDecision): string {
-  const device = DEVICE_LABELS[execution.device] ?? execution.device
-  const base = device + ' · ' + execution.precision
-  return execution.fallback_reason ? base + ' (respaldo)' : base
 }
 
 /** Iniciables primero y, dentro de cada grupo, orden fijo del catálogo. */
@@ -106,24 +88,16 @@ function sortOptions(options: CloudAwareOption[]): CloudAwareOption[] {
   )
 }
 
-function formatEstimate(estimate: CloudEstimate): string {
-  return (
-    'Costo estimado: ' +
-    String(estimate.minutes).replace('.', ',') +
-    ' min · ≈ ' +
-    estimate.usd.toFixed(2).replace('.', ',') +
-    ' USD'
-  )
+function formatEstimate(estimate: CloudEstimate, t: Translate, lang: 'es' | 'en'): string {
+  const locale = localeOf(lang)
+  return t('opt.estimate', {
+    minutes: estimate.minutes.toLocaleString(locale),
+    usd: estimate.usd.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  })
 }
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
-}
-
-function toUserMessage(error: unknown): string {
-  return error instanceof Error && error.message
-    ? error.message
-    : 'No se pudieron consultar las opciones de transcripción.'
 }
 
 export function TranscriptionOptionsSelector({
@@ -134,6 +108,7 @@ export function TranscriptionOptionsSelector({
   mediaAssetId,
   onCloudConsentChange,
 }: TranscriptionOptionsSelectorProps) {
+  const { t, tn, lang } = useI18n()
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
   // Opción para la que se dio consentimiento: cambiar de opción lo invalida.
   const [consentFor, setConsentFor] = useState<string | null>(null)
@@ -209,7 +184,10 @@ export function TranscriptionOptionsSelector({
       })
       .catch((error: unknown) => {
         if (!isAbortError(error)) {
-          setState({ phase: 'error', message: toUserMessage(error) })
+          setState({
+            phase: 'error',
+            message: error instanceof Error && error.message ? error.message : null,
+          })
         }
       })
     return () => {
@@ -250,25 +228,22 @@ export function TranscriptionOptionsSelector({
     <div className="voz-options">
       {state.phase === 'loading' ? (
         <div aria-live="polite">
-          <Busy description="Consultando los modelos de este equipo…" />
+          <Busy description={t('opt.loading')} />
         </div>
       ) : state.phase === 'error' ? (
         <Notice
           kind="error"
-          title="No se pudieron consultar las opciones"
-          subtitle={state.message}
-          action={{ label: 'Reintentar', onClick: retry }}
+          title={t('opt.error.title')}
+          subtitle={state.message ?? t('opt.error.generic')}
+          action={{ label: t('common.retry'), onClick: retry }}
         />
       ) : state.options.length === 0 ? (
-        <Notice
-          kind="info"
-          title="No hay opciones de transcripción conocidas."
-        />
+        <Notice kind="info" title={t('opt.none')} />
       ) : (
         <>
           <TileGroup
             name={baseId + '-option'}
-            legend="Modelo de transcripción"
+            legend={t('opt.legend')}
             valueSelected={value ?? ''}
             disabled={disabled}
             onChange={(selection) => {
@@ -291,26 +266,42 @@ export function TranscriptionOptionsSelector({
                       <strong id={titleId}>
                         {option.display_name.trim() || option.model_id}
                       </strong>
-                      {cloud ? <CloudBadge /> : null}
+                      {cloud ? <CloudBadge plain /> : null}
                       {!cloud && option.recommendation?.recommended ? (
                         <Tag type="green" size="sm">
-                          Recomendado
+                          <Term definition="opt.recommended.def" plain>{t('opt.recommended')}</Term>
                         </Tag>
                       ) : null}
                     </span>
                     {cloud ? (
                       <span className="voz-option__meta">
-                        Tu audio se enviará a {provider}
+                        {t('opt.sendsTo', { provider })}
                       </span>
                     ) : null}
                     <span className="voz-option__meta">
-                      <span>Modelo: {option.model_id}</span>
+                      <span>
+                        {t('opt.model')}: {option.model_id}
+                      </span>
                       {option.profile ? (
-                        <span>Perfil: {describeProfile(option.profile)}</span>
+                        <span>
+                          <Term definition="opt.profile.def" plain>{t('opt.profile')}</Term>
+                          {': '}
+                          <ProcessingProfileLabel name={option.profile.name} plain />
+                        </span>
                       ) : null}
                       {option.execution ? (
                         <span>
-                          Ejecución: {describeExecution(option.execution)}
+                          <Term definition="opt.execution.def" plain>{t('opt.execution')}</Term>
+                          {': '}
+                          <DeviceLabel device={option.execution.device} plain />
+                          {' · '}
+                          <PrecisionLabel precision={option.execution.precision} plain />
+                          {option.execution.fallback_reason ? (
+                            <>
+                              {' '}
+                              (<Term definition="opt.fallback.def" plain>{t('opt.fallback')}</Term>)
+                            </>
+                          ) : null}
                         </span>
                       ) : null}
                     </span>
@@ -322,20 +313,14 @@ export function TranscriptionOptionsSelector({
           {usable.length === 0 ? (
             <Notice
               kind="info"
-              title="Instala un modelo para transcribir desde la sección «Modelos»."
-              action={{ label: 'Ir a Modelos', onClick: goToModels }}
+              title={t('opt.installFirst')}
+              action={{ label: t('opt.goModels'), onClick: goToModels }}
             />
           ) : null}
           {unavailable.length > 0 ? (
             <Accordion isFlush className="voz-options__unavailable">
               <AccordionItem
-                title={
-                  'Mostrar ' +
-                  unavailable.length +
-                  (unavailable.length === 1
-                    ? ' motor no disponible'
-                    : ' motores no disponibles')
-                }
+                title={tn('opt.unavailable', unavailable.length)}
               >
                 <ul className="voz-unavailable">
                   {unavailable.map((option) => {
@@ -351,13 +336,13 @@ export function TranscriptionOptionsSelector({
                         </span>
                         <span className="voz-option__reasons">
                           {cloud
-                            ? 'Sin clave de ' + provider + '.'
+                            ? t('opt.noKey', { provider })
                             : option.blocking_reasons
-                                .map(describeBlockingReason)
+                                .map((reason) => describeBlockingReason(reason, t))
                                 .join(' · ')}
                         </span>
                         <Link href={cloud ? '#proveedores' : '#modelos'}>
-                          {cloud ? 'Ir a Proveedores cloud' : 'Ir a Modelos'}
+                          {cloud ? t('opt.goProviders') : t('opt.goModels')}
                         </Link>
                       </li>
                     )
@@ -367,37 +352,30 @@ export function TranscriptionOptionsSelector({
             </Accordion>
           ) : null}
           {selectedCloud ? (
-            <div role="group" aria-label="Aviso de envío a la nube">
+            <div role="group" aria-label={t('opt.cloudNotice')}>
               <Notice
                 kind="warning"
-                title={
-                  'Tu audio se enviará a ' +
-                  providerName(selectedCloud) +
-                  ' y saldrá de tu equipo.'
-                }
+                title={t('opt.cloudWarning', { provider: providerName(selectedCloud) })}
               >
                 <div className="voz-cloud-warning">
-                  <CloudBadge />
+                  <CloudBadge plain />
                   {mediaAssetId ? (
                     <p aria-live="polite">
                       {estimateState.phase === 'ready'
-                        ? formatEstimate(estimateState.estimate)
+                        ? formatEstimate(estimateState.estimate, t, lang)
                         : estimateState.phase === 'error'
-                          ? 'No se pudo estimar el costo.'
-                          : 'Estimando el costo…'}
+                          ? t('opt.estimate.error')
+                          : t('opt.estimate.loading')}
                     </p>
                   ) : null}
                   {estimateState.phase === 'ready' && mediaAssetId ? (
-                    <p>
-                      Tarifa de referencia del {estimateState.estimate.price_date},
-                      no verificada en vivo: tu factura real puede diferir.
-                    </p>
+                    <p>{t('opt.estimate.note', { date: estimateState.estimate.price_date })}</p>
                   ) : null}
                 </div>
               </Notice>
               <Checkbox
                 id={baseId + '-consent'}
-                labelText="Entiendo que el audio sale de mi equipo"
+                labelText={t('opt.consent')}
                 checked={consentOk}
                 onChange={(_event, { checked }) => {
                   setConsentFor(checked ? value : null)

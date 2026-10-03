@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ProfileSelector } from './ProfileSelector'
@@ -62,11 +62,11 @@ describe('ProfileSelector', () => {
     const onChange = vi.fn()
     render(<ProfileSelector value={null} onChange={onChange} language="es" />)
 
-    const standard = await screen.findByLabelText(/Estándar/)
+    const standard = await screen.findByRole('radio', { name: /Estándar/ })
     expect(standard).toHaveProperty('checked', true)
-    expect(screen.getByLabelText(/Académico/)).toHaveProperty('checked', false)
+    expect(screen.getByRole('radio', { name: /Académico/ })).toHaveProperty('checked', false)
 
-    fireEvent.click(screen.getByLabelText(/Académico/))
+    fireEvent.click(screen.getByRole('radio', { name: /Académico/ }))
     expect(onChange).toHaveBeenCalledWith('academic')
   })
 
@@ -85,7 +85,7 @@ describe('ProfileSelector', () => {
     render(<ProfileSelector value={null} onChange={() => undefined} language="fr" />)
 
     const note = await screen.findByTestId('profile-recommendation')
-    expect(note.textContent).toContain('No hay perfil recomendado (sin medición')
+    expect(note.textContent).toContain('No hay perfil recomendado: falta una medición')
     expect(screen.queryByText('Medido')).toBeNull()
   })
 
@@ -121,9 +121,29 @@ describe('ProfileSelector', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('profile-recommendation').textContent).toContain(
-        'No hay perfil recomendado (sin medición',
+        'No hay perfil recomendado: falta una medición',
       )
     })
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/quality-profiles?language=fr')
+  })
+
+  it('los términos técnicos de cada perfil tienen su definición', async () => {
+    stubFetch(payload(MEASURED))
+    render(<ProfileSelector value={null} onChange={() => undefined} language="es" />)
+
+    await screen.findByRole('radio', { name: /Estándar/ })
+    const list = screen.getByRole('list', { name: 'Detalles técnicos de cada perfil' })
+    expect(within(list).getAllByRole('button', { name: 'Beam' })).toHaveLength(2)
+    expect(within(list).getAllByRole('button', { name: 'VAD' })).toHaveLength(2)
+  })
+
+  it('en inglés traduce los perfiles conocidos', async () => {
+    const { setLang } = await import('../i18n/i18n')
+    setLang('en')
+    stubFetch(payload(MEASURED))
+    render(<ProfileSelector value={null} onChange={() => undefined} language="es" />)
+
+    expect(await screen.findByRole('radio', { name: /Academic/ })).toBeDefined()
+    expect(screen.getByText(/no hay recomendación|There is a recommended profile/i)).toBeDefined()
   })
 })
