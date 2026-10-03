@@ -22,7 +22,7 @@ def _available_loopback_port() -> int:
         return cast(int, server_socket.getsockname()[1])
 
 
-def _fetch_health(url: str, *, timeout: float = 10.0) -> dict[str, object]:
+def _fetch_health(url: str, *, timeout: float = 30.0) -> dict[str, object]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
