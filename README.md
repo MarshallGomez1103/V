@@ -26,8 +26,14 @@ No necesitas instalar Python, ni Node, ni FFmpeg.
 4. **En la página, descarga un modelo** (sección *Modelos*; `turbo` es el
    recomendado), arrastra tu grabación y pulsa *Transcribir*.
 
-Para cerrar VOZ, cierra la ventana negra que se abrió con él. Tus grabaciones,
-modelos y transcripciones se quedan en tu equipo. Fuera de la carpeta solo se
+Para cerrar VOZ, usa el botón de apagado arriba a la derecha (o cierra la
+ventana negra que se abrió con él). Si lo abres dos veces, solo se abre otra
+pestaña. Tus grabaciones, modelos y transcripciones se quedan en tu equipo.
+
+**Como una aplicación:** en *Ajustes* (el engranaje) puedes crear un icono en el
+escritorio que abre VOZ con doble clic. Y en Chrome o Edge, el botón *Instalar*
+de la barra de direcciones le da a VOZ su propia ventana e icono, sin barra del
+navegador (el servidor tiene que estar abierto). Fuera de la carpeta solo se
 instalan uv y su propio Python, sin tocar otros programas.
 
 **Si algo no va:**
