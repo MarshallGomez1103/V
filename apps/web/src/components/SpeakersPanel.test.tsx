@@ -122,7 +122,8 @@ describe('SpeakersPanel', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Fusionar' })[0]!)
     expect(post).not.toHaveBeenCalled()
-    expect(screen.getByText('¿Fusionar «Ana» en «Beto»?')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Fusionar hablantes' })).toBeTruthy()
+    expect(screen.getByText(/¿Fusionar «Ana» en «Beto»\?/)).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sí, fusionar' }))
 
@@ -162,7 +163,7 @@ describe('SpeakersPanel', () => {
     fireEvent.change(input, { target: { value: 'Nuevo' } })
     fireEvent.blur(input)
 
-    expect((await screen.findByRole('alert')).textContent).toMatch(/1 a 80 caracteres/)
+    expect(await screen.findByText(/1 a 80 caracteres/)).toBeTruthy()
   })
 
   it('si no puede cargar, muestra el error', async () => {

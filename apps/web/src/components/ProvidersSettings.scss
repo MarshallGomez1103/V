@@ -1,0 +1,17 @@
+@use '../styles/carbon' as *;
+
+.voz-providers {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-providers__grid {
+  row-gap: $spacing-05;
+  padding-inline: 0;
+}
+
+.voz-provider__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+}

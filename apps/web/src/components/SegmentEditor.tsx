@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { Button } from '@carbon/react'
 
 import type { EditableSegment } from '../api/segments'
 import { findMatches } from '../lib/segmentSearch'
@@ -7,7 +8,8 @@ import type {
   SegmentDraftStore,
 } from '../hooks/useSegmentDrafts'
 
-import './SegmentEditor.css'
+import { Notice } from './Notice'
+import './SegmentEditor.scss'
 
 interface SegmentEditorProps {
   segment: EditableSegment
@@ -53,22 +55,22 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
           </div>
         ) : null}
         <textarea
-        id={inputId}
-        className="segment-editor-input"
-        value={value}
-        rows={1}
-        aria-invalid={status === 'error' || status === 'conflict'}
-        onChange={(event) => {
-          drafts.edit(segment, event.target.value)
-        }}
-        onBlur={() => {
-          drafts.flush(segment.id)
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            drafts.revert(segment.id)
-          }
-        }}
+          id={inputId}
+          className="segment-editor-input"
+          value={value}
+          rows={1}
+          aria-invalid={status === 'error' || status === 'conflict'}
+          onChange={(event) => {
+            drafts.edit(segment, event.target.value)
+          }}
+          onBlur={() => {
+            drafts.flush(segment.id)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              drafts.revert(segment.id)
+            }
+          }}
         />
       </div>
       {status !== 'idle' && (
@@ -77,39 +79,48 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
           {status === 'error' && (
             <>
               {draft?.errorMessage ? ' — ' + draft.errorMessage + ' ' : ' '}
-              <button
-                type="button"
+              <Button
+                kind="ghost"
+                size="sm"
                 onClick={() => {
                   drafts.retry(segment.id)
                 }}
               >
                 Reintentar
-              </button>
+              </Button>
             </>
           )}
         </p>
       )}
       {status === 'conflict' && draft?.conflict && (
         <div className="segment-editor-conflict" role="alert">
-          <p>El segmento cambió en el servidor. Versión del servidor:</p>
-          <blockquote>{draft.conflict.text}</blockquote>
+          <Notice
+            kind="warning"
+            role="status"
+            title="El segmento cambió en el servidor. Versión del servidor:"
+          />
+          <blockquote className="segment-editor-server">
+            {draft.conflict.text}
+          </blockquote>
           <div className="segment-editor-actions">
-            <button
-              type="button"
+            <Button
+              kind="primary"
+              size="sm"
               onClick={() => {
                 drafts.keepMine(segment.id)
               }}
             >
               Usar mi versión
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              kind="tertiary"
+              size="sm"
               onClick={() => {
                 drafts.discard(segment.id)
               }}
             >
               Descartar
-            </button>
+            </Button>
           </div>
         </div>
       )}

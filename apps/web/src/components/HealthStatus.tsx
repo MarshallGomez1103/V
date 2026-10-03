@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ActionableNotification, Tag } from '@carbon/react'
 
 import { getHealth, type HealthPayload } from '../api/health'
+import { Busy } from './Busy'
+import './HealthStatus.scss'
 
 type CheckState =
   | { phase: 'loading' }
@@ -34,50 +37,38 @@ export function HealthStatus() {
     }
   }, [attempt])
 
-  const isAvailable = state.phase === 'available'
-  const statusLabel =
-    state.phase === 'loading'
-      ? 'Comprobando'
-      : isAvailable
-        ? 'Disponible'
-        : 'Sin conexión'
+  if (state.phase === 'unavailable') {
+    return (
+      <ActionableNotification
+        kind="error"
+        lowContrast
+        inline
+        hideCloseButton
+        hasFocus={false}
+        role="alert"
+        title="Sin conexión"
+        subtitle="Inicia el servidor local para conectar la interfaz."
+        actionButtonLabel="Volver a comprobar"
+        onActionButtonClick={retry}
+      />
+    )
+  }
 
   return (
-    <article className="health-card" aria-labelledby="health-title">
-      <div className="health-header">
-        <div>
-          <p className="section-kicker">SISTEMA</p>
-          <h2 id="health-title">Listo para local</h2>
-        </div>
-        <span
-          className={'status-light status-light--' + state.phase}
-          aria-hidden="true"
-        />
-      </div>
-
-      <div className="health-row" role="status" aria-live="polite">
-        <div>
-          <span className="health-label">API local</span>
-          <span className="health-detail">127.0.0.1</span>
-        </div>
-        <strong>{statusLabel}</strong>
-      </div>
-
-      {isAvailable ? (
-        <p className="health-message">
-          El núcleo de VOZ respondió
-          {state.payload.version ? ' · v' + state.payload.version : ''}.
-        </p>
-      ) : state.phase === 'unavailable' ? (
-        <div className="health-error">
-          <p>Inicia el servidor local para conectar la interfaz.</p>
-          <button type="button" onClick={retry}>
-            Volver a comprobar
-          </button>
-        </div>
+    <div className="voz-health" role="status" aria-live="polite">
+      {state.phase === 'loading' ? (
+        <Busy description="Comprobando el servidor de este equipo…" />
       ) : (
-        <p className="health-message">Verificando el servidor de este equipo…</p>
+        <>
+          <Tag type="green" size="sm">
+            Disponible
+          </Tag>
+          <span>
+            API local · 127.0.0.1
+            {state.payload.version ? ' · v' + state.payload.version : ''}
+          </span>
+        </>
       )}
-    </article>
+    </div>
   )
 }

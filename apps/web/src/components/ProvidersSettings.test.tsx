@@ -58,7 +58,7 @@ function stubFetch(...responses: Response[]) {
 }
 
 function row(name: string): HTMLElement {
-  const item = screen.getByRole('heading', { name }).closest('li')
+  const item = screen.getByRole('heading', { name }).closest('section')
   if (!item) {
     throw new Error('Sin fila ' + name)
   }

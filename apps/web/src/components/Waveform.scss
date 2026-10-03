@@ -1,0 +1,76 @@
+@use '../styles/carbon' as *;
+
+.waveform {
+  display: grid;
+  gap: $spacing-03;
+}
+
+.waveform--status {
+  margin: 0;
+}
+
+.waveform__toolbar {
+  @include type-style('body-compact-01');
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+  color: $text-secondary;
+}
+
+.waveform__slider {
+  flex: 1 1 8rem;
+  min-inline-size: 8rem;
+  max-inline-size: 16rem;
+  accent-color: $interactive;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: 2px;
+  }
+}
+
+.waveform__zoom,
+.waveform__clock {
+  @include type-style('code-01');
+}
+
+.waveform__clock {
+  margin-inline-start: auto;
+}
+
+.waveform__scroller {
+  overflow: auto hidden;
+  background: $field-02;
+  border-block-end: 1px solid $border-strong-02;
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+.waveform__content {
+  position: relative;
+  block-size: 96px;
+  cursor: pointer;
+}
+
+// Solo mide la vista; se queda pegado a la izquierda mientras se hace scroll.
+.waveform__canvas {
+  position: sticky;
+  inset-inline-start: 0;
+  display: block;
+  color: $interactive;
+}
+
+.waveform__playhead {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 2px;
+  margin-inline-start: -1px;
+  background: $text-primary;
+  pointer-events: none;
+}

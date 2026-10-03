@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import {
+  Accordion,
+  AccordionItem,
+  Checkbox,
+  Link,
+  RadioTile,
+  Tag,
+  TileGroup,
+} from '@carbon/react'
 
 import {
   getTranscriptionOptions,
@@ -11,6 +20,9 @@ import {
 import { getEstimate, type CloudEstimate } from '../api/providers'
 import { compareModelIds } from '../lib/modelOrder'
 import { CloudBadge } from './CloudBadge'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import './TranscriptionOptionsSelector.scss'
 
 export interface TranscriptionOptionsSelectorProps {
   value: string | null
@@ -227,143 +239,174 @@ export function TranscriptionOptionsSelector({
     }
   }, [state, value])
 
-  return (
-    <fieldset className="options-fieldset" disabled={disabled}>
-      <legend className="options-legend">Modelo de transcripción</legend>
+  const usable = state.phase === 'ready' ? state.options.filter((o) => o.can_start) : []
+  const unavailable =
+    state.phase === 'ready' ? state.options.filter((o) => !o.can_start) : []
+  const goToModels = () => {
+    window.location.hash = 'modelos'
+  }
 
+  return (
+    <div className="voz-options">
       {state.phase === 'loading' ? (
-        <p className="options-loading" aria-live="polite">
-          Consultando los modelos de este equipo…
-        </p>
-      ) : state.phase === 'error' ? (
-        <div className="options-error" role="alert">
-          <p>{state.message}</p>
-          <button type="button" onClick={retry}>
-            Reintentar
-          </button>
+        <div aria-live="polite">
+          <Busy description="Consultando los modelos de este equipo…" />
         </div>
+      ) : state.phase === 'error' ? (
+        <Notice
+          kind="error"
+          title="No se pudieron consultar las opciones"
+          subtitle={state.message}
+          action={{ label: 'Reintentar', onClick: retry }}
+        />
       ) : state.options.length === 0 ? (
-        <p className="options-empty">
-          No hay opciones de transcripción conocidas.
-        </p>
+        <Notice
+          kind="info"
+          title="No hay opciones de transcripción conocidas."
+        />
       ) : (
         <>
-          <ul className="options-list">
-            {state.options.map((option) => {
-              const blocked = !option.can_start
+          <TileGroup
+            name={baseId + '-option'}
+            legend="Modelo de transcripción"
+            valueSelected={value ?? ''}
+            disabled={disabled}
+            onChange={(selection) => {
+              onChange(String(selection))
+            }}
+          >
+            {usable.map((option) => {
               const cloud = option.cloud === true
               const provider = providerName(option)
-              const checked = value === option.option_id
-              const reasonsId = baseId + '-reasons-' + option.option_id
-              const className = [
-                'options-item',
-                blocked ? 'options-item--blocked' : '',
-                checked ? 'options-item--selected' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')
+              const titleId = baseId + '-title-' + option.option_id
               return (
-                <li key={option.option_id} className={className}>
-                  <label className="options-label">
-                    <input
-                      type="radio"
-                      name="transcription-option"
-                      value={option.option_id}
-                      checked={checked}
-                      disabled={blocked}
-                      aria-describedby={blocked ? reasonsId : undefined}
-                      onChange={() => {
-                        onChange(option.option_id)
-                      }}
-                    />
-                    <span className="options-body">
-                      <span className="options-title">
-                        <strong>
-                          {option.display_name.trim() || option.model_id}
-                        </strong>
-                        {cloud ? <CloudBadge /> : null}
-                        {!cloud && option.recommendation?.recommended ? (
-                          <span className="options-badge">Recomendado</span>
-                        ) : null}
+                <RadioTile
+                  key={option.option_id}
+                  id={baseId + '-tile-' + option.option_id}
+                  value={option.option_id}
+                  aria-labelledby={titleId}
+                >
+                  <span className="voz-option">
+                    <span className="voz-option__title">
+                      <strong id={titleId}>
+                        {option.display_name.trim() || option.model_id}
+                      </strong>
+                      {cloud ? <CloudBadge /> : null}
+                      {!cloud && option.recommendation?.recommended ? (
+                        <Tag type="green" size="sm">
+                          Recomendado
+                        </Tag>
+                      ) : null}
+                    </span>
+                    {cloud ? (
+                      <span className="voz-option__meta">
+                        Tu audio se enviará a {provider}
                       </span>
-                      {cloud ? (
-                        <span className="options-meta">
-                          <span>Tu audio se enviará a {provider}</span>
+                    ) : null}
+                    <span className="voz-option__meta">
+                      <span>Modelo: {option.model_id}</span>
+                      {option.profile ? (
+                        <span>Perfil: {describeProfile(option.profile)}</span>
+                      ) : null}
+                      {option.execution ? (
+                        <span>
+                          Ejecución: {describeExecution(option.execution)}
                         </span>
                       ) : null}
-                      <span className="options-meta">
-                        <span>Modelo: {option.model_id}</span>
-                        {option.profile ? (
-                          <span>Perfil: {describeProfile(option.profile)}</span>
-                        ) : null}
-                        {option.execution ? (
-                          <span>
-                            Ejecución: {describeExecution(option.execution)}
-                          </span>
-                        ) : null}
-                      </span>
-                      {blocked ? (
-                        <span className="options-reasons" id={reasonsId}>
+                    </span>
+                  </span>
+                </RadioTile>
+              )
+            })}
+          </TileGroup>
+          {usable.length === 0 ? (
+            <Notice
+              kind="info"
+              title="Instala un modelo para transcribir desde la sección «Modelos»."
+              action={{ label: 'Ir a Modelos', onClick: goToModels }}
+            />
+          ) : null}
+          {unavailable.length > 0 ? (
+            <Accordion isFlush className="voz-options__unavailable">
+              <AccordionItem
+                title={
+                  'Mostrar ' +
+                  unavailable.length +
+                  (unavailable.length === 1
+                    ? ' motor no disponible'
+                    : ' motores no disponibles')
+                }
+              >
+                <ul className="voz-unavailable">
+                  {unavailable.map((option) => {
+                    const cloud = option.cloud === true
+                    const provider = providerName(option)
+                    return (
+                      <li key={option.option_id} className="voz-unavailable__item">
+                        <span className="voz-option__title">
+                          <strong>
+                            {option.display_name.trim() || option.model_id}
+                          </strong>
+                          {cloud ? <CloudBadge /> : null}
+                        </span>
+                        <span className="voz-option__reasons">
                           {cloud
-                            ? 'Sin clave de ' +
-                              provider +
-                              ': añádela en «Proveedores cloud (opcional)».'
+                            ? 'Sin clave de ' + provider + '.'
                             : option.blocking_reasons
                                 .map(describeBlockingReason)
                                 .join(' · ')}
                         </span>
-                      ) : null}
-                    </span>
-                  </label>
-                </li>
-              )
-            })}
-          </ul>
-          {state.options.every((option) => !option.can_start) ? (
-            <p className="options-notice">
-              Instala un modelo para transcribir desde la sección «Modelos».
-            </p>
+                        <Link href={cloud ? '#proveedores' : '#modelos'}>
+                          {cloud ? 'Ir a Proveedores cloud' : 'Ir a Modelos'}
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </AccordionItem>
+            </Accordion>
           ) : null}
           {selectedCloud ? (
-            <div
-              className="cloud-warning"
-              role="group"
-              aria-label="Aviso de envío a la nube"
-            >
-              <p>
-                <CloudBadge /> Tu audio se enviará a{' '}
-                <strong>{providerName(selectedCloud)}</strong> y
-                saldrá de tu equipo.
-              </p>
-              {mediaAssetId ? (
-                <p className="cloud-warning-estimate" aria-live="polite">
-                  {estimateState.phase === 'ready'
-                    ? formatEstimate(estimateState.estimate)
-                    : estimateState.phase === 'error'
-                      ? 'No se pudo estimar el costo.'
-                      : 'Estimando el costo…'}
-                </p>
-              ) : null}
-              {estimateState.phase === 'ready' && mediaAssetId ? (
-                <p className="cloud-warning-note">
-                  Tarifa de referencia del {estimateState.estimate.price_date},
-                  no verificada en vivo: tu factura real puede diferir.
-                </p>
-              ) : null}
-              <label>
-                <input
-                  type="checkbox"
-                  checked={consentOk}
-                  onChange={(event) => {
-                    setConsentFor(event.target.checked ? value : null)
-                  }}
-                />
-                Entiendo que el audio sale de mi equipo
-              </label>
+            <div role="group" aria-label="Aviso de envío a la nube">
+              <Notice
+                kind="warning"
+                title={
+                  'Tu audio se enviará a ' +
+                  providerName(selectedCloud) +
+                  ' y saldrá de tu equipo.'
+                }
+              >
+                <div className="voz-cloud-warning">
+                  <CloudBadge />
+                  {mediaAssetId ? (
+                    <p aria-live="polite">
+                      {estimateState.phase === 'ready'
+                        ? formatEstimate(estimateState.estimate)
+                        : estimateState.phase === 'error'
+                          ? 'No se pudo estimar el costo.'
+                          : 'Estimando el costo…'}
+                    </p>
+                  ) : null}
+                  {estimateState.phase === 'ready' && mediaAssetId ? (
+                    <p>
+                      Tarifa de referencia del {estimateState.estimate.price_date},
+                      no verificada en vivo: tu factura real puede diferir.
+                    </p>
+                  ) : null}
+                </div>
+              </Notice>
+              <Checkbox
+                id={baseId + '-consent'}
+                labelText="Entiendo que el audio sale de mi equipo"
+                checked={consentOk}
+                onChange={(_event, { checked }) => {
+                  setConsentFor(checked ? value : null)
+                }}
+              />
             </div>
           ) : null}
         </>
       )}
-    </fieldset>
+    </div>
   )
 }

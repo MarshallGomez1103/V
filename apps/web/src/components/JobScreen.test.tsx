@@ -40,15 +40,10 @@ function makeJob(state: JobState, overrides: Partial<JobView> = {}): JobView {
   }
 }
 
-function currentStep(): HTMLElement {
+/** Etiqueta de la etapa marcada como actual (aria-current="step"). */
+function currentStep(): string | null {
   const stepper = screen.getByRole('list', { name: 'Etapas' })
-  const current = within(stepper)
-    .getAllByRole('listitem')
-    .find((item) => item.getAttribute('aria-current') === 'step')
-  if (!current) {
-    throw new Error('No hay paso actual')
-  }
-  return current
+  return within(stepper).getByRole('button', { current: 'step' }).getAttribute('title')
 }
 
 describe('JobScreen', () => {
@@ -65,7 +60,7 @@ describe('JobScreen', () => {
     expect(
       screen.getByRole('heading', { name: /en cola, esperando turno/i }),
     ).toBeDefined()
-    expect(currentStep().textContent).toBe('En cola')
+    expect(currentStep()).toBe('En cola')
     expect(screen.getByText('0 %')).toBeDefined()
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveProperty(
       'disabled',
@@ -90,8 +85,8 @@ describe('JobScreen', () => {
     )
 
     expect(screen.getByText('42 %')).toBeDefined()
-    expect(screen.getByRole('progressbar')).toHaveProperty('value', 0.42)
-    expect(currentStep().textContent).toBe('Transcribiendo')
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('42')
+    expect(currentStep()).toBe('Transcribiendo')
     expect(screen.getByText('large-v3')).toBeDefined()
     expect(screen.getByText('Equilibrado')).toBeDefined()
     expect(screen.getByText('cuda')).toBeDefined()
@@ -108,7 +103,7 @@ describe('JobScreen', () => {
     expect(
       screen.getByRole('heading', { name: /transcripción completada/i }),
     ).toBeDefined()
-    expect(currentStep().textContent).toBe('Resultado')
+    expect(currentStep()).toBe('Resultado')
     expect(screen.queryByRole('button', { name: 'Cancelar' })).toBeNull()
     expect(screen.queryByRole('progressbar')).toBeNull()
   })
@@ -116,7 +111,7 @@ describe('JobScreen', () => {
   it('FAILED muestra un error seguro con el código', () => {
     render(<JobScreen job={makeJob('FAILED', { error_code: 'gpu_lost' })} />)
 
-    expect(screen.getByRole('alert').textContent).toBe(
+    expect(screen.getByRole('alert').textContent).toContain(
       'La transcripción falló (código gpu_lost).',
     )
   })

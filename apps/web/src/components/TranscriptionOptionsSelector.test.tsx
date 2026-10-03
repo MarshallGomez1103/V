@@ -90,22 +90,25 @@ describe('TranscriptionOptionsSelector', () => {
 
     render(<TranscriptionOptionsSelector value={READY.option_id} onChange={onChange} />)
 
+    const ready = await screen.findByRole('radio', { name: /turbo/i })
     expect(
       screen.getByRole('group', { name: /modelo de transcripción/i }),
     ).toBeDefined()
-    const ready = await screen.findByRole('radio', { name: /turbo/i })
     expect(ready).toHaveProperty('disabled', false)
     expect(ready).toHaveProperty('checked', true)
     expect(screen.getByText('Recomendado')).toBeDefined()
     expect(screen.getByText(/perfil: rápido/i)).toBeDefined()
     expect(screen.getByText(/ejecución: gpu \(cuda\) · float16/i)).toBeDefined()
 
-    const blocked = screen.getByRole('radio', { name: /large-v3/i })
-    expect(blocked).toHaveProperty('disabled', true)
+    // La opción no disponible no es elegible: va en la lista plegada con su motivo.
+    expect(screen.queryByRole('radio', { name: /large-v3/i })).toBeNull()
+    expect(screen.getByText('Mostrar 1 motor no disponible')).toBeDefined()
     expect(
       screen.getByText('Modelo no instalado · Faltan archivos del modelo'),
     ).toBeDefined()
-    expect(screen.getByText(/perfil: calidad/i)).toBeDefined()
+    expect(screen.getByRole('link', { name: 'Ir a Modelos' }).getAttribute('href')).toBe(
+      '#modelos',
+    )
     expect(screen.queryByText(/instala un modelo para transcribir/i)).toBeNull()
     expect(onChange).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledWith(
@@ -159,6 +162,8 @@ describe('TranscriptionOptionsSelector', () => {
     expect(
       screen.getByText(/instala un modelo para transcribir/i),
     ).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a Modelos' }))
+    expect(window.location.hash).toBe('#modelos')
   })
 
   it('muestra el error 503 con mensaje seguro y permite reintentar', async () => {
@@ -238,7 +243,7 @@ describe('TranscriptionOptionsSelector', () => {
     await screen.findAllByRole('radio')
     expect(
       screen.getAllByRole('radio').map((radio) => radio.getAttribute('value')),
-    ).toEqual(['option-v1-ready', 'o-small', 'o-tiny', 'o-custom', 'option-v1-blocked'])
+    ).toEqual(['option-v1-ready', 'o-small', 'o-tiny', 'o-custom'])
   })
 
   it('vuelve a pedir las opciones cuando cambia refreshKey', async () => {
@@ -250,8 +255,8 @@ describe('TranscriptionOptionsSelector', () => {
     const { rerender } = render(
       <TranscriptionOptionsSelector value={null} onChange={vi.fn()} refreshKey={0} />,
     )
-    const blocked = await screen.findByRole('radio', { name: /large-v3/i })
-    expect(blocked).toHaveProperty('disabled', true)
+    expect(await screen.findByText('Mostrar 1 motor no disponible')).toBeDefined()
+    expect(screen.queryByRole('radio')).toBeNull()
 
     rerender(
       <TranscriptionOptionsSelector value={null} onChange={vi.fn()} refreshKey={1} />,
@@ -311,9 +316,8 @@ describe('TranscriptionOptionsSelector', () => {
 
       render(<TranscriptionOptionsSelector value={null} onChange={vi.fn()} />)
 
-      await screen.findByRole('radio', { name: /openai whisper/i })
-      expect(screen.getByText(/tu audio se enviará a acme cloud/i)).toBeDefined()
-      expect(screen.getByText(/sin clave de acme cloud/i)).toBeDefined()
+      expect(await screen.findByText(/sin clave de acme cloud/i)).toBeDefined()
+      expect(screen.queryByRole('radio')).toBeNull()
     })
 
     it('no recomienda una opción cloud aunque el backend lo marque', async () => {
@@ -430,9 +434,11 @@ describe('TranscriptionOptionsSelector', () => {
 
       render(<TranscriptionOptionsSelector value={null} onChange={vi.fn()} />)
 
-      const radio = await screen.findByRole('radio', { name: /openai whisper/i })
-      expect(radio).toHaveProperty('disabled', true)
-      expect(screen.getByText(/sin clave de openai/i)).toBeDefined()
+      expect(await screen.findByText(/sin clave de openai/i)).toBeDefined()
+      expect(screen.queryByRole('radio')).toBeNull()
+      expect(
+        screen.getByRole('link', { name: 'Ir a Proveedores cloud' }).getAttribute('href'),
+      ).toBe('#proveedores')
     })
 
     it('cambiar a otra opción invalida el consentimiento dado', async () => {

@@ -147,8 +147,24 @@ async function shot(name, selector, { pad = 16, live = false, through = selector
 const click = (selector) =>
   page(`document.querySelector(${JSON.stringify(selector)}).click()`)
 
+const clickText = (tag, text) =>
+  page(`(() => {
+    const el = [...document.querySelectorAll(${JSON.stringify(tag)})].find(
+      (e) => e.textContent.trim() === ${JSON.stringify(text)} && e.offsetParent !== null,
+    )
+    if (!el) throw new Error('sin ' + ${JSON.stringify(tag)} + ' ' + ${JSON.stringify(text)})
+    el.click()
+  })()`)
+
+// Los paneles de la UI (Carbon) son <section aria-labelledby="...-title">.
+const panel = (id) => `section[aria-labelledby="${id}"]`
+
 try {
   await cdp.send('Page.enable')
+  // La UI sigue al sistema (g100 oscuro / g10 claro): las capturas van en oscuro.
+  await cdp.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-color-scheme', value: 'dark' }],
+  })
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width: WIDTH,
     height: HEIGHT,
@@ -156,12 +172,12 @@ try {
     mobile: false,
   })
   await cdp.send('Page.navigate', { url })
-  await waitFor(`document.querySelector('h1') && document.querySelector('.model-manager')`, 'la pagina de inicio')
-  await waitFor(`!document.querySelector('.model-manager [aria-busy="true"]')`, 'el gestor de modelos')
-  await sleep(500)
+  await waitFor(`document.querySelector('h1') && document.querySelector('input[type=file]')`, 'la pagina de inicio')
+  await waitFor(`document.querySelector('.voz-health .cds--tag')`, 'el estado de la API')
+  await sleep(800)
   await shot('01-inicio.png')
 
-  // importar el audio de demo: se inyecta como un File real en el input de la tarjeta
+  // importar el audio de demo: se inyecta como un File real en el input de la zona de soltar
   const audioB64 = readFileSync(audioPath).toString('base64')
   await page(`(async () => {
     const bytes = Uint8Array.from(atob(${JSON.stringify(audioB64)}), (c) => c.charCodeAt(0))
@@ -172,25 +188,25 @@ try {
     input.files = transfer.files
     input.dispatchEvent(new Event('change', { bubbles: true }))
   })()`)
-  await waitFor(`document.querySelector('.import-submit:not([disabled])')`, 'el archivo listo')
+  await waitFor(`document.querySelector('button[type=submit]:not([disabled])')`, 'el archivo listo')
   await page(`(() => {
-    const input = document.querySelector('#main input[type=text]')
+    const input = document.querySelector('main input[type=text]')
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
     set.call(input, 'Reunión de proyecto (demo)')
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })()`)
-  await click('.import-submit')
-  await waitFor(`document.querySelector('.import-summary')`, 'la importacion')
-  await waitFor(`document.querySelector('.options-card .options-list')`, 'las opciones de motor')
-  await sleep(600)
+  await click('button[type=submit]')
+  await waitFor(`document.body.textContent.includes('Importación completa')`, 'la importacion')
+  await waitFor(`document.querySelector('.voz-options input[type=radio], .voz-options__unavailable')`, 'las opciones de motor')
+  await sleep(800)
 
   // selector de motor: elegir el modelo de la demo si esta disponible
   if (haveModel) {
     const chosen = await page(`(() => {
       const wanted = ${JSON.stringify(model)}.toLowerCase()
-      for (const li of document.querySelectorAll('.options-list li')) {
-        const radio = li.querySelector('input[type=radio]')
-        if (radio && !radio.disabled && li.textContent.toLowerCase().includes(wanted)) {
+      for (const radio of document.querySelectorAll('.voz-options input[type=radio]')) {
+        const tile = radio.closest('.cds--radio-tile__wrapper')
+        if (!radio.disabled && tile && tile.textContent.toLowerCase().includes(wanted)) {
           radio.click()
           return true
         }
@@ -200,39 +216,47 @@ try {
     if (!chosen) throw new Error('la opcion de motor ' + model + ' no esta disponible para iniciar')
     await sleep(300)
   }
-  await shot('02-selector-motor.png', '.options-card')
+  await shot('02-selector-motor.png', panel('options-title'))
 
   if (haveModel) {
     // capturar el job en curso (opcional: con GPU puede terminar antes de verlo) y el terminado
-    await click('.options-card .import-submit')
-    await waitFor(`document.querySelector('.job-card')`, 'el job')
+    await clickText('button', 'Transcribir')
+    await waitFor(`document.getElementById('job-title')`, 'el job')
     const limit = Date.now() + 120000
     let savedRunning = false
     while (Date.now() < limit) {
-      const state = await page(`(() => {
-        const card = document.querySelector('.job-card')
-        return card ? [...card.classList].find((c) => c.startsWith('job-card--')) ?? '' : ''
-      })()`)
-      if (!savedRunning && /transcribing|preprocessing|probing|queued|aligning/.test(state)) {
-        await shot('03-job-en-curso.png', '.job-card')
+      const title = await page(`document.getElementById('job-title')?.textContent ?? ''`)
+      if (!savedRunning && /cola|Analizando|Preparando|Transcribiendo|Alineando|Identificando|Uniendo|Guardando/.test(title)) {
+        await shot('03-job-en-curso.png', panel('job-title'))
         savedRunning = true
       }
-      if (/completed|failed|cancelled/.test(state)) break
+      if (/completada|falló|cancelada/.test(title)) break
       await sleep(50)
     }
-    await waitFor(`document.querySelector('.job-card--completed')`, 'el job completado', 5000)
+    await waitFor(`document.getElementById('job-title')?.textContent.includes('completada')`, 'el job completado', 5000)
     await waitFor(`document.querySelectorAll('.segments li').length > 0`, 'los segmentos')
     await sleep(800)
     console.log('palabras con timing en la UI: ' + (await page(`document.querySelectorAll('.segments .word').length`)))
-    await shot('04-job-terminado.png', '.job-card')
-    // la transcripcion: barra de modo/exportacion + segmentos con palabras
-    await shot('05-forma-de-onda.png', '.audio-card')
-    await shot('06-transcripcion.png', '.transcript-tools', { live: true, through: '.segments-card' })
+    await shot('04-job-terminado.png', panel('job-title'))
+    await shot('05-forma-de-onda.png', panel('audio-title'))
+    // la transcripcion: barra de modo/exportacion + segmentos + revision + hablantes
+    // Las filas usan content-visibility:auto (solo se pintan a la vista): se desactiva
+    // para recortar el panel entero sin hacer scroll.
+    await page(`(() => {
+      const style = document.createElement('style')
+      style.textContent = '.segments .segment-row { content-visibility: visible !important; }'
+      document.head.append(style)
+    })()`)
+    await sleep(300)
+    await shot('06-transcripcion.png', panel('segments-title'), { through: panel('speakers-title') })
   }
 
   // gestor de modelos (con el modelo importado si lo hubo)
-  await sleep(300)
-  await shot('07-gestor-modelos.png', '.model-manager')
+  await page(`location.hash = 'modelos'`)
+  await waitFor(`document.querySelector('.voz-models table')`, 'el gestor de modelos')
+  await waitFor(`!document.querySelector('.voz-models [aria-busy="true"]')`, 'el gestor de modelos')
+  await sleep(500)
+  await shot('07-gestor-modelos.png', '.voz-models')
 } finally {
   // matar `flatpak run` no cierra el Chrome del sandbox: se cierra por CDP
   await Promise.race([cdp.send('Browser.close').catch(() => undefined), sleep(2000)])

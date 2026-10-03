@@ -1,0 +1,83 @@
+@use '../styles/carbon' as *;
+
+.voz-models {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-models__disk {
+  @include type-style('body-compact-01');
+
+  margin: 0;
+  color: $text-secondary;
+
+  strong {
+    color: $text-primary;
+    font-weight: 600;
+  }
+}
+
+.voz-models__speakers {
+  margin-block-start: $spacing-06;
+}
+
+.voz-model {
+  display: grid;
+  gap: $spacing-02;
+  padding-block: $spacing-03;
+}
+
+.voz-model__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.voz-model__name {
+  font-weight: 600;
+}
+
+.voz-model__sub {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}
+
+.voz-model__error {
+  @include type-style('helper-text-01');
+
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-02;
+  color: $text-error;
+
+  svg {
+    flex: none;
+    color: $support-error;
+  }
+}
+
+.voz-model__size {
+  display: grid;
+  gap: $spacing-01;
+}
+
+.voz-model__actions {
+  display: grid;
+  justify-items: start;
+  gap: $spacing-02;
+  padding-block: $spacing-03;
+}
+
+.voz-model__progress {
+  display: grid;
+  gap: $spacing-02;
+  justify-items: start;
+  min-inline-size: 14rem;
+  padding-block: $spacing-03;
+
+  > div {
+    inline-size: 100%;
+  }
+}

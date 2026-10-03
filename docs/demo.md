@@ -4,7 +4,7 @@ Todas las imágenes de `docs/assets/screenshots/` son capturas de la interfaz de
 corriendo de verdad, sin maquetas. Se generan con un script, así que se pueden
 rehacer cuando cambie la UI.
 
-**Fecha:** 2026-09-30. **Commit base:** `46f2e1d` (más los cambios sin commitear de
+**Fecha:** 2026-10-02 (UI rehecha con IBM Carbon; capturas en tema oscuro). **Commit base:** `46f2e1d` (más los cambios sin commitear de
 la oleada 5c-2 en el árbol de trabajo). **Máquina:** Bazzite `bazzite-nvidia-open`
 (Fedora 44, kernel 7.2.7), NVIDIA GeForce RTX 4060 Laptop, Chrome 154 (flatpak)
 en modo headless, ventana de 1440 px de ancho.
@@ -30,13 +30,13 @@ ingeniería», aunque el texto hablado decía «…entrega del proyecto…»).
 
 | Archivo | Qué muestra | Función real |
 | --- | --- | --- |
-| `01-inicio.png` | Pantalla de inicio: tarjeta de importación, estado local de la API y gestor de modelos con `turbo` instalado | Importación (S5), estado (`/api/health`), gestor de modelos |
-| `02-selector-motor.png` | Tras importar el audio: «Elige el motor» con las opciones de `/api/transcription-options` (Faster Whisper local con modelo instalado o no, y proveedores cloud marcados «CLOUD» y bloqueados sin clave) y la casilla «Detectar quién habla» | Selector de motor y opciones |
-| `03-job-en-curso.png` | La tarjeta del job mientras corre, con fases y botón Cancelar | Job con estados por SSE (S5.05/S5.06). Solo se guarda si el script alcanza a verlo; con la GPU el job puede acabar antes |
+| `01-inicio.png` | Pantalla de inicio (UI Shell de Carbon, tema oscuro g100): panel «Importar grabación», estado local de la API y nota de privacidad | Importación (S5), estado (`/api/health`) |
+| `02-selector-motor.png` | Panel «Configuración» tras importar el audio: solo los motores utilizables como `RadioTile` (aquí, Faster Whisper `turbo`), los no disponibles plegados en «Mostrar N motores no disponibles», perfil de calidad, interruptor «Detectar quién habla» y glosario | Selector de motor y opciones (`/api/transcription-options`) |
+| `03-job-en-curso.png` | El panel del job mientras corre, con etapas, barra de progreso y botón Cancelar | Job con estados por SSE (S5.05/S5.06). Solo se guarda si el script alcanza a verlo; con la GPU el job puede acabar antes |
 | `04-job-terminado.png` | El job completado: modelo, perfil y dispositivo (`cuda`) | Job y su selección reproducible |
 | `05-forma-de-onda.png` | Reproductor del original y forma de onda con zoom | Reproductor y waveform (S7) |
-| `06-transcripcion.png` | Modo Leer/Editar, exportación, panel de hablantes, cola de revisión y la lista de segmentos con marcas de tiempo | Segmentos, exportación, revisión |
-| `07-gestor-modelos.png` | Gestor de modelos: `turbo` instalado (1,6 GB), `large-v3` «Disponible en Buzz» con «Importar desde Buzz», el resto «No instalado», la sección «Hablantes» y los proveedores cloud sin configurar | Gestor de modelos (S8), importación desde Buzz |
+| `06-transcripcion.png` | Modo Leer/Editar, estado de guardado, menú Exportar, búsqueda, segmentos con marcas de tiempo, cola de revisión y panel de hablantes | Segmentos, exportación, revisión |
+| `07-gestor-modelos.png` | Gestor de modelos (`DataTable`): `turbo` instalado (1,6 GB), `large-v3` «Ya está en este equipo» con «Usar copia local», el resto «No instalado» y la sección «Hablantes» | Gestor de modelos (S8), reutilización de una copia local |
 
 ### Lo que estas capturas no muestran
 
@@ -70,8 +70,10 @@ Cómo funciona, por si hay que mantenerlo:
 - La UI guarda su estado solo en memoria, así que `chrome --screenshot` sirve
   únicamente para la pantalla inicial. El resto se maneja con el protocolo de
   depuración de Chrome (CDP) desde `scripts/capture-screenshots.mjs` (WebSocket
-  y `fetch` de Node, sin dependencias): importa el audio inyectando un `File` en
-  el campo de archivo, elige el motor, pulsa Transcribir y recorta cada tarjeta.
+  y `fetch` de Node, sin dependencias): fuerza `prefers-color-scheme: dark`,
+  importa el audio inyectando un `File` en el campo de archivo, elige el motor,
+  pulsa Transcribir y recorta cada panel (`section[aria-labelledby="…-title"]`).
+  Si cambian esos ids o clases de la UI, hay que ajustar los selectores del script.
 - El perfil de Chrome se crea en `~/Downloads/voz-capture-chrome.*` porque el
   sandbox flatpak solo puede escribir ahí; se borra al terminar. El audio no
   pasa por el disco del navegador, así que no hace falta ampliar permisos.
@@ -80,5 +82,5 @@ Cómo funciona, por si hay que mantenerlo:
   cruzan sistemas de archivos).
 - Las filas de segmentos usan `content-visibility: auto`: solo se pintan a la
   vista, así que la captura de la transcripción hace scroll antes de recortar.
-- Si cambia la UI (selectores `.options-card`, `.job-card`, `.audio-card`,
-  `.transcript-tools`, `.segments-card`, `.model-manager`), ajusta el `.mjs`.
+- Si cambia la UI (paneles `options-title`, `job-title`, `audio-title`,
+  `segments-title`, `speakers-title` y la clase `.voz-models`), ajusta el `.mjs`.

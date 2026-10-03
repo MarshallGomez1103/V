@@ -7,6 +7,8 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react'
+import { IconButton } from '@carbon/react'
+import { ZoomIn, ZoomOut } from '@carbon/icons-react'
 
 import {
   getWaveformPeaks,
@@ -30,7 +32,9 @@ import {
   zoomOut,
 } from '../lib/waveformGeometry'
 import { isAbortError } from '../api/errors'
-import './Waveform.css'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import './Waveform.scss'
 
 export interface WaveformProps {
   mediaAssetId: string
@@ -74,7 +78,8 @@ function drawColumns(
   }
   context.setTransform(ratio, 0, 0, ratio, 0, 0)
   context.clearRect(0, 0, width, CANVAS_HEIGHT)
-  context.fillStyle = 'currentColor'
+  // Color del tema (token Carbon vía CSS); sin estilos calculados, el del texto.
+  context.fillStyle = window.getComputedStyle(canvas).color || 'currentColor'
   const middle = CANVAS_HEIGHT / 2
   columns.forEach(([low, high], x) => {
     // Al menos 1 px para que el silencio siga viéndose como una línea.
@@ -183,16 +188,16 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
 
   if (outcome === null) {
     return (
-      <p className="waveform waveform--status" role="status">
-        Cargando forma de onda…
-      </p>
+      <div className="waveform waveform--status" role="status">
+        <Busy description="Cargando forma de onda…" />
+      </div>
     )
   }
   if (outcome.phase === 'error') {
     return (
-      <p className="waveform waveform--status" role="alert">
-        {outcome.message}
-      </p>
+      <div className="waveform waveform--status">
+        <Notice kind="error" title={outcome.message} />
+      </div>
     )
   }
 
@@ -244,17 +249,20 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
   return (
     <section className="waveform" aria-label="Forma de onda">
       <div className="waveform__toolbar">
-        <button
-          type="button"
+        <IconButton
+          kind="ghost"
+          size="sm"
+          label="Alejar"
           onClick={() => {
             changeZoom(zoomOut(zoom))
           }}
           disabled={zoom <= MIN_ZOOM}
         >
-          Alejar
-        </button>
+          <ZoomOut />
+        </IconButton>
         <input
           type="range"
+          className="waveform__slider"
           min={MIN_ZOOM}
           max={MAX_ZOOM}
           step={1}
@@ -265,15 +273,17 @@ export function Waveform({ mediaAssetId, currentMs, onSeek }: WaveformProps) {
             changeZoom(Number(event.currentTarget.value))
           }}
         />
-        <button
-          type="button"
+        <IconButton
+          kind="ghost"
+          size="sm"
+          label="Acercar"
           onClick={() => {
             changeZoom(zoomIn(zoom))
           }}
           disabled={zoom >= MAX_ZOOM}
         >
-          Acercar
-        </button>
+          <ZoomIn />
+        </IconButton>
         <output className="waveform__zoom">{String(zoom) + 'x'}</output>
         <span className="waveform__clock">{clock}</span>
       </div>

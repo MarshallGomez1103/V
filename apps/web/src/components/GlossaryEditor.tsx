@@ -1,7 +1,10 @@
 import { useEffect, useId, useState } from 'react'
+import { Button, TextArea } from '@carbon/react'
 
 import { getGlossary, putGlossary, type Glossary } from '../api/glossary'
-import './GlossaryEditor.css'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import './GlossaryEditor.scss'
 
 export interface GlossaryEditorProps {
   projectId: string
@@ -59,14 +62,14 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
   const state = result?.key === projectId ? result : null
 
   if (state === null) {
-    return <p className="glossary-editor-note">Cargando glosario…</p>
+    return (
+      <div aria-live="polite">
+        <Busy description="Cargando glosario…" />
+      </div>
+    )
   }
   if (state.phase === 'error') {
-    return (
-      <p className="glossary-editor-note" role="alert">
-        {state.message}
-      </p>
-    )
+    return <Notice kind="error" title={state.message} />
   }
 
   const { glossary } = state
@@ -92,55 +95,52 @@ export function GlossaryEditor({ projectId, disabled = false }: GlossaryEditorPr
   }
 
   return (
-    <section className="glossary-editor" aria-label="Editor de glosario">
-      <label htmlFor={fieldId} className="glossary-editor-label">
-        Glosario del proyecto
-      </label>
-      <textarea
+    <section className="voz-glossary" aria-label="Editor de glosario">
+      <TextArea
         id={fieldId}
-        className="glossary-editor-input"
+        labelText="Glosario del proyecto"
         rows={5}
         value={text}
         disabled={disabled || saving}
         placeholder="Un término por línea (nombres propios, siglas, vocabulario técnico)"
+        helperText={
+          String(terms.length) +
+          ' de ' +
+          String(glossary.max_terms) +
+          ' términos, hasta ' +
+          String(glossary.max_term_length) +
+          ' caracteres cada uno. Ayuda al motor a acertar esas palabras; no cambia el texto transcrito.'
+        }
+        invalid={invalid}
+        invalidText={
+          tooMany
+            ? 'Hay demasiados términos (máximo ' + String(glossary.max_terms) + ').'
+            : 'Algún término supera los ' +
+              String(glossary.max_term_length) +
+              ' caracteres.'
+        }
         onChange={(event) => {
           setText(event.target.value)
           setStatus(null)
         }}
       />
-      <p className="glossary-editor-note">
-        {String(terms.length)} de {String(glossary.max_terms)} términos, hasta{' '}
-        {String(glossary.max_term_length)} caracteres cada uno. Ayuda al motor a
-        acertar esas palabras; no cambia el texto transcrito.
-      </p>
-      <p className="glossary-editor-note">
+      <p className="voz-field-note">
         {glossary.applies_to.length > 0
           ? 'Lo usan: ' + glossary.applies_to.join(', ') + '. Los demás motores lo ignoran.'
           : 'Ningún motor instalado usa el glosario.'}
       </p>
-      {invalid ? (
-        <p className="glossary-editor-error" role="alert">
-          {tooMany
-            ? 'Hay demasiados términos (máximo ' + String(glossary.max_terms) + ').'
-            : 'Algún término supera los ' +
-              String(glossary.max_term_length) +
-              ' caracteres.'}
-        </p>
-      ) : null}
-      {saveError ? (
-        <p className="glossary-editor-error" role="alert">
-          {saveError}
-        </p>
-      ) : null}
-      {status ? <p role="status">{status}</p> : null}
-      <button
-        type="button"
-        className="glossary-editor-save"
-        disabled={disabled || saving || invalid}
-        onClick={() => void save()}
-      >
-        {saving ? 'Guardando…' : 'Guardar glosario'}
-      </button>
+      {saveError ? <Notice kind="error" title={saveError} /> : null}
+      {status ? <Notice kind="success" title={status} /> : null}
+      <div>
+        <Button
+          kind="tertiary"
+          size="md"
+          disabled={disabled || saving || invalid}
+          onClick={() => void save()}
+        >
+          {saving ? 'Guardando…' : 'Guardar glosario'}
+        </Button>
+      </div>
     </section>
   )
 }

@@ -15,18 +15,17 @@ describe('DiarizationOptions', () => {
   it('oculta los modos mientras la detección está apagada', () => {
     render(<DiarizationOptions value={OFF} onChange={() => undefined} />)
 
-    expect(screen.getByLabelText('Detectar quién habla')).toHaveProperty(
-      'checked',
-      false,
-    )
+    expect(
+      screen.getByRole('switch', { name: 'Detectar quién habla' }).getAttribute('aria-checked'),
+    ).toBe('false')
     expect(screen.queryByLabelText('Automático')).toBeNull()
   })
 
-  it('activar la casilla emite enabled: true', () => {
+  it('activar el interruptor emite enabled: true', () => {
     const onChange = vi.fn()
     render(<DiarizationOptions value={OFF} onChange={onChange} />)
 
-    fireEvent.click(screen.getByLabelText('Detectar quién habla'))
+    fireEvent.click(screen.getByRole('switch', { name: 'Detectar quién habla' }))
 
     expect(onChange).toHaveBeenCalledWith({ enabled: true, speakers: {} })
   })
@@ -96,9 +95,12 @@ describe('DiarizationOptions', () => {
   it('disabled bloquea todos los controles', () => {
     render(<DiarizationOptions value={ON} onChange={() => undefined} disabled />)
 
-    expect(screen.getByRole('group', { name: 'Hablantes' })).toHaveProperty(
+    expect(screen.getByRole('switch', { name: 'Detectar quién habla' })).toHaveProperty(
       'disabled',
       true,
     )
+    // El fieldset deshabilitado bloquea los radios (:disabled lo refleja).
+    expect(screen.getByLabelText('Automático').matches(':disabled')).toBe(true)
+    expect(screen.getByLabelText('Rango').matches(':disabled')).toBe(true)
   })
 })

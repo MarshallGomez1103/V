@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import type { FormEvent } from 'react'
+import { Button, Column, Form, Grid, Link, PasswordInput, Stack, Tag } from '@carbon/react'
+import { Save, TrashCan } from '@carbon/icons-react'
 
 import { isAbortError } from '../api/errors'
 import {
@@ -10,7 +12,10 @@ import {
   saveProviderKey,
   type ProviderView,
 } from '../api/providers'
-import './ProvidersSettings.css'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import { Panel } from './Panel'
+import './ProvidersSettings.scss'
 
 type LoadState =
   | { phase: 'loading' }
@@ -61,24 +66,23 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
   }
 
   return (
-    <li className="provider-row">
-      <div className="provider-head">
-        <h3>{label}</h3>
-        <span
-          className={
-            'provider-status' +
-            (configured ? ' provider-status--configured' : '')
-          }
-        >
+    <Panel
+      level={3}
+      titleId={inputId + '-title'}
+      title={label}
+      actions={
+        <Tag type={configured ? 'green' : 'gray'} size="md">
           {configured ? 'Configurado' : 'No configurado'}
-        </span>
-      </div>
-      <form className="provider-form" onSubmit={save}>
-        <label htmlFor={inputId}>{'Clave de API de ' + label}</label>
-        <div className="provider-controls">
-          <input
+        </Tag>
+      }
+    >
+      <Form onSubmit={save}>
+        <Stack gap={5}>
+          <PasswordInput
             id={inputId}
-            type="password"
+            labelText={'Clave de API de ' + label}
+            showPasswordLabel="Mostrar la clave"
+            hidePasswordLabel="Ocultar la clave"
             autoComplete="off"
             spellCheck={false}
             value={key}
@@ -92,40 +96,42 @@ function ProviderRow({ provider, onChanged }: ProviderRowProps) {
               setKey(event.target.value)
             }}
           />
-          <button type="submit" disabled={busy || key.trim() === ''}>
-            Guardar
-          </button>
-          <button
-            type="button"
-            disabled={busy || !configured}
-            onClick={() => {
-              void run(() => deleteProviderKey(id), 'Clave eliminada.')
-            }}
-          >
-            Eliminar
-          </button>
-        </div>
-      </form>
-      {error ? (
-        <p className="provider-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {done ? (
-        <p className="provider-done" role="status">
-          {done}
-        </p>
-      ) : null}
-      <p className="provider-note">
+          <div className="voz-provider__actions">
+            <Button
+              type="submit"
+              kind="primary"
+              size="md"
+              renderIcon={Save}
+              disabled={busy || key.trim() === ''}
+            >
+              Guardar
+            </Button>
+            <Button
+              kind="danger--tertiary"
+              size="md"
+              renderIcon={TrashCan}
+              disabled={busy || !configured}
+              onClick={() => {
+                void run(() => deleteProviderKey(id), 'Clave eliminada.')
+              }}
+            >
+              Eliminar
+            </Button>
+          </div>
+        </Stack>
+      </Form>
+      {error ? <Notice kind="error" title={error} /> : null}
+      {done ? <Notice kind="success" title={done} /> : null}
+      <p className="voz-field-note">
         Tener la clave no envía nada: solo un trabajo que elijas con este
         proveedor sube audio.{' '}
         {privacyUrl !== null && /^https?:\/\//.test(privacyUrl) ? (
-          <a href={privacyUrl} target="_blank" rel="noreferrer noopener">
+          <Link href={privacyUrl} target="_blank" rel="noreferrer noopener">
             {'Política de privacidad de ' + label}
-          </a>
+          </Link>
         ) : null}
       </p>
-    </li>
+    </Panel>
   )
 }
 
@@ -166,41 +172,39 @@ export function ProvidersSettings({
   }, [onChanged, reload])
 
   return (
-    <section className="providers-settings" aria-labelledby="providers-title">
-      <p className="section-kicker">OPCIONAL</p>
-      <h2 id="providers-title">Proveedores cloud (opcional)</h2>
-      <p className="provider-intro">
-        VOZ es local por defecto. Si añades una clave, podrás elegir un
-        proveedor cloud para una transcripción concreta: tu audio saldrá de
-        este equipo y se factura en tu cuenta del proveedor. Estas opciones son
-        experimentales y nunca se recomiendan ni se eligen solas. La clave se
-        guarda solo en este equipo y nunca se vuelve a mostrar.
-      </p>
+    <section className="voz-providers" aria-labelledby="providers-title">
+      <h2 id="providers-title" className="voz-section-title">
+        Claves de API
+      </h2>
+      <Notice
+        kind="info"
+        title="VOZ es local por defecto."
+        subtitle="Si añades una clave, podrás elegir un proveedor cloud para una transcripción concreta: tu audio saldrá de este equipo y se factura en tu cuenta del proveedor. Estas opciones son experimentales y nunca se recomiendan ni se eligen solas. La clave se guarda solo en este equipo y nunca se vuelve a mostrar."
+      />
       {state.phase === 'loading' ? (
-        <p role="status">Consultando proveedores…</p>
+        <div role="status">
+          <Busy description="Consultando proveedores…" />
+        </div>
       ) : state.phase === 'error' ? (
-        <div role="alert">
-          <p>{state.message}</p>
-          <button
-            type="button"
-            onClick={() => {
+        <Notice
+          kind="error"
+          title={state.message}
+          action={{
+            label: 'Reintentar',
+            onClick: () => {
               setState({ phase: 'loading' })
               reload()
-            }}
-          >
-            Reintentar
-          </button>
-        </div>
+            },
+          }}
+        />
       ) : (
-        <ul className="provider-list">
+        <Grid narrow className="voz-providers__grid">
           {state.providers.map((provider) => (
-            <ProviderRow
-              key={provider.id}
-              provider={provider}
-              onChanged={changed}
-            />
+            <Column key={provider.id} sm={4} md={8} lg={8}>
+              <ProviderRow provider={provider} onChanged={changed} />
+            </Column>
           ))}
-        </ul>
+        </Grid>
       )}
     </section>
   )

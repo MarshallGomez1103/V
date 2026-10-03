@@ -10,7 +10,7 @@ import type { TranscriptSegment } from '../api/jobs'
 import { findActiveWordIndex } from '../lib/activeWord'
 import type { Playhead } from '../lib/playhead'
 import { findMatches, type TextRange } from '../lib/segmentSearch'
-import './WordText.css'
+import './WordText.scss'
 
 interface WordTextProps {
   segment: TranscriptSegment

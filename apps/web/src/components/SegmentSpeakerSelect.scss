@@ -1,0 +1,21 @@
+@use '../styles/carbon' as *;
+
+.voz-segment-speaker {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+  margin-block-end: $spacing-02;
+}
+
+.voz-segment-speaker__chip {
+  inline-size: $spacing-04;
+  block-size: $spacing-04;
+  border-radius: 50%;
+  border: 1px solid $border-strong-01;
+}
+
+.voz-segment-speaker__error {
+  @include type-style('helper-text-01');
+
+  color: $text-error;
+}

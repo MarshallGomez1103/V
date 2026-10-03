@@ -1,0 +1,28 @@
+@use '../styles/carbon' as *;
+
+.voz-autosave {
+  @include type-style('helper-text-01');
+
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  margin: 0;
+  color: $text-secondary;
+}
+
+.voz-autosave--saved svg {
+  color: $support-success;
+}
+
+.voz-autosave--dirty svg {
+  color: $support-warning;
+}
+
+.voz-autosave--error,
+.voz-autosave--conflict {
+  color: $text-error;
+
+  svg {
+    color: $support-error;
+  }
+}

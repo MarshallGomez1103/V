@@ -93,7 +93,7 @@ async function waitForUpload(): Promise<FakeXMLHttpRequest> {
 }
 
 function selectFile(file: File) {
-  fireEvent.change(screen.getByLabelText(/archivo de audio o video/i), {
+  fireEvent.change(screen.getByLabelText(/suelta aquí tu audio o video/i), {
     target: { files: [file] },
   })
 }
@@ -136,7 +136,7 @@ describe('NewProjectCard', () => {
     selectFile(file)
 
     expect(screen.getByText('clase.mp3')).toBeDefined()
-    expect(screen.getByText('4 B')).toBeDefined()
+    expect(screen.getByText(/archivo listo · 4 B/i)).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: /crear proyecto e importar/i }))
 
@@ -159,7 +159,7 @@ describe('NewProjectCard', () => {
       request.progress(50, 100)
     })
     expect(screen.getByText('Subiendo 50 %')).toBeDefined()
-    expect(screen.getByRole('progressbar')).toHaveProperty('value', 0.5)
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50')
 
     await act(async () => {
       request.respond(201, media)
@@ -178,19 +178,16 @@ describe('NewProjectCard', () => {
     stubCreateProject()
     render(<NewProjectCard onImported={vi.fn()} />)
 
-    const zone = screen.getByText(/suelta aquí tu audio o video/i).closest('.drop-zone')
-    if (!zone) {
-      throw new Error('sin drop-zone')
-    }
+    const zone = screen.getByRole('button', { name: /suelta aquí tu audio o video/i })
 
-    fireEvent.dragEnter(zone, { dataTransfer: { files: [] } })
-    expect(zone.className).toContain('drop-zone--active')
+    fireEvent.dragOver(zone, { dataTransfer: { files: [] } })
+    expect(zone.className).toContain('drag-over')
 
     fireEvent.drop(zone, {
       dataTransfer: { files: [makeFile('primero.wav'), makeFile('segundo.wav')] },
     })
 
-    expect(zone.className).not.toContain('drop-zone--active')
+    expect(zone.className).not.toContain('drag-over')
     expect(screen.getByText('primero.wav')).toBeDefined()
     expect(screen.getByText(/solo se importa un archivo a la vez/i)).toBeDefined()
     expect(

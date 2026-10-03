@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { Select, SelectItem } from '@carbon/react'
 
 import { assignSegmentSpeaker, type Speaker } from '../api/speakers'
 
-import './SegmentSpeakerSelect.css'
+import './SegmentSpeakerSelect.scss'
 
 interface SegmentSpeakerSelectProps {
   segmentId: string
@@ -33,28 +34,30 @@ export function SegmentSpeakerSelect({
   }
 
   return (
-    <span className="segment-speaker">
+    <span className="voz-segment-speaker">
       <span
-        className="segment-speaker-chip"
+        className="voz-segment-speaker__chip"
         aria-hidden="true"
         style={{ backgroundColor: current?.color ?? 'transparent' }}
       />
-      <select
-        aria-label={'Hablante del segmento ' + segmentId}
+      <Select
+        id={'segment-speaker-' + segmentId}
+        size="sm"
+        inline
+        hideLabel
+        labelText={'Hablante del segmento ' + segmentId}
         value={current?.id ?? ''}
         onChange={(event) => {
           void change(event.target.value)
         }}
       >
-        <option value="">Sin hablante</option>
+        <SelectItem value="" text="Sin hablante" />
         {speakers.map((speaker) => (
-          <option key={speaker.id} value={speaker.id}>
-            {speaker.name}
-          </option>
+          <SelectItem key={speaker.id} value={speaker.id} text={speaker.name} />
         ))}
-      </select>
+      </Select>
       {error !== null && (
-        <span className="segment-speaker-error" role="alert">
+        <span className="voz-segment-speaker__error" role="alert">
           {error}
         </span>
       )}

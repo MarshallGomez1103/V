@@ -35,7 +35,7 @@ describe('SegmentSpeakerSelect', () => {
     )
 
     expect((select() as HTMLSelectElement).value).toBe('a')
-    const chip = container.querySelector<HTMLElement>('.segment-speaker-chip')
+    const chip = container.querySelector<HTMLElement>('.voz-segment-speaker__chip')
     expect(chip?.style.backgroundColor).toBe('rgb(17, 34, 51)')
   })
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, Modal, Select, SelectItem, Tag, TextInput } from '@carbon/react'
 
 import {
   listSpeakers,
@@ -8,7 +9,10 @@ import {
 } from '../api/speakers'
 import { isAbortError } from '../api/errors'
 
-import './SpeakersPanel.css'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import { Panel } from './Panel'
+import './SpeakersPanel.scss'
 
 interface SpeakersPanelProps {
   transcriptId: string
@@ -98,122 +102,129 @@ function SpeakersPanelBody({ transcriptId, onChanged }: SpeakersPanelProps) {
 
   if (speakers === null && error === null) {
     return (
-      <section className="speakers-panel" aria-label="Hablantes">
-        <p>Cargando hablantes…</p>
-      </section>
+      <Panel titleId="speakers-title" title="Hablantes">
+        <div aria-live="polite">
+          <Busy description="Cargando hablantes…" />
+        </div>
+      </Panel>
     )
   }
 
+  const targetFor = (speaker: Speaker): Speaker | undefined => {
+    const others = speakers?.filter((item) => item.id !== speaker.id) ?? []
+    return others.find((item) => item.id === mergeTargets[speaker.id]) ?? others[0]
+  }
+  const mergeSource = speakers?.find((item) => item.id === confirming)
+  const mergeTarget = mergeSource ? targetFor(mergeSource) : undefined
+
   return (
-    <section className="speakers-panel" aria-label="Hablantes">
-      <h3 className="speakers-panel-title">Hablantes</h3>
-      {error !== null && (
-        <p className="speakers-panel-error" role="alert">
-          {error}
-        </p>
-      )}
-      {speakers?.length === 0 && <p>Esta transcripción no tiene hablantes.</p>}
-      <ul className="speakers-panel-list">
-        {speakers?.map((speaker) => {
-          const others = speakers.filter((item) => item.id !== speaker.id)
-          const target = mergeTargets[speaker.id] ?? others[0]?.id ?? ''
-          const targetSpeaker = others.find((item) => item.id === target)
-          return (
-            <li key={speaker.id} className="speakers-panel-item">
-              <input
-                type="color"
-                aria-label={'Color de ' + speaker.name}
-                value={speaker.color}
-                onChange={(event) => {
-                  void save(speaker, { color: event.target.value })
-                }}
-              />
-              <input
-                type="text"
-                className="speakers-panel-name"
-                aria-label={'Nombre de ' + speaker.name}
-                maxLength={80}
-                value={names[speaker.id] ?? speaker.name}
-                onChange={(event) => {
-                  setNames({ ...names, [speaker.id]: event.target.value })
-                }}
-                onBlur={() => {
-                  commitName(speaker)
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
+    <>
+      <Panel titleId="speakers-title" title="Hablantes">
+        {error !== null && <Notice kind="error" title={error} />}
+        {speakers?.length === 0 && (
+          <p className="voz-field-note">Esta transcripción no tiene hablantes.</p>
+        )}
+        <ul className="voz-speakers">
+          {speakers?.map((speaker) => {
+            const others = speakers.filter((item) => item.id !== speaker.id)
+            const target = targetFor(speaker)?.id ?? ''
+            return (
+              <li key={speaker.id} className="voz-speakers__item">
+                <input
+                  type="color"
+                  className="voz-speakers__color"
+                  aria-label={'Color de ' + speaker.name}
+                  value={speaker.color}
+                  onChange={(event) => {
+                    void save(speaker, { color: event.target.value })
+                  }}
+                />
+                <TextInput
+                  id={'speaker-name-' + speaker.id}
+                  size="md"
+                  hideLabel
+                  labelText={'Nombre de ' + speaker.name}
+                  maxLength={80}
+                  value={names[speaker.id] ?? speaker.name}
+                  onChange={(event) => {
+                    setNames({ ...names, [speaker.id]: event.target.value })
+                  }}
+                  onBlur={() => {
                     commitName(speaker)
-                  } else if (event.key === 'Escape') {
-                    setNames((current) => without(current, speaker.id))
-                  }
-                }}
-              />
-              <span className="speakers-panel-count">
-                {speaker.segment_count === 1
-                  ? '1 segmento'
-                  : speaker.segment_count + ' segmentos'}
-              </span>
-              {others.length > 0 && (
-                <span className="speakers-panel-merge">
-                  <select
-                    aria-label={'Fusionar ' + speaker.name + ' en'}
-                    value={target}
-                    onChange={(event) => {
-                      setConfirming(null)
-                      setMergeTargets({
-                        ...mergeTargets,
-                        [speaker.id]: event.target.value,
-                      })
-                    }}
-                  >
-                    {others.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                  {confirming === speaker.id && targetSpeaker ? (
-                    <span role="group" aria-label="Confirmar fusión">
-                      <span>
-                        {'¿Fusionar «' +
-                          speaker.name +
-                          '» en «' +
-                          targetSpeaker.name +
-                          '»?'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void merge(speaker, target)
-                        }}
-                      >
-                        Sí, fusionar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirming(null)
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      commitName(speaker)
+                    } else if (event.key === 'Escape') {
+                      setNames((current) => without(current, speaker.id))
+                    }
+                  }}
+                />
+                <Tag type="gray" size="md">
+                  {speaker.segment_count === 1
+                    ? '1 segmento'
+                    : speaker.segment_count + ' segmentos'}
+                </Tag>
+                {others.length > 0 && (
+                  <div className="voz-speakers__merge">
+                    <Select
+                      id={'speaker-merge-' + speaker.id}
+                      size="md"
+                      hideLabel
+                      labelText={'Fusionar ' + speaker.name + ' en'}
+                      value={target}
+                      onChange={(event) => {
+                        setMergeTargets({
+                          ...mergeTargets,
+                          [speaker.id]: event.target.value,
+                        })
+                      }}
+                    >
+                      {others.map((item) => (
+                        <SelectItem key={item.id} value={item.id} text={item.name} />
+                      ))}
+                    </Select>
+                    <Button
+                      kind="tertiary"
+                      size="md"
                       onClick={() => {
                         setConfirming(speaker.id)
                       }}
                     >
                       Fusionar
-                    </button>
-                  )}
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-    </section>
+                    </Button>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      </Panel>
+      {mergeSource && mergeTarget ? (
+        <Modal
+          open
+          danger
+          size="xs"
+          closeButtonLabel="Cerrar"
+          modalHeading="Fusionar hablantes"
+          primaryButtonText="Sí, fusionar"
+          secondaryButtonText="Cancelar"
+          onRequestClose={() => {
+            setConfirming(null)
+          }}
+          onRequestSubmit={() => {
+            void merge(mergeSource, mergeTarget.id)
+          }}
+        >
+          <p>
+            {'¿Fusionar «' +
+              mergeSource.name +
+              '» en «' +
+              mergeTarget.name +
+              '»? Sus segmentos pasarán al hablante de destino.'}
+          </p>
+        </Modal>
+      ) : null}
+    </>
   )
 }

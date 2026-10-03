@@ -1,5 +1,21 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { FormEvent } from 'react'
+import {
+  Button,
+  DataTable,
+  Modal,
+  ProgressBar,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tag,
+  TextInput,
+} from '@carbon/react'
+import { ErrorFilled, TrashCan } from '@carbon/icons-react'
 
 import { isAbortError } from '../api/errors'
 import {
@@ -17,7 +33,9 @@ import {
 import { isActiveTask, useModelTasks } from '../hooks/useModelTasks'
 import { formatBytes } from '../lib/formatBytes'
 import { compareModelIds } from '../lib/modelOrder'
-import './ModelManager.css'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import './ModelManager.scss'
 
 export interface ModelManagerProps {
   onModelsChanged?: () => void
@@ -73,7 +91,7 @@ function describeTask(task: TaskView): string {
   if (task.state === 'queued') {
     return 'En cola…'
   }
-  const verb = task.method === 'import' ? 'Importando desde Buzz' : 'Descargando'
+  const verb = task.method === 'import' ? 'Copiando desde este equipo' : 'Descargando'
   const percent = taskPercent(task)
   return percent === null
     ? verb + '…'
@@ -99,48 +117,17 @@ function latestByModel(tasks: TaskView[]): Map<string, TaskView> {
   return latest
 }
 
-interface ModalDialogProps {
-  title: string
-  onClose: () => void
-  children: ReactNode
-}
-
-/** `<dialog>` nativo modal: Escape cierra, el foco entra al abrir y vuelve al disparador. */
-function ModalDialog({ title, onClose, children }: ModalDialogProps) {
-  const ref = useRef<HTMLDialogElement>(null)
-  const titleId = useId()
-
+/** Al desmontar un diálogo, el foco vuelve al control que lo abrió (si sigue en pantalla). */
+function useRestoreFocus() {
   useEffect(() => {
-    const dialog = ref.current
-    if (!dialog) {
-      return
-    }
     const opener = document.activeElement
-    dialog.showModal()
-    dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus()
     return () => {
-      dialog.close()
       // ponytail: si el disparador ya no existe (p. ej. pasó a mostrar progreso) el foco cae al body.
       if (opener instanceof HTMLElement && opener.isConnected) {
         opener.focus()
       }
     }
   }, [])
-
-  return (
-    <dialog
-      ref={ref}
-      className="model-dialog"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault()
-        onClose()
-      }}
-    >
-      <h3 id={titleId}>{title}</h3>
-      {children}
-    </dialog>
-  )
 }
 
 function DownloadDialog({
@@ -154,9 +141,19 @@ function DownloadDialog({
   onConfirm: () => void
   onClose: () => void
 }) {
+  useRestoreFocus()
   const insufficient = freeBytes !== null && freeBytes < model.size_bytes
   return (
-    <ModalDialog title={'Descargar ' + model.display_name} onClose={onClose}>
+    <Modal
+      open
+      size="sm"
+      closeButtonLabel="Cerrar"
+      modalHeading={'Descargar ' + model.display_name}
+      primaryButtonText="Descargar"
+      secondaryButtonText="Cancelar"
+      onRequestClose={onClose}
+      onRequestSubmit={onConfirm}
+    >
       <p>
         Se descargarán <strong>{formatBytes(model.size_bytes)}</strong> desde{' '}
         {model.kind === 'diarization' ? (
@@ -170,25 +167,17 @@ function DownloadDialog({
         funciona sin conexión.
       </p>
       {insufficient ? (
-        <p className="model-dialog-warning" role="alert">
-          Solo quedan {formatBytes(freeBytes)} libres: la descarga probablemente
-          falle por falta de espacio.
-        </p>
+        <Notice
+          kind="warning"
+          role="alert"
+          title={
+            'Solo quedan ' +
+            formatBytes(freeBytes) +
+            ' libres: la descarga probablemente falle por falta de espacio.'
+          }
+        />
       ) : null}
-      <div className="model-dialog-actions">
-        <button type="button" onClick={onClose}>
-          Cancelar
-        </button>
-        <button
-          type="button"
-          className="model-primary"
-          data-autofocus
-          onClick={onConfirm}
-        >
-          Descargar
-        </button>
-      </div>
-    </ModalDialog>
+    </Modal>
   )
 }
 
@@ -201,14 +190,16 @@ function DeleteDialog({
   onDeleted: () => void
   onClose: () => void
 }) {
+  useRestoreFocus()
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputId = useId()
+  const matches = typed === model.model_id
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    if (typed !== model.model_id || busy) {
+  const submit = (event?: FormEvent) => {
+    event?.preventDefault()
+    if (!matches || busy) {
       return
     }
     setBusy(true)
@@ -222,51 +213,48 @@ function DeleteDialog({
   }
 
   return (
-    <ModalDialog title={'Eliminar ' + model.display_name} onClose={onClose}>
-      <form onSubmit={submit}>
-        <p>
-          Se liberarán{' '}
-          <strong>{formatBytes(model.disk_bytes ?? model.size_bytes)}</strong>{' '}
-          de disco. Tus transcripciones se conservan, pero no podrás volver a
-          usar este modelo hasta instalarlo otra vez.
-        </p>
-        <label htmlFor={inputId}>
-          Para confirmar, escribe <code>{model.model_id}</code>
-        </label>
-        <input
-          id={inputId}
-          type="text"
-          value={typed}
-          autoComplete="off"
-          spellCheck={false}
-          data-autofocus
-          onChange={(event) => {
-            setTyped(event.target.value)
-          }}
-        />
-        {error ? (
-          <p className="model-dialog-warning" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <div className="model-dialog-actions">
-          <button type="button" onClick={onClose}>
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="model-danger"
-            disabled={typed !== model.model_id || busy}
-          >
-            {busy ? 'Eliminando…' : 'Eliminar'}
-          </button>
-        </div>
-      </form>
-    </ModalDialog>
+    <Modal
+      open
+      danger
+      size="sm"
+      closeButtonLabel="Cerrar"
+      modalHeading={'Eliminar ' + model.display_name}
+      primaryButtonText={busy ? 'Eliminando…' : 'Eliminar'}
+      secondaryButtonText="Cancelar"
+      primaryButtonDisabled={!matches || busy}
+      shouldSubmitOnEnter
+      onRequestClose={onClose}
+      onRequestSubmit={() => {
+        submit()
+      }}
+    >
+      <p>
+        Se liberarán{' '}
+        <strong>{formatBytes(model.disk_bytes ?? model.size_bytes)}</strong> de
+        disco. Tus transcripciones se conservan, pero no podrás volver a usar
+        este modelo hasta instalarlo otra vez.
+      </p>
+      <TextInput
+        id={inputId}
+        data-modal-primary-focus
+        labelText={
+          <>
+            Para confirmar, escribe <code>{model.model_id}</code>
+          </>
+        }
+        value={typed}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(event) => {
+          setTyped(event.target.value)
+        }}
+      />
+      {error ? <Notice kind="error" title={error} /> : null}
+    </Modal>
   )
 }
 
-interface ModelRowProps {
+interface ModelCellProps {
   model: ModelView
   task: TaskView | undefined
   notice: string | undefined
@@ -277,159 +265,289 @@ interface ModelRowProps {
   onCancel: (task: TaskView) => void
 }
 
-function ModelRow({
-  model,
-  task,
-  notice,
-  busy,
-  onImport,
-  onDownload,
-  onDelete,
-  onCancel,
-}: ModelRowProps) {
-  const titleId = useId()
-  const helpId = useId()
-  const hasBuzz = model.external.some((entry) => entry.origin === 'buzz')
-  const missingRuntime = !model.runtime_available && model.requires !== null
-  const active = task && isActiveTask(task) ? task : undefined
+function localCopy(model: ModelView): boolean {
+  // El backend marca con `origin` de dónde viene la copia; la UI no nombra la app.
+  return model.external.some((entry) => entry.origin === 'buzz')
+}
+
+function statusOf(model: ModelView): string {
+  return model.installed
+    ? 'Instalado'
+    : localCopy(model)
+      ? 'Ya está en este equipo'
+      : 'No instalado'
+}
+
+function StatusTag({ model }: { model: ModelView }) {
+  return (
+    <Tag
+      size="md"
+      type={model.installed ? 'green' : localCopy(model) ? 'cyan' : 'gray'}
+    >
+      {statusOf(model)}
+    </Tag>
+  )
+}
+
+function NameCell({ model, task, notice }: Pick<ModelCellProps, 'model' | 'task' | 'notice'>) {
   const failure =
     !model.installed && task?.state === 'failed'
       ? messageForModelError(task.error_code ?? 'model_task_failed')
       : null
   const cancelled = !model.installed && task?.state === 'cancelled'
-  const status = model.installed
-    ? 'Instalado'
-    : hasBuzz
-      ? 'Disponible en Buzz'
-      : 'No instalado'
-  const percent = active ? taskPercent(active) : null
-
+  const missingRuntime = !model.runtime_available && model.requires !== null
   return (
-    <li
-      className={'model-row' + (model.installed ? ' model-row--installed' : '')}
-      aria-labelledby={titleId}
-    >
-      <div className="model-head">
-        <h3 id={titleId}>{model.display_name}</h3>
+    <div className="voz-model">
+      <div className="voz-model__head">
+        <strong className="voz-model__name">{model.display_name}</strong>
         {model.key === RECOMMENDED_KEY ? (
-          <span className="model-badge model-badge--recommended">
+          <Tag type="green" size="sm">
             Recomendado
-          </span>
+          </Tag>
         ) : null}
-        <span
-          className={
-            'model-badge' + (model.installed ? ' model-badge--installed' : '')
-          }
-        >
-          {status}
-        </span>
       </div>
-
-      <dl className="model-meta">
-        {model.profile !== null ? (
-          <div>
-            <dt>Perfil</dt>
-            <dd>{PROFILE_LABELS[model.profile] ?? model.profile}</dd>
-          </div>
-        ) : null}
-        <div>
-          <dt>Tamaño</dt>
-          <dd>{formatBytes(model.size_bytes)}</dd>
-        </div>
-        <div>
-          <dt>Licencia</dt>
-          <dd>{model.license}</dd>
-        </div>
-        {model.requires !== null ? (
-          <div>
-            <dt>Requiere</dt>
-            <dd>{requiresLabel(model.requires)}</dd>
-          </div>
-        ) : null}
-        {model.installed && model.disk_bytes !== null ? (
-          <div>
-            <dt>En disco</dt>
-            <dd>{formatBytes(model.disk_bytes)}</dd>
-          </div>
-        ) : null}
-      </dl>
-
-      {active ? (
-        <div className="model-progress" role="status">
-          <progress
-            aria-label={'Progreso de ' + model.display_name}
-            max={active.total_bytes > 0 ? active.total_bytes : undefined}
-            value={
-              active.total_bytes > 0 && percent !== null
-                ? active.done_bytes
-                : undefined
-            }
-          />
-          <span>{describeTask(active)}</span>
-          <button
-            type="button"
-            onClick={() => {
-              onCancel(active)
-            }}
-          >
-            Cancelar
-          </button>
-        </div>
-      ) : (
-        <div className="model-actions">
-          {!model.installed && !missingRuntime && hasBuzz ? (
-            <>
-              <button
-                type="button"
-                className="model-primary"
-                disabled={busy}
-                aria-describedby={helpId}
-                onClick={onImport}
-              >
-                Importar desde Buzz
-              </button>
-              <p className="model-help" id={helpId}>
-                Reutiliza los archivos que Buzz ya tiene en este equipo: no
-                descarga nada y no los mueve ni los modifica.
-              </p>
-            </>
-          ) : null}
-          {!model.installed && missingRuntime ? (
-            <p className="model-help">
-              Requiere {requiresLabel(model.requires ?? '')}: sin él no se puede
-              usar, así que no se ofrece instalarlo.
-            </p>
-          ) : !model.installed ? (
-            <button type="button" disabled={busy} onClick={onDownload}>
-              Descargar ({formatBytes(model.size_bytes)})
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="model-danger"
-              disabled={busy}
-              onClick={onDelete}
-            >
-              Eliminar
-            </button>
-          )}
-        </div>
-      )}
-
+      {model.requires !== null ? (
+        <span className="voz-model__sub">
+          {'Requiere ' +
+            requiresLabel(model.requires) +
+            (!model.installed && missingRuntime
+              ? ': sin él no se puede usar, así que no se ofrece instalarlo.'
+              : '')}
+        </span>
+      ) : null}
       {failure ? (
-        <p className="model-error" role="alert">
+        <span className="voz-model__error" role="alert">
+          <ErrorFilled size={16} aria-hidden="true" />
           {failure}
-        </p>
+        </span>
       ) : null}
       {notice ? (
-        <p className="model-error" role="alert">
+        <span className="voz-model__error" role="alert">
+          <ErrorFilled size={16} aria-hidden="true" />
           {notice}
-        </p>
+        </span>
       ) : null}
-      {cancelled && !active ? (
-        <p className="model-help">Instalación cancelada.</p>
+      {cancelled ? <span className="voz-model__sub">Instalación cancelada.</span> : null}
+    </div>
+  )
+}
+
+function ActionsCell({
+  model,
+  task,
+  busy,
+  onImport,
+  onDownload,
+  onDelete,
+  onCancel,
+}: Omit<ModelCellProps, 'notice'>) {
+  const helpId = useId()
+  const missingRuntime = !model.runtime_available && model.requires !== null
+  const active = task && isActiveTask(task) ? task : undefined
+  const percent = active ? taskPercent(active) : null
+
+  if (active) {
+    return (
+      <div className="voz-model__progress" role="status">
+        <ProgressBar
+          size="small"
+          hideLabel
+          label={'Progreso de ' + model.display_name}
+          helperText={describeTask(active)}
+          {...(active.total_bytes > 0 && percent !== null
+            ? { value: active.done_bytes, max: active.total_bytes }
+            : {})}
+        />
+        <Button
+          kind="ghost"
+          size="sm"
+          onClick={() => {
+            onCancel(active)
+          }}
+        >
+          Cancelar
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="voz-model__actions">
+      {!model.installed && !missingRuntime && localCopy(model) ? (
+        <>
+          <Button
+            kind="primary"
+            size="sm"
+            disabled={busy}
+            aria-describedby={helpId}
+            onClick={onImport}
+          >
+            Usar copia local
+          </Button>
+          <span className="voz-model__sub" id={helpId}>
+            Reutiliza archivos de otra app de este equipo sin descargar nada.
+          </span>
+        </>
       ) : null}
-    </li>
+      {!model.installed && !missingRuntime ? (
+        <Button kind="tertiary" size="sm" disabled={busy} onClick={onDownload}>
+          Descargar ({formatBytes(model.size_bytes)})
+        </Button>
+      ) : null}
+      {model.installed ? (
+        <Button
+          kind="danger--ghost"
+          size="sm"
+          renderIcon={TrashCan}
+          disabled={busy}
+          onClick={onDelete}
+        >
+          Eliminar
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
+/** Texto accesible del orden de columnas (Carbon lo trae en inglés). */
+function sortLabel(
+  _id: string,
+  args?: { header?: unknown; sortDirection?: unknown; isSortHeader?: boolean },
+): string {
+  const header = typeof args?.header === 'string' ? args.header : ''
+  if (!args?.isSortHeader || args.sortDirection === 'NONE') {
+    return 'Ordenar las filas por ' + header + ' de forma ascendente'
+  }
+  return args.sortDirection === 'ASC'
+    ? 'Ordenar las filas por ' + header + ' de forma descendente'
+    : 'Quitar el orden por ' + header
+}
+
+const HEADERS = [
+  { key: 'name', header: 'Modelo' },
+  { key: 'status', header: 'Estado' },
+  { key: 'profile', header: 'Perfil' },
+  { key: 'size', header: 'Tamaño' },
+  { key: 'license', header: 'Licencia' },
+  { key: 'actions', header: 'Acciones' },
+]
+
+interface ModelTableProps {
+  label: string
+  onCancel: (task: TaskView) => void
+  models: ModelView[]
+  latest: Map<string, TaskView>
+  notices: Record<string, string>
+  onImportModel: (model: ModelView) => void
+  onDownloadModel: (model: ModelView) => void
+  onDeleteModel: (model: ModelView) => void
+  busyIds: ReadonlySet<string>
+}
+
+function ModelTable({
+  label,
+  models,
+  latest,
+  notices,
+  busyIds,
+  onImportModel,
+  onDownloadModel,
+  onDeleteModel,
+  onCancel,
+}: ModelTableProps) {
+  const byKey = new Map(models.map((model) => [model.key, model]))
+  const rows = models.map((model) => ({
+    id: model.key,
+    name: model.display_name,
+    status: statusOf(model),
+    profile: model.profile === null ? '' : (PROFILE_LABELS[model.profile] ?? model.profile),
+    size: model.size_bytes,
+    license: model.license,
+    actions: '',
+  }))
+
+  return (
+    <DataTable rows={rows} headers={HEADERS} isSortable size="lg">
+      {({ rows: tableRows, headers, getHeaderProps, getRowProps, getTableProps }) => (
+        <TableContainer aria-label={label}>
+          <Table {...getTableProps()} aria-label={label}>
+            <TableHead>
+              <TableRow>
+                {headers.map((header) => {
+                  const { key, isSortable, ...headerProps } = getHeaderProps({
+                    header,
+                    isSortable: header.key !== 'actions',
+                  })
+                  return (
+                    <TableHeader
+                      key={key}
+                      isSortable={isSortable === true}
+                      translateWithId={sortLabel}
+                      {...headerProps}
+                    >
+                      {header.header}
+                    </TableHeader>
+                  )
+                })}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {tableRows.map((row) => {
+                const model = byKey.get(row.id)
+                if (!model) {
+                  return null
+                }
+                const task = latest.get(model.key)
+                const { key, ...rowProps } = getRowProps({ row })
+                return (
+                  <TableRow key={key} {...rowProps}>
+                    <TableCell>
+                      <NameCell model={model} task={task} notice={notices[model.key]} />
+                    </TableCell>
+                    <TableCell>
+                      <StatusTag model={model} />
+                    </TableCell>
+                    <TableCell>
+                      {model.profile === null
+                        ? '—'
+                        : (PROFILE_LABELS[model.profile] ?? model.profile)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="voz-model__size">
+                        <span>{formatBytes(model.size_bytes)}</span>
+                        {model.installed && model.disk_bytes !== null ? (
+                          <span className="voz-model__sub">
+                            {'En disco: ' + formatBytes(model.disk_bytes)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>{model.license}</TableCell>
+                    <TableCell>
+                      <ActionsCell
+                        model={model}
+                        task={task}
+                        busy={busyIds.has(model.key)}
+                        onImport={() => {
+                          onImportModel(model)
+                        }}
+                        onDownload={() => {
+                          onDownloadModel(model)
+                        }}
+                        onDelete={() => {
+                          onDeleteModel(model)
+                        }}
+                        onCancel={onCancel}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </DataTable>
   )
 }
 
@@ -521,46 +639,46 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const asr = models.filter((m) => m.kind !== 'diarization').sort(compareModels)
   const speakers = models.filter((m) => m.kind === 'diarization')
 
-  const renderList = (list: ModelView[]) => (
-    <ul className="model-list">
-      {list.map((model) => (
-        <ModelRow
-          key={model.key}
-          model={model}
-          task={latest.get(model.key)}
-          notice={notices[model.key]}
-          busy={busyIds.has(model.key)}
-          onImport={() => {
-            install(model, 'import')
-          }}
-          onDownload={() => {
-            setDialog({ kind: 'download', model })
-          }}
-          onDelete={() => {
-            setDialog({ kind: 'delete', model })
-          }}
-          onCancel={cancel}
-        />
-      ))}
-    </ul>
+  const renderTable = (label: string, list: ModelView[]) => (
+    <ModelTable
+      label={label}
+      models={list}
+      latest={latest}
+      notices={notices}
+      busyIds={busyIds}
+      onCancel={cancel}
+      onImportModel={(model) => {
+        install(model, 'import')
+      }}
+      onDownloadModel={(model) => {
+        setDialog({ kind: 'download', model })
+      }}
+      onDeleteModel={(model) => {
+        setDialog({ kind: 'delete', model })
+      }}
+    />
   )
 
   return (
-    <section className="model-manager" aria-labelledby={headingId}>
-      <h2 id={headingId}>Modelos</h2>
+    <section className="voz-models" aria-labelledby={headingId}>
+      <h2 id={headingId} className="voz-section-title">
+        Motores de transcripción
+      </h2>
 
       {state.phase === 'loading' ? (
-        <p aria-live="polite">Consultando los modelos de este equipo…</p>
-      ) : state.phase === 'error' ? (
-        <div className="model-error" role="alert">
-          <p>{state.message}</p>
-          <button type="button" onClick={retry}>
-            Reintentar
-          </button>
+        <div aria-live="polite">
+          <Busy description="Consultando los modelos de este equipo…" />
         </div>
+      ) : state.phase === 'error' ? (
+        <Notice
+          kind="error"
+          title="No se pudieron consultar los modelos"
+          subtitle={state.message}
+          action={{ label: 'Reintentar', onClick: retry }}
+        />
       ) : (
         <>
-          <p className="model-disk">
+          <p className="voz-models__disk">
             Los modelos instalados ocupan{' '}
             <strong>{formatBytes(state.payload.disk.models_bytes)}</strong>
             {' · '}Espacio libre:{' '}
@@ -571,19 +689,22 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
             </strong>
           </p>
           {tasksError && polling ? (
-            <p className="model-error" role="alert">
-              No se pudo actualizar el progreso; se sigue intentando.
-            </p>
+            <Notice
+              kind="error"
+              title="No se pudo actualizar el progreso; se sigue intentando."
+            />
           ) : null}
-          {renderList(asr)}
+          {asr.length > 0 ? renderTable('Motores de transcripción', asr) : null}
           {speakers.length > 0 ? (
-            <section aria-labelledby={speakersId} className="model-speakers">
-              <h2 id={speakersId}>Hablantes</h2>
-              <p className="model-help">
+            <section aria-labelledby={speakersId} className="voz-models__speakers">
+              <h2 id={speakersId} className="voz-section-title">
+                Hablantes
+              </h2>
+              <p className="voz-section-description">
                 Permite activar «Detectar quién habla» en las transcripciones.
                 Funciona sin conexión una vez instalado.
               </p>
-              {renderList(speakers)}
+              {renderTable('Modelos de hablantes', speakers)}
             </section>
           ) : null}
         </>

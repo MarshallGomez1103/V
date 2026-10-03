@@ -106,6 +106,13 @@ const tasks =
       ? jsonResponse(200, { tasks: list })
       : undefined
 
+/** Filas de datos de una tabla (sin la fila de encabezados). */
+function dataRows(root: HTMLElement | Document = document): HTMLElement[] {
+  return within(root as HTMLElement)
+    .getAllByRole('row')
+    .slice(1)
+}
+
 describe('ModelManager', () => {
   it('lista los modelos en orden de catálogo con tamaño, perfil, licencia y disco', async () => {
     stubApi(
@@ -119,10 +126,18 @@ describe('ModelManager', () => {
 
     render(<ModelManager />)
 
-    expect(await screen.findByRole('heading', { level: 2, name: 'Modelos' })).toBeDefined()
-    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
-    expect(headings).toEqual([
-      'Faster Whisper turbo',
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Motores de transcripción' }),
+    ).toBeDefined()
+    expect(
+      screen
+        .getAllByRole('columnheader')
+        // Quita el texto accesible de ordenación que Carbon antepone al título.
+        .map((header) => header.textContent?.replace(/^Ordenar .* ascendente/, '')),
+    ).toEqual(['Modelo', 'Estado', 'Perfil', 'Tamaño', 'Licencia', 'Acciones'])
+    const names = dataRows().map((row) => within(row).getAllByRole('cell')[0]?.textContent)
+    expect(names).toEqual([
+      'Faster Whisper turboRecomendado',
       'Faster Whisper large-v3',
       'Faster Whisper tiny',
     ])
@@ -134,7 +149,7 @@ describe('ModelManager', () => {
     expect(screen.getAllByText('MIT').length).toBeGreaterThan(0)
   })
 
-  it('ofrece importar desde Buzz sin descargar y avisa al terminar', async () => {
+  it('ofrece usar la copia local sin descargar y avisa al terminar', async () => {
     let installBody: unknown
     let listed = 0
     const onModelsChanged = vi.fn()
@@ -167,8 +182,13 @@ describe('ModelManager', () => {
 
     render(<ModelManager onModelsChanged={onModelsChanged} />)
 
-    expect(await screen.findByText('Disponible en Buzz')).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: /importar desde buzz/i }))
+    expect(await screen.findByText('Ya está en este equipo')).toBeDefined()
+    expect(
+      screen.getByText(/reutiliza archivos de otra app de este equipo sin descargar nada/i),
+    ).toBeDefined()
+    // La app nunca nombra a la aplicación de origen: el origen solo viaja en la API.
+    expect(document.body.textContent).not.toMatch(/buzz/i)
+    fireEvent.click(screen.getByRole('button', { name: /usar copia local/i }))
 
     await waitFor(() => {
       expect(onModelsChanged).toHaveBeenCalledTimes(1)
@@ -176,11 +196,13 @@ describe('ModelManager', () => {
     expect(installBody).toEqual({ method: 'import', origin: 'buzz', confirm: true })
   })
 
-  it('no ofrece importar si Buzz no tiene el modelo', async () => {
+  it('no ofrece usar una copia local si el backend no detecta ninguna', async () => {
     stubApi(models([model({ model_id: 'tiny' })]), tasks([]))
     render(<ModelManager />)
     await screen.findByRole('button', { name: /descargar/i })
-    expect(screen.queryByRole('button', { name: /importar desde buzz/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /usar copia local/i })).toBeNull()
+    expect(screen.queryByText('Ya está en este equipo')).toBeNull()
+    expect(screen.getByText('No instalado')).toBeDefined()
   })
 
   it('pide confirmación con tamaño y origen antes de descargar', async () => {
@@ -251,7 +273,7 @@ describe('ModelManager', () => {
     expect(status.textContent).toMatch(/25 %/)
     expect(status.textContent).toMatch(/400\sMB de 1,6\sGB/)
     const bar = within(status).getByRole('progressbar')
-    expect(bar.getAttribute('value')).toBe('400000000')
+    expect(bar.getAttribute('aria-valuenow')).toBe('400000000')
 
     fireEvent.click(within(status).getByRole('button', { name: 'Cancelar' }))
 
@@ -375,8 +397,7 @@ describe('ModelManager', () => {
     })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Eliminar' }))
 
-    const alert = await within(dialog).findByRole('alert')
-    expect(alert.textContent).toMatch(/en uso por una transcripción/i)
+    expect(await within(dialog).findByText(/en uso por una transcripción/i)).toBeDefined()
     expect(screen.getByRole('dialog')).toBeDefined()
   })
 
@@ -399,7 +420,7 @@ describe('ModelManager', () => {
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toMatch(/código boom/i)
     fireEvent.click(within(alert).getByRole('button', { name: /reintentar/i }))
-    expect(await screen.findByRole('heading', { level: 3 })).toBeDefined()
+    expect(await screen.findByRole('table')).toBeDefined()
   })
 
   it('no ofrece acciones de instalación sobre un modelo con tarea activa', async () => {
@@ -436,13 +457,14 @@ describe('ModelManager', () => {
     )
 
     render(<ModelManager />)
-    const headings = (await screen.findAllByRole('heading', { level: 3 })).map(
-      (h) => h.textContent,
-    )
-    expect(headings).toEqual(['Faster Whisper Small', 'whisper.cpp Small'])
-    expect(screen.getByText('whisper-cli')).toBeDefined()
+    await screen.findByRole('table')
+    const rows = dataRows()
+    expect(rows.map((row) => within(row).getAllByRole('cell')[0]?.textContent)).toEqual([
+      'Faster Whisper Small',
+      'whisper.cpp SmallRequiere whisper-cli',
+    ])
 
-    const [, cpp] = screen.getAllByRole('listitem')
+    const [, cpp] = rows
     fireEvent.click(within(cpp as HTMLElement).getByRole('button', { name: /descargar/i }))
     const dialog = await screen.findByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Descargar' }))
@@ -470,7 +492,7 @@ describe('ModelManager', () => {
     render(<ModelManager />)
     await screen.findByRole('status')
 
-    const [faster, cpp] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
+    const [faster, cpp] = dataRows() as [HTMLElement, HTMLElement]
     expect(within(faster).getByRole('button', { name: /descargar/i })).toBeDefined()
     expect(within(cpp).getByRole('status')).toBeDefined()
   })
@@ -514,9 +536,10 @@ describe('ModelManager', () => {
       const section = (
         await screen.findByRole('heading', { level: 2, name: 'Hablantes' })
       ).closest('section') as HTMLElement
-      expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(1)
+      expect(dataRows(section)).toHaveLength(1)
       expect(section.textContent).toMatch(/Apache-2\.0/)
-      expect(section.textContent).not.toMatch(/Perfil/)
+      // Sin perfil: la columna muestra un guion, no «Rápido» ni «Calidad».
+      expect(section.textContent).not.toMatch(/Rápido|Calidad/)
       fireEvent.click(within(section).getByRole('button', { name: /descargar \(33\sMB\)/i }))
       const dialog = await screen.findByRole('dialog')
       expect(dialog.textContent).toMatch(/GitHub/)
@@ -532,8 +555,8 @@ describe('ModelManager', () => {
 
       render(<ModelManager />)
 
-      const heading = await screen.findByRole('heading', { level: 3 })
-      const row = heading.closest('li') as HTMLElement
+      await screen.findByRole('table')
+      const [row] = dataRows() as [HTMLElement]
       expect(row.textContent).toMatch(/requiere el extra diarization/i)
       expect(within(row).queryByRole('button')).toBeNull()
     })

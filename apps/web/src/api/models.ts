@@ -95,7 +95,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   model_unknown: 'Ese modelo no está en el catálogo.',
   model_already_installed: 'Ese modelo ya está instalado.',
   external_model_not_found:
-    'Buzz ya no tiene este modelo. Descárgalo desde HuggingFace.',
+    'La copia local de este modelo ya no está disponible. Descárgalo desde HuggingFace.',
   model_task_terminal: 'La tarea ya había terminado.',
   model_task_not_found: 'La tarea ya no existe.',
   model_delete_unconfirmed: 'Falta confirmar el borrado del modelo.',
@@ -242,7 +242,7 @@ export function deleteModel(key: string): Promise<{ freed_bytes: number }> {
   )
 }
 
-/** Descarga (HuggingFace) o importación desde Buzz; el backend la ejecuta como tarea. */
+/** Descarga (HuggingFace) o copia local (origen buzz en la API); el backend la ejecuta como tarea. */
 export function installModel(
   key: string,
   method: InstallMethod,

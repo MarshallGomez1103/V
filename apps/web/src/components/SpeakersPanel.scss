@@ -1,0 +1,46 @@
+@use '../styles/carbon' as *;
+
+.voz-speakers {
+  display: grid;
+  gap: $spacing-04;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voz-speakers__item {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) auto;
+  align-items: center;
+  gap: $spacing-04;
+}
+
+.voz-speakers__color {
+  inline-size: $spacing-07;
+  block-size: $spacing-07;
+  padding: 0;
+  border: 1px solid $border-strong-01;
+  background: transparent;
+  cursor: pointer;
+}
+
+.voz-speakers__merge {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.voz-speakers__merge .cds--select {
+  flex: 1 1 auto;
+}
+
+@include breakpoint-up(lg) {
+  .voz-speakers__item {
+    grid-template-columns: auto minmax(8rem, 1fr) auto minmax(14rem, 1.2fr);
+  }
+
+  .voz-speakers__merge {
+    grid-column: auto;
+  }
+}

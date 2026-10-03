@@ -1,0 +1,6 @@
+@use '../styles/carbon' as *;
+
+.voz-glossary {
+  display: grid;
+  gap: $spacing-04;
+}

@@ -1,0 +1,33 @@
+@use '../styles/carbon' as *;
+
+.voz-review__current {
+  padding: $spacing-04 $spacing-05;
+  border-inline-start: 3px solid $support-warning;
+  background: $layer-02;
+}
+
+.voz-review__flags {
+  @include type-style('label-01');
+
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+  margin: 0 0 $spacing-02;
+  color: $text-secondary;
+
+  svg {
+    color: $support-warning;
+  }
+}
+
+.voz-review__text {
+  @include type-style('body-02');
+
+  margin: 0;
+}
+
+.voz-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+}

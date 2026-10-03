@@ -1,0 +1,134 @@
+@use '../styles/carbon' as *;
+
+// S5.11/S5.13/S5.15: barra de búsqueda, fila activa y contención por fila.
+
+.segment-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.segment-search {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+
+.segment-search-count {
+  @include type-style('code-01');
+
+  min-inline-size: 7ch;
+  color: $text-secondary;
+}
+
+.segments-scroll {
+  max-block-size: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: $layer-02;
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+.segments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// ponytail: content-visibility:auto es la "virtualización" nativa (S5.15).
+.segments .segment-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: $spacing-02 $spacing-05;
+  padding: $spacing-04 $spacing-05;
+  border-block-end: 1px solid $border-subtle-02;
+  border-inline-start: 3px solid transparent;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+.segments .segment-row[aria-current='true'] {
+  border-inline-start-color: $interactive;
+  background: $layer-selected-02;
+}
+
+.segment-seek {
+  @include type-style('code-01');
+
+  padding: $spacing-02 $spacing-03;
+  border: 0;
+  background: transparent;
+  color: $link-primary;
+  cursor: pointer;
+  text-align: start;
+  white-space: nowrap;
+
+  &:hover {
+    background: $layer-hover-02;
+    color: $link-primary-hover;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+.segments time {
+  @include type-style('code-01');
+
+  color: $text-secondary;
+}
+
+.segment-seek time {
+  color: inherit;
+}
+
+.segment-text {
+  @include type-style('body-02');
+
+  grid-column: 2;
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.segment-match {
+  background: $highlight;
+  color: inherit;
+}
+
+.segment-match.is-current {
+  background: $interactive;
+  color: $text-on-color;
+}
+
+// S13.06: filas con pistas de calidad (el texto nunca se altera).
+.segments .segment-row.has-flags:not([aria-current='true']) {
+  border-inline-start-color: $support-warning;
+}
+
+.segment-flag {
+  position: absolute;
+  inset-block-start: $spacing-04;
+  inset-inline-end: $spacing-05;
+  color: $support-warning;
+  cursor: help;
+  line-height: 0;
+}
+
+@include breakpoint-down(md) {
+  .segments .segment-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .segment-text {
+    grid-column: 1;
+  }
+}

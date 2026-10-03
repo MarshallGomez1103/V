@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
+import { NumberInput, RadioButton, RadioButtonGroup, Toggle } from '@carbon/react'
 
-import './DiarizationOptions.css'
+import './DiarizationOptions.scss'
 
 export type DiarizationRequest = {
   enabled: boolean
@@ -60,113 +61,96 @@ export function DiarizationOptions({
     onChange({ ...value, speakers })
   }
 
+  const countProps = {
+    translateWithId: (id: string) =>
+      id === 'increment.number' ? 'Aumentar el número' : 'Disminuir el número',
+    min: 1,
+    max: MAX_SPEAKERS,
+    size: 'md' as const,
+    allowEmpty: true,
+    disabled,
+  }
+
   return (
-    <fieldset className="diarization-options" disabled={disabled}>
-      <legend className="diarization-options-legend">Hablantes</legend>
-      <label className="diarization-options-toggle">
-        <input
-          type="checkbox"
-          checked={value.enabled}
-          onChange={(event) => {
-            onChange({ ...value, enabled: event.target.checked })
-          }}
-        />
-        Detectar quién habla
-      </label>
-      {value.enabled && (
-        <div className="diarization-options-mode">
-          <label>
-            <input
-              type="radio"
-              name={name}
-              checked={mode === 'auto'}
-              onChange={() => {
-                choose('auto')
+    <div className="voz-diarization">
+      <Toggle
+        id={name + '-enabled'}
+        labelText="Detectar quién habla"
+        labelA="Desactivado"
+        labelB="Activado"
+        size="sm"
+        toggled={value.enabled}
+        disabled={disabled}
+        onToggle={(checked) => {
+          onChange({ ...value, enabled: checked })
+        }}
+      />
+      {value.enabled ? (
+        <div className="voz-diarization__mode">
+          <RadioButtonGroup
+            legendText="Cantidad de hablantes"
+            name={name}
+            orientation="horizontal"
+            valueSelected={mode}
+            disabled={disabled}
+            onChange={(next) => {
+              choose(next as Mode)
+            }}
+          >
+            <RadioButton id={name + '-auto'} value="auto" labelText="Automático" />
+            <RadioButton id={name + '-exact'} value="exact" labelText="Exacto" />
+            <RadioButton id={name + '-range'} value="range" labelText="Rango" />
+          </RadioButtonGroup>
+          {mode === 'exact' ? (
+            <NumberInput
+              {...countProps}
+              id={name + '-count'}
+              label="Número de hablantes"
+              value={exact ?? ''}
+              onChange={(_event, state) => {
+                const count = parseCount(String(state.value))
+                setSpeakers(count === undefined ? {} : { exact: count })
               }}
             />
-            Automático
-          </label>
-          <label>
-            <input
-              type="radio"
-              name={name}
-              checked={mode === 'exact'}
-              onChange={() => {
-                choose('exact')
-              }}
-            />
-            Exacto
-          </label>
-          {mode === 'exact' && (
-            <label>
-              Número de hablantes
-              <input
-                type="number"
-                min={1}
-                max={MAX_SPEAKERS}
-                value={exact ?? ''}
-                onChange={(event) => {
-                  const count = parseCount(event.target.value)
-                  setSpeakers(count === undefined ? {} : { exact: count })
+          ) : null}
+          {mode === 'range' ? (
+            <div className="voz-diarization__range">
+              <NumberInput
+                {...countProps}
+                id={name + '-min'}
+                label="Mínimo"
+                value={minimum ?? ''}
+                onChange={(_event, state) => {
+                  const count = parseCount(String(state.value))
+                  // Nunca se emite un rango invertido: el máximo sube con el mínimo.
+                  setSpeakers({
+                    ...(count === undefined ? {} : { minimum: count }),
+                    ...(maximum === undefined
+                      ? {}
+                      : { maximum: Math.max(maximum, count ?? 0) }),
+                  })
                 }}
               />
-            </label>
-          )}
-          <label>
-            <input
-              type="radio"
-              name={name}
-              checked={mode === 'range'}
-              onChange={() => {
-                choose('range')
-              }}
-            />
-            Rango
-          </label>
-          {mode === 'range' && (
-            <>
-              <label>
-                Mínimo
-                <input
-                  type="number"
-                  min={1}
-                  max={MAX_SPEAKERS}
-                  value={minimum ?? ''}
-                  onChange={(event) => {
-                    const count = parseCount(event.target.value)
-                    // Nunca se emite un rango invertido: el máximo sube con el mínimo.
-                    setSpeakers({
-                      ...(count === undefined ? {} : { minimum: count }),
-                      ...(maximum === undefined
-                        ? {}
-                        : { maximum: Math.max(maximum, count ?? 0) }),
-                    })
-                  }}
-                />
-              </label>
-              <label>
-                Máximo
-                <input
-                  type="number"
-                  min={1}
-                  max={MAX_SPEAKERS}
-                  value={maximum ?? ''}
-                  onChange={(event) => {
-                    const count = parseCount(event.target.value)
-                    // Nunca se emite un rango invertido: el mínimo baja con el máximo.
-                    setSpeakers({
-                      ...(minimum === undefined
-                        ? {}
-                        : { minimum: Math.min(minimum, count ?? minimum) }),
-                      ...(count === undefined ? {} : { maximum: count }),
-                    })
-                  }}
-                />
-              </label>
-            </>
-          )}
+              <NumberInput
+                {...countProps}
+                id={name + '-max'}
+                label="Máximo"
+                value={maximum ?? ''}
+                onChange={(_event, state) => {
+                  const count = parseCount(String(state.value))
+                  // Nunca se emite un rango invertido: el mínimo baja con el máximo.
+                  setSpeakers({
+                    ...(minimum === undefined
+                      ? {}
+                      : { minimum: Math.min(minimum, count ?? minimum) }),
+                    ...(count === undefined ? {} : { maximum: count }),
+                  })
+                }}
+              />
+            </div>
+          ) : null}
         </div>
-      )}
-    </fieldset>
+      ) : null}
+    </div>
   )
 }

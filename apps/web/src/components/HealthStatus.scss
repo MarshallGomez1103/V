@@ -1,0 +1,12 @@
+@use '../styles/carbon' as *;
+
+.voz-health {
+  @include type-style('helper-text-01');
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+  margin-block-end: $spacing-05;
+  color: $text-secondary;
+}

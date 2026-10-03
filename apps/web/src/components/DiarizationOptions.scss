@@ -1,0 +1,17 @@
+@use '../styles/carbon' as *;
+
+.voz-diarization {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-diarization__mode {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-diarization__range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-05;
+}

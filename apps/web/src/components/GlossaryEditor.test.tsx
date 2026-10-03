@@ -66,11 +66,11 @@ describe('GlossaryEditor', () => {
 
     fireEvent.change(box, { target: { value: 'a\nb\nc\nd' } })
     expect(save).toHaveProperty('disabled', true)
-    expect(screen.getByRole('alert').textContent).toContain('demasiados')
+    expect(screen.getByText(/demasiados/)).toBeTruthy()
 
     fireEvent.change(box, { target: { value: 'x'.repeat(11) } })
     expect(save).toHaveProperty('disabled', true)
-    expect(screen.getByRole('alert').textContent).toContain('supera')
+    expect(screen.getByText(/supera/)).toBeTruthy()
 
     fireEvent.change(box, { target: { value: 'ok' } })
     expect(save).toHaveProperty('disabled', false)
@@ -92,9 +92,7 @@ describe('GlossaryEditor', () => {
     fireEvent.change(box, { target: { value: 'VOZ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar glosario' }))
 
-    await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toContain('no es válido')
-    })
+    expect(await screen.findByText(/no es válido/)).toBeTruthy()
     expect(box).toHaveProperty('value', 'VOZ')
   })
 

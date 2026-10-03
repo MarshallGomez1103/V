@@ -1,0 +1,24 @@
+@use '../styles/carbon' as *;
+
+.voz-profile {
+  display: grid;
+  gap: $spacing-04;
+}
+
+.voz-profile__option {
+  display: grid;
+  gap: $spacing-01;
+}
+
+.voz-profile__label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.voz-profile__description {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}

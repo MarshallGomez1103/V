@@ -1,0 +1,61 @@
+@use '../styles/carbon' as *;
+
+.voz-panel {
+  padding: $spacing-06;
+  background: $layer-01;
+  color: $text-primary;
+}
+
+.voz-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-04;
+  margin-block-end: $spacing-05;
+}
+
+.voz-panel__heading {
+  min-inline-size: 0;
+}
+
+.voz-panel__title {
+  @include type-style('productive-heading-03');
+
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+h3.voz-panel__title {
+  @include type-style('productive-heading-02');
+}
+
+.voz-panel__description {
+  @include type-style('body-compact-01');
+
+  margin: $spacing-02 0 0;
+  color: $text-secondary;
+}
+
+.voz-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-04;
+}
+
+.voz-panel__body {
+  display: grid;
+  gap: $spacing-05;
+}
+
+@include breakpoint-down(md) {
+  .voz-panel {
+    padding: $spacing-05;
+  }
+}
+
+// El selector Leer/Editar no debe estirarse a todo el ancho disponible.
+.voz-panel__actions .cds--content-switcher {
+  inline-size: 12rem;
+}

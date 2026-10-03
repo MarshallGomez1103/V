@@ -1,8 +1,15 @@
 import { useSyncExternalStore } from 'react'
+import { Button } from '@carbon/react'
+import {
+  CheckmarkFilled,
+  ErrorFilled,
+  InProgress,
+  WarningAltFilled,
+} from '@carbon/icons-react'
 
 import type { SegmentDraftStore } from '../hooks/useSegmentDrafts'
 
-import './SegmentEditor.css'
+import './AutosaveStatus.scss'
 
 const LABELS = {
   saved: 'Todo guardado',
@@ -12,19 +19,26 @@ const LABELS = {
   conflict: 'Conflicto: elige qué versión conservar',
 } as const
 
+const ICONS = {
+  saved: CheckmarkFilled,
+  saving: InProgress,
+  dirty: WarningAltFilled,
+  error: ErrorFilled,
+  conflict: ErrorFilled,
+} as const
+
 export function AutosaveStatus({ drafts }: { drafts: SegmentDraftStore }) {
   const status = useSyncExternalStore(drafts.subscribe, drafts.getStatus)
+  const Icon = ICONS[status]
 
   return (
-    <p className={'autosave-status autosave-' + status} role="status">
-      {LABELS[status]}
+    <p className={'voz-autosave voz-autosave--' + status} role="status">
+      <Icon size={16} aria-hidden="true" />
+      <span>{LABELS[status]}</span>
       {status === 'error' && (
-        <>
-          {' — '}
-          <button type="button" className="autosave-retry" onClick={drafts.retryAll}>
-            Reintentar
-          </button>
-        </>
+        <Button kind="ghost" size="sm" onClick={drafts.retryAll}>
+          Reintentar
+        </Button>
       )}
     </p>
   )

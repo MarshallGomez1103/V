@@ -132,7 +132,7 @@ describe('SegmentList', () => {
 
     render(<SegmentList transcriptId="tr-1" />)
 
-    expect((await screen.findByRole('alert')).textContent).toBe(
+    expect((await screen.findByRole('alert')).textContent).toContain(
       'La transcripción ya no existe.',
     )
   })

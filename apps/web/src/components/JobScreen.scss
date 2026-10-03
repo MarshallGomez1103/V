@@ -1,0 +1,27 @@
+@use '../styles/carbon' as *;
+
+.voz-job__cloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+  @include type-style('body-compact-01');
+
+  color: $text-secondary;
+}
+
+.voz-job__steps {
+  max-inline-size: 100%;
+}
+
+@include breakpoint-down(md) {
+  .voz-job__steps {
+    flex-wrap: wrap;
+    row-gap: $spacing-03;
+  }
+}
+
+// Las etapas son informativas: se ven a color completo pero no se pulsan.
+.voz-job__steps button {
+  pointer-events: none;
+}

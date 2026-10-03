@@ -1,0 +1,17 @@
+@use '../styles/carbon' as *;
+
+// El área de soltar ocupa todo el ancho del panel (Carbon la limita a 20rem).
+.voz-dropzone {
+  .cds--file,
+  .cds--file__drop-container {
+    inline-size: 100%;
+    max-inline-size: none;
+  }
+
+  .cds--file__drop-container {
+    min-block-size: 8rem;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+}

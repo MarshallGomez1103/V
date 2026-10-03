@@ -1,67 +1,68 @@
 import { useState } from 'react'
+import {
+  MenuButton,
+  MenuItem,
+  MenuItemDivider,
+  MenuItemGroup,
+  MenuItemSelectable,
+} from '@carbon/react'
+import { Download } from '@carbon/icons-react'
 
 import {
   EXPORT_FORMATS,
   exportDocumentUrl,
-  supportsExportOptions,
   type ExportFormat,
 } from '../api/exportDocument'
-import './ExportMenu.css'
 
 export interface ExportMenuProps {
   transcriptId: string
 }
 
-// S10.14: el navegador descarga directamente; el servidor fija nombre y tipo.
+/** Descarga directa: el servidor fija nombre y tipo con `Content-Disposition`. */
+function download(href: string): void {
+  const link = document.createElement('a')
+  link.href = href
+  link.download = ''
+  document.body.append(link)
+  link.click()
+  link.remove()
+}
+
+// S10.14: el navegador descarga directamente; las opciones de tiempos y de
+// agrupación solo las aplican TXT y Markdown (lo decide `exportDocumentUrl`).
 export function ExportMenu({ transcriptId }: ExportMenuProps) {
-  const [format, setFormat] = useState<ExportFormat>('txt')
   const [timestamps, setTimestamps] = useState(false)
   const [groupBySpeaker, setGroupBySpeaker] = useState(false)
-  const optionsEnabled = supportsExportOptions(format)
-  const href = exportDocumentUrl(transcriptId, { format, timestamps, groupBySpeaker })
+
+  const exportAs = (format: ExportFormat) => {
+    download(exportDocumentUrl(transcriptId, { format, timestamps, groupBySpeaker }))
+  }
 
   return (
-    <div className="export-menu" role="group" aria-label="Exportar transcripción">
-      <label className="export-menu-field">
-        Formato
-        <select
-          value={format}
-          onChange={(event) => {
-            setFormat(event.target.value as ExportFormat)
-          }}
-        >
-          {EXPORT_FORMATS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="export-menu-field">
-        <input
-          type="checkbox"
-          checked={optionsEnabled && timestamps}
-          disabled={!optionsEnabled}
-          onChange={(event) => {
-            setTimestamps(event.target.checked)
-          }}
-        />
-        Incluir tiempos
-      </label>
-      <label className="export-menu-field">
-        <input
-          type="checkbox"
-          checked={optionsEnabled && groupBySpeaker}
-          disabled={!optionsEnabled}
-          onChange={(event) => {
-            setGroupBySpeaker(event.target.checked)
-          }}
-        />
-        Agrupar por speaker
-      </label>
-      <a className="export-menu-download" href={href} download>
-        Descargar
-      </a>
-    </div>
+    <MenuButton label="Exportar" kind="tertiary" size="md" menuAlignment="bottom-end">
+      <MenuItemSelectable
+        label="Incluir tiempos (TXT y Markdown)"
+        selected={timestamps}
+        onChange={setTimestamps}
+      />
+      <MenuItemSelectable
+        label="Agrupar por hablante (TXT y Markdown)"
+        selected={groupBySpeaker}
+        onChange={setGroupBySpeaker}
+      />
+      <MenuItemDivider />
+      <MenuItemGroup label="Descargar como">
+        {EXPORT_FORMATS.map((item) => (
+          <MenuItem
+            key={item.id}
+            label={item.label}
+            renderIcon={Download}
+            onClick={() => {
+              exportAs(item.id)
+            }}
+          />
+        ))}
+      </MenuItemGroup>
+    </MenuButton>
   )
 }

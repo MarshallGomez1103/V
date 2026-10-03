@@ -1,14 +1,10 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exportDocumentUrl } from '../api/exportDocument'
 import { ExportMenu } from './ExportMenu'
 
 afterEach(cleanup)
-
-function downloadHref(): string | null {
-  return screen.getByRole('link', { name: 'Descargar' }).getAttribute('href')
-}
 
 describe('exportDocumentUrl', () => {
   it('codifica el id y omite opciones apagadas', () => {
@@ -25,41 +21,82 @@ describe('exportDocumentUrl', () => {
 })
 
 describe('ExportMenu', () => {
-  it('ofrece descarga de TXT por defecto', () => {
-    render(<ExportMenu transcriptId="t1" />)
+  let clicked: { href: string; download: string }[]
 
-    const link = screen.getByRole('link', { name: 'Descargar' })
-    expect(link.hasAttribute('download')).toBe(true)
-    expect(downloadHref()).toBe('/api/transcripts/t1/export?format=txt')
+  beforeEach(() => {
+    clicked = []
+    // jsdom no descarga: se registra el enlace que el menú dispara.
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push({ href: this.getAttribute('href') ?? '', download: this.download })
+    })
   })
 
-  it('añade tiempos y agrupación al enlace', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function openMenu() {
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
+  }
+
+  it('ofrece los formatos de exportación y descarga TXT por defecto', () => {
     render(<ExportMenu transcriptId="t1" />)
+    openMenu()
 
-    fireEvent.click(screen.getByLabelText('Incluir tiempos'))
-    fireEvent.click(screen.getByLabelText('Agrupar por speaker'))
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent),
+    ).toEqual([
+      'Texto (.txt)',
+      'Markdown (.md)',
+      'Subtítulos SRT (.srt)',
+      'Subtítulos WebVTT (.vtt)',
+      'JSON canónico (.json)',
+    ])
 
-    expect(downloadHref()).toBe(
-      '/api/transcripts/t1/export?format=txt&timestamps=true&group_by_speaker=true',
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Texto (.txt)' }))
+
+    expect(clicked).toEqual([
+      { href: '/api/transcripts/t1/export?format=txt', download: '' },
+    ])
+  })
+
+  it('añade tiempos y agrupación a la descarga', () => {
+    render(<ExportMenu transcriptId="t1" />)
+    openMenu()
+
+    // Carbon cierra el menú al elegir una casilla: se reabre entre opciones.
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: /Incluir tiempos/ }),
+    )
+    openMenu()
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: /Incluir tiempos/ })
+        .getAttribute('aria-checked'),
+    ).toBe('true')
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: /Agrupar por hablante/ }),
+    )
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Markdown (.md)' }))
+
+    expect(clicked.at(-1)?.href).toBe(
+      '/api/transcripts/t1/export?format=markdown&timestamps=true&group_by_speaker=true',
     )
   })
 
-  it('deshabilita las opciones en formatos que no las soportan', () => {
+  it('ignora las opciones en formatos que no las soportan', () => {
     render(<ExportMenu transcriptId="t1" />)
-    fireEvent.click(screen.getByLabelText('Incluir tiempos'))
-
-    fireEvent.change(screen.getByLabelText('Formato'), { target: { value: 'vtt' } })
-
-    expect(screen.getByLabelText<HTMLInputElement>('Incluir tiempos').disabled).toBe(true)
-    expect(screen.getByLabelText<HTMLInputElement>('Agrupar por speaker').disabled).toBe(
-      true,
+    openMenu()
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: /Incluir tiempos/ }),
     )
-    expect(downloadHref()).toBe('/api/transcripts/t1/export?format=vtt')
+    openMenu()
 
-    fireEvent.change(screen.getByLabelText('Formato'), { target: { value: 'markdown' } })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Subtítulos WebVTT (.vtt)' }))
 
-    expect(downloadHref()).toBe(
-      '/api/transcripts/t1/export?format=markdown&timestamps=true',
-    )
+    expect(clicked.at(-1)?.href).toBe('/api/transcripts/t1/export?format=vtt')
   })
 })

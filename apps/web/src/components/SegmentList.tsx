@@ -7,6 +7,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
+import { Button, IconButton, Search } from '@carbon/react'
+import { ArrowDown, ArrowUp, PlayFilledAlt, WarningAltFilled } from '@carbon/icons-react'
 
 import { getSegments, type TranscriptSegment } from '../api/jobs'
 import { flagLabel } from '../lib/qualityFlags'
@@ -17,7 +19,10 @@ import {
   type SearchIndex,
   type TextRange,
 } from '../lib/segmentSearch'
-import './SegmentList.css'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import { Panel } from './Panel'
+import './SegmentList.scss'
 
 interface SegmentListProps {
   transcriptId: string | null
@@ -35,6 +40,8 @@ interface SegmentListProps {
   // S13.06: entrega los segmentos cargados (p. ej. a la cola de revisión).
   // Se llama cada vez que llega una lista nueva; no necesita ser estable.
   onSegmentsLoaded?: (segments: TranscriptSegment[]) => void
+  // Controles a la derecha del título del panel (modo, guardado, exportar).
+  headerActions?: ReactNode
 }
 
 type Outcome =
@@ -161,7 +168,7 @@ const SegmentRow = memo(function SegmentRow({
           aria-label={'Por revisar: ' + flags.map(flagLabel).join(', ')}
           title={flags.map(flagLabel).join(', ')}
         >
-          ⚠
+          <WarningAltFilled size={16} aria-hidden="true" />
         </span>
       ) : null}
       {renderText ? (
@@ -261,11 +268,12 @@ function TranscriptView({
 
   return (
     <>
-      <div className="segment-tools" role="search">
-        <input
-          type="search"
+      <div className="segment-tools">
+        <Search
+          size="md"
           className="segment-search"
-          aria-label="Buscar en la transcripción"
+          labelText="Buscar en la transcripción"
+          closeButtonLabelText="Limpiar búsqueda"
           placeholder="Buscar en el texto"
           value={query}
           onChange={(event) => {
@@ -284,38 +292,39 @@ function TranscriptView({
               ? 'Sin coincidencias'
               : (matchIndex % hitCount) + 1 + ' de ' + hitCount}
         </span>
-        <button
-          type="button"
-          className="segment-tool"
-          aria-label="Coincidencia anterior"
+        <IconButton
+          kind="ghost"
+          size="md"
+          label="Coincidencia anterior"
           disabled={hitCount === 0}
           onClick={() => {
             step(-1)
           }}
         >
-          ↑
-        </button>
-        <button
-          type="button"
-          className="segment-tool"
-          aria-label="Coincidencia siguiente"
+          <ArrowUp />
+        </IconButton>
+        <IconButton
+          kind="ghost"
+          size="md"
+          label="Coincidencia siguiente"
           disabled={hitCount === 0}
           onClick={() => {
             step(1)
           }}
         >
-          ↓
-        </button>
+          <ArrowDown />
+        </IconButton>
         {!follow && currentMs !== undefined ? (
-          <button
-            type="button"
-            className="segment-tool segment-follow"
+          <Button
+            kind="tertiary"
+            size="md"
+            renderIcon={PlayFilledAlt}
             onClick={() => {
               setFollow(true)
             }}
           >
             Seguir reproducción
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -377,6 +386,7 @@ export function SegmentList({
   renderText,
   reloadKey = 0,
   onSegmentsLoaded,
+  headerActions,
 }: SegmentListProps) {
   // El estado se asocia al id cargado; si no coincide con la prop, seguimos
   // cargando. Así el efecto nunca llama a setState de forma sincrónica.
@@ -429,24 +439,27 @@ export function SegmentList({
       : { phase: 'loading' }
 
   return (
-    <section className="segments-card" aria-labelledby="segments-title">
-      <div className="card-heading">
-        <div>
-          <p className="section-kicker">TEXTO</p>
-          <h2 id="segments-title">Segmentos</h2>
-        </div>
-      </div>
-
+    <Panel
+      titleId="segments-title"
+      title="Transcripción"
+      description={
+        state.phase === 'ready' && state.segments.length > 0
+          ? state.segments.length === 1
+            ? '1 segmento'
+            : state.segments.length + ' segmentos'
+          : undefined
+      }
+      actions={headerActions}
+      className="voz-segments"
+    >
       {state.phase === 'loading' ? (
-        <p className="empty-state" role="status">
-          Cargando la transcripción…
-        </p>
+        <div role="status">
+          <Busy description="Cargando la transcripción…" />
+        </div>
       ) : state.phase === 'error' ? (
-        <p className="job-error" role="alert">
-          {state.message}
-        </p>
+        <Notice kind="error" title={state.message} />
       ) : state.segments.length === 0 ? (
-        <p className="empty-state">La transcripción no contiene segmentos.</p>
+        <p className="voz-field-note">La transcripción no contiene segmentos.</p>
       ) : (
         <TranscriptView
           key={transcriptId}
@@ -456,6 +469,6 @@ export function SegmentList({
           renderText={renderText}
         />
       )}
-    </section>
+    </Panel>
   )
 }

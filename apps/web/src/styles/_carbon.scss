@@ -1,0 +1,5 @@
+// Atajo para los estilos de componentes propios: tokens Carbon sin emitir CSS.
+@forward '@carbon/styles/scss/spacing';
+@forward '@carbon/styles/scss/theme';
+@forward '@carbon/styles/scss/type';
+@forward '@carbon/styles/scss/breakpoint';

@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Accordion,
+  AccordionItem,
+  Button,
+  Column,
+  Content,
+  ContentSwitcher,
+  Grid,
+  ListItem,
+  Switch,
+  Theme,
+  UnorderedList,
+} from '@carbon/react'
 
 import { cancelJob, createJob, JobApiError } from './api/jobs'
 import type { TranscriptSegment } from './api/jobs'
 import { listSpeakers, type Speaker } from './api/speakers'
+import { AppHeader } from './components/AppHeader'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AutosaveStatus } from './components/AutosaveStatus'
 import {
@@ -15,6 +29,8 @@ import { HealthStatus } from './components/HealthStatus'
 import { JobScreen } from './components/JobScreen'
 import { ModelManager } from './components/ModelManager'
 import { NewProjectCard, type ImportResult } from './components/NewProjectCard'
+import { Notice } from './components/Notice'
+import { Panel } from './components/Panel'
 import { ProfileSelector } from './components/ProfileSelector'
 import { ProvidersSettings } from './components/ProvidersSettings'
 import { ReviewQueue } from './components/ReviewQueue'
@@ -25,35 +41,68 @@ import { SpeakersPanel } from './components/SpeakersPanel'
 import { TranscriptionOptionsSelector } from './components/TranscriptionOptionsSelector'
 import { Waveform } from './components/Waveform'
 import { WordText } from './components/WordText'
+import { useColorScheme } from './hooks/useColorScheme'
 import { useJobEvents } from './hooks/useJobEvents'
 import { useSegmentDrafts } from './hooks/useSegmentDrafts'
 import { useSeek } from './hooks/useSeek'
+import { NAV_ITEMS, type View } from './lib/navigation'
 import { createPlayhead } from './lib/playhead'
+import './App.scss'
 
-function BrandMark() {
-  return (
-    <span className="brand-mark" aria-hidden="true">
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  )
+const PAGE_TEXT: Record<View, { title: string; description: string }> = {
+  transcribir: {
+    title: 'Transcribir',
+    description:
+      'Importa una grabación, elige el motor y obtén texto editable. Todo se procesa en este equipo.',
+  },
+  modelos: {
+    title: 'Modelos',
+    description:
+      'Instala, reutiliza o elimina los modelos de este equipo. Funcionan sin Internet una vez instalados.',
+  },
+  proveedores: {
+    title: 'Proveedores cloud',
+    description:
+      'Opcional. Solo si eliges un proveedor para una transcripción concreta, tu audio sale de este equipo.',
+  },
 }
 
-function LockIcon() {
+function viewFromHash(hash: string): View {
+  const id = hash.replace(/^#/, '')
+  return NAV_ITEMS.find((item) => item.id === id)?.id ?? 'transcribir'
+}
+
+/** Sección activa, sincronizada con el hash de la URL (enlaces y botón Atrás). */
+function useView(): [View, (view: View) => void] {
+  const [view, setView] = useState<View>(() => viewFromHash(window.location.hash))
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setView(viewFromHash(window.location.hash))
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => {
+      window.removeEventListener('hashchange', onHashChange)
+    }
+  }, [])
+
+  const navigate = useCallback((next: View) => {
+    setView(next)
+    if (window.location.hash !== '#' + next) {
+      window.location.hash = next
+    }
+  }, [])
+
+  return [view, navigate]
+}
+
+function PageHeader({ view }: { view: View }) {
+  const { title, description } = PAGE_TEXT[view]
   return (
-    <svg
-      aria-hidden="true"
-      className="lock-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <path d="M7.5 10V7.5a4.5 4.5 0 0 1 9 0V10" />
-      <rect x="5" y="10" width="14" height="11" rx="3" />
-      <path d="M12 14.5v2" />
-    </svg>
+    <header className="voz-page__header">
+      <h1 className="voz-page__title">{title}</h1>
+      <p className="voz-page__description">{description}</p>
+    </header>
   )
 }
 
@@ -88,6 +137,8 @@ export function App() {
     speakers: {},
   })
   const [mode, setMode] = useState<'read' | 'edit'>('read')
+  const scheme = useColorScheme()
+  const [view, navigate] = useView()
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [speakersVersion, setSpeakersVersion] = useState(0)
   const [loadedSegments, setLoadedSegments] = useState<TranscriptSegment[]>([])
@@ -175,227 +226,216 @@ export function App() {
     }
   }, [transcriptId, speakersVersion])
 
+  const configDisabled = creating || jobId !== null
+
+  const transcriptTools = transcriptId ? (
+    <>
+      <ContentSwitcher
+        size="md"
+        aria-label="Modo de la transcripción"
+        selectedIndex={mode === 'read' ? 0 : 1}
+        onChange={({ name }) => {
+          setMode(name === 'edit' ? 'edit' : 'read')
+        }}
+      >
+        <Switch name="read" text="Leer" />
+        <Switch name="edit" text="Editar" />
+      </ContentSwitcher>
+      <AutosaveStatus drafts={drafts} />
+      <ExportMenu transcriptId={transcriptId} />
+    </>
+  ) : null
+
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#main" aria-label="VOZ, ir al inicio">
-          <BrandMark />
-          <span>VOZ</span>
-        </a>
-        <a className="topbar-link" href="#modelos">
-          Modelos
-        </a>
-        <div className="privacy-badge">
-          <LockIcon />
-          <span>Local y privado</span>
-        </div>
-      </header>
+    <Theme theme={scheme} className="voz-app">
+      <AppHeader view={view} onNavigate={navigate} />
 
-      <main id="main">
-        <section className="hero" aria-labelledby="hero-title">
-          <div className="eyebrow">
-            <span className="eyebrow-dot" aria-hidden="true" />
-            Tu audio. Tus palabras. Tu equipo.
-          </div>
-          <h1 id="hero-title">
-            Escucha menos.
-            <br />
-            <span>Encuentra más.</span>
-          </h1>
-          <p className="hero-copy">
-            VOZ es tu espacio local para convertir clases, entrevistas y
-            grabaciones largas en texto editable, sin entregar tus archivos a
-            terceros.
-          </p>
-        </section>
+      <Content id="main-content" className="voz-content">
+        <div hidden={view !== 'transcribir'}>
+          <Grid narrow className={'voz-grid' + (jobId ? ' voz-grid--job' : '')}>
+            <Column sm={4} md={8} lg={16}>
+              <PageHeader view="transcribir" />
+              <HealthStatus />
+            </Column>
 
-        <section className="workspace-grid" aria-label="Inicio de VOZ">
-          <div className="workflow">
-            <NewProjectCard onImported={setImported} />
+            <Column sm={4} md={8} lg={imported ? 16 : 10}>
+              <NewProjectCard onImported={setImported} />
+            </Column>
 
-            {imported ? (
-              <article className="import-card options-card" aria-label="Transcribir">
-                <div className="card-heading">
-                  <div>
-                    <p className="section-kicker">TRANSCRIBIR</p>
-                    <h2>Elige el motor</h2>
-                  </div>
-                </div>
-                <TranscriptionOptionsSelector
-                  refreshKey={modelsVersion}
-                  mediaAssetId={imported.media.media_asset_id}
-                  value={optionId}
-                  onChange={setOptionId}
-                  onCloudConsentChange={setCloudConsent}
-                  disabled={creating || jobId !== null}
-                />
-                <ProfileSelector
-                  value={profile}
-                  onChange={setProfile}
-                  language={null}
-                  disabled={creating || jobId !== null}
-                />
-                <GlossaryEditor
-                  projectId={imported.project.id}
-                  disabled={creating || jobId !== null}
-                />
-                <DiarizationOptions
-                  value={diarization}
-                  onChange={setDiarization}
-                  disabled={creating || jobId !== null}
-                />
-                {jobError ? (
-                  <p className="options-error" role="alert">
-                    {jobError}
+            {imported ? null : (
+              <Column sm={4} md={8} lg={6}>
+                <Panel titleId="privacy-title" title="Privacidad por diseño">
+                  <p className="voz-field-note">
+                    VOZ prioriza motores locales y funciona sin Internet una vez
+                    estén instalados los modelos elegidos.
                   </p>
-                ) : null}
-                <div className="import-actions">
-                  <button
-                    type="button"
-                    className="import-submit"
-                    disabled={
-                      !optionId || !cloudConsent || creating || jobId !== null
-                    }
-                    onClick={() => void startJob()}
-                  >
-                    {creating ? 'Creando…' : 'Transcribir'}
-                  </button>
-                </div>
-              </article>
-            ) : null}
+                  <UnorderedList>
+                    <ListItem>Original inmutable</ListItem>
+                    <ListItem>Procesamiento recuperable</ListItem>
+                    <ListItem>Proveedores intercambiables</ListItem>
+                  </UnorderedList>
+                </Panel>
+              </Column>
+            )}
 
             {imported ? (
-              <article className="import-card audio-card" aria-label="Original">
-                <div className="card-heading">
-                  <div>
-                    <p className="section-kicker">ORIGINAL</p>
-                    <h2>{imported.media.filename}</h2>
-                  </div>
-                </div>
-                <AudioPlayer
-                  mediaAssetId={imported.media.media_asset_id}
-                  seekToMs={seekToMs}
-                  seekNonce={seekNonce}
-                  onTimeUpdate={handleTimeUpdate}
-                />
-                <Waveform
-                  mediaAssetId={imported.media.media_asset_id}
-                  currentMs={currentMs ?? 0}
-                  onSeek={seek}
-                />
-              </article>
-            ) : null}
-
-            {jobId ? (
               <>
-                <JobScreen
-                  job={job}
-                  loading={creating}
-                  error={events.error}
-                  onCancel={() => {
-                    void cancelJob(jobId).catch(() => undefined)
-                  }}
-                />
-                {transcriptId ? (
-                  <div className="transcript-tools">
-                    <div
-                      className="mode-toggle"
-                      role="group"
-                      aria-label="Modo de la transcripción"
-                    >
-                      <button
-                        type="button"
-                        aria-pressed={mode === 'read'}
-                        onClick={() => {
-                          setMode('read')
-                        }}
+                <Column sm={4} md={8} lg={6} className="voz-col-config">
+                  <Panel
+                    titleId="options-title"
+                    title="Configuración"
+                    description="Motor, perfil y opciones de esta transcripción."
+                  >
+                    <Accordion isFlush>
+                      <AccordionItem title="Motor de transcripción" open>
+                        <TranscriptionOptionsSelector
+                          refreshKey={modelsVersion}
+                          mediaAssetId={imported.media.media_asset_id}
+                          value={optionId}
+                          onChange={setOptionId}
+                          onCloudConsentChange={setCloudConsent}
+                          disabled={configDisabled}
+                        />
+                      </AccordionItem>
+                      <AccordionItem title="Perfil de calidad" open>
+                        <ProfileSelector
+                          value={profile}
+                          onChange={setProfile}
+                          language={null}
+                          disabled={configDisabled}
+                        />
+                      </AccordionItem>
+                      <AccordionItem title="Hablantes" open>
+                        <DiarizationOptions
+                          value={diarization}
+                          onChange={setDiarization}
+                          disabled={configDisabled}
+                        />
+                      </AccordionItem>
+                      <AccordionItem title="Glosario del proyecto">
+                        <GlossaryEditor
+                          projectId={imported.project.id}
+                          disabled={configDisabled}
+                        />
+                      </AccordionItem>
+                    </Accordion>
+                    {jobError ? (
+                      <Notice
+                        kind="error"
+                        title="No se pudo crear la transcripción"
+                        subtitle={jobError}
+                      />
+                    ) : null}
+                    <div>
+                      <Button
+                        kind="primary"
+                        size="lg"
+                        disabled={
+                          !optionId || !cloudConsent || creating || jobId !== null
+                        }
+                        onClick={() => void startJob()}
                       >
-                        Leer
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={mode === 'edit'}
-                        onClick={() => {
-                          setMode('edit')
-                        }}
-                      >
-                        Editar
-                      </button>
+                        {creating ? 'Creando…' : 'Transcribir'}
+                      </Button>
                     </div>
-                    <AutosaveStatus drafts={drafts} />
-                    <ExportMenu transcriptId={transcriptId} />
+                  </Panel>
+                </Column>
+
+                <Column sm={4} md={8} lg={10}>
+                  <div className="voz-workspace">
+                    <Panel
+                      titleId="audio-title"
+                      title={imported.media.filename}
+                      description="Original"
+                    >
+                      <AudioPlayer
+                        mediaAssetId={imported.media.media_asset_id}
+                        seekToMs={seekToMs}
+                        seekNonce={seekNonce}
+                        onTimeUpdate={handleTimeUpdate}
+                      />
+                      <Waveform
+                        mediaAssetId={imported.media.media_asset_id}
+                        currentMs={currentMs ?? 0}
+                        onSeek={seek}
+                      />
+                    </Panel>
+
+                    {jobId ? (
+                      <>
+                        <JobScreen
+                          job={job}
+                          loading={creating}
+                          error={events.error}
+                          onCancel={() => {
+                            void cancelJob(jobId).catch(() => undefined)
+                          }}
+                        />
+                        {transcriptId && job?.diarization_error_code ? (
+                          <Notice
+                            kind="warning"
+                            role="status"
+                            title="No se pudo separar a los hablantes"
+                            subtitle={
+                              '(' +
+                              job.diarization_error_code +
+                              '); la transcripción está completa.'
+                            }
+                          />
+                        ) : null}
+                        <SegmentList
+                          transcriptId={transcriptId}
+                          onSeek={seek}
+                          currentMs={currentMs}
+                          renderText={renderSegmentText}
+                          reloadKey={speakersVersion}
+                          onSegmentsLoaded={setLoadedSegments}
+                          headerActions={transcriptTools}
+                        />
+                        {transcriptId ? (
+                          <ReviewQueue
+                            segments={loadedSegments}
+                            onSelect={reviewSegment}
+                          />
+                        ) : null}
+                        {transcriptId ? (
+                          <SpeakersPanel
+                            transcriptId={transcriptId}
+                            onChanged={reloadSpeakers}
+                          />
+                        ) : null}
+                      </>
+                    ) : null}
                   </div>
-                ) : null}
-                {transcriptId && job?.diarization_error_code ? (
-                  <p className="options-error" role="status">
-                    No se pudo separar a los hablantes (
-                    {job.diarization_error_code}); la transcripción está completa.
-                  </p>
-                ) : null}
-                {transcriptId ? (
-                  <SpeakersPanel
-                    transcriptId={transcriptId}
-                    onChanged={reloadSpeakers}
-                  />
-                ) : null}
-                {transcriptId ? (
-                  <ReviewQueue
-                    segments={loadedSegments}
-                    onSelect={reviewSegment}
-                  />
-                ) : null}
-                <SegmentList
-                  transcriptId={transcriptId}
-                  onSeek={seek}
-                  currentMs={currentMs}
-                  renderText={renderSegmentText}
-                  reloadKey={speakersVersion}
-                  onSegmentsLoaded={setLoadedSegments}
-                />
+                </Column>
               </>
             ) : null}
-          </div>
+          </Grid>
+        </div>
 
-          <aside className="status-column" aria-label="Estado de la aplicación">
-            <HealthStatus />
+        <div hidden={view !== 'modelos'}>
+          <Grid narrow className="voz-grid">
+            <Column sm={4} md={8} lg={16}>
+              <PageHeader view="modelos" />
+              <ModelManager onModelsChanged={refreshModels} />
+            </Column>
+          </Grid>
+        </div>
 
-            <article className="promise-card">
-              <p className="section-kicker">PRIVACIDAD POR DISEÑO</p>
-              <h2>Lo tuyo se queda contigo.</h2>
-              <p>
-                VOZ prioriza motores locales y funciona sin Internet una vez
-                estén instalados los modelos elegidos.
-              </p>
-              <ul>
-                <li>
-                  <span aria-hidden="true">01</span>
-                  Original inmutable
-                </li>
-                <li>
-                  <span aria-hidden="true">02</span>
-                  Procesamiento recuperable
-                </li>
-                <li>
-                  <span aria-hidden="true">03</span>
-                  Proveedores intercambiables
-                </li>
-              </ul>
-            </article>
-          </aside>
+        <div hidden={view !== 'proveedores'}>
+          <Grid narrow className="voz-grid">
+            <Column sm={4} md={8} lg={16}>
+              <PageHeader view="proveedores" />
+              <ProvidersSettings onChanged={refreshModels} />
+            </Column>
+          </Grid>
+        </div>
+      </Content>
 
-          <div id="modelos" className="models-slot">
-            <ModelManager onModelsChanged={refreshModels} />
-          </div>
-          <div id="proveedores-cloud" className="models-slot">
-            <ProvidersSettings onChanged={refreshModels} />
-          </div>
-        </section>
-      </main>
-
-      <footer>
+      <footer className="voz-footer">
         <span>VOZ 0.1.0</span>
         <span>Hecho para trabajar en local</span>
       </footer>
-    </div>
+    </Theme>
   )
 }

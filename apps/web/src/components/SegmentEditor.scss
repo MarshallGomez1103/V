@@ -1,0 +1,97 @@
+@use '../styles/carbon' as *;
+
+.segment-editor {
+  display: grid;
+  gap: $spacing-02;
+}
+
+.segment-editor-label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.segment-editor-field {
+  display: grid;
+}
+
+// La capa de resaltado y el textarea comparten celda, fuente y padding.
+.segment-editor-field > * {
+  grid-area: 1 / 1;
+}
+
+.segment-editor-backdrop {
+  @include type-style('body-02');
+
+  box-sizing: border-box;
+  padding: $spacing-03 $spacing-04;
+  border: 1px solid transparent;
+  color: transparent;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+.segment-editor-backdrop .segment-match {
+  background: $highlight;
+  color: transparent;
+}
+
+.segment-editor-input {
+  @include type-style('body-02');
+
+  position: relative;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-block-size: 2.5rem;
+  padding: $spacing-03 $spacing-04;
+  border: 0;
+  border-block-end: 1px solid $border-strong-02;
+  background: transparent;
+  color: $text-primary;
+  resize: vertical;
+  // Altura automática donde exista; si no, el usuario puede redimensionar.
+  field-sizing: content;
+
+  &:focus {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+.segment-editor[data-status='error'] .segment-editor-input,
+.segment-editor[data-status='conflict'] .segment-editor-input {
+  border-block-end-color: $support-error;
+}
+
+.segment-editor-state {
+  @include type-style('helper-text-01');
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02;
+  margin: 0;
+  color: $text-secondary;
+}
+
+.segment-editor-server {
+  margin: $spacing-03 0;
+  padding-inline-start: $spacing-04;
+  border-inline-start: 2px solid $border-strong-01;
+  white-space: pre-wrap;
+}
+
+.segment-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+}
+
+.segment-editor-conflict {
+  display: grid;
+  gap: $spacing-03;
+}

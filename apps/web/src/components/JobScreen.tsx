@@ -1,3 +1,6 @@
+import { Button, ProgressBar, ProgressIndicator, ProgressStep } from '@carbon/react'
+import { StopFilledAlt } from '@carbon/icons-react'
+
 import {
   PROCESSABLE_STATES,
   type JobState,
@@ -5,6 +8,10 @@ import {
 } from '../api/jobs'
 import { useCloudProviders } from '../hooks/useCloudProviders'
 import { CloudBadge } from './CloudBadge'
+import { Busy } from './Busy'
+import { Notice } from './Notice'
+import { Panel } from './Panel'
+import './JobScreen.scss'
 
 interface JobScreenProps {
   job: JobView | null
@@ -72,34 +79,41 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+const STEP_LABELS: Record<string, string> = {
+  'carbon.progress-step.complete': 'Completada',
+  'carbon.progress-step.incomplete': 'Pendiente',
+  'carbon.progress-step.current': 'En curso',
+  'carbon.progress-step.invalid': 'Con error',
+}
+
+// Las etapas solo informan: fuera del orden de tabulación.
+const INERT_STEP = { tabIndex: -1 }
+
+function stepLabel(id: string): string {
+  return STEP_LABELS[id] ?? id
+}
+
 export function JobScreen({ job, loading, error, onCancel }: JobScreenProps) {
   const providerId = readString(job?.selection?.provider_id)
   const providers = useCloudProviders(providerId !== null)
   if (job === null) {
     return (
-      <article className="job-card" aria-labelledby="job-title">
-        <div className="card-heading">
-          <div>
-            <p className="section-kicker">TRANSCRIPCIÓN</p>
-            <h2 id="job-title">
-              {loading ? 'Creando la transcripción…' : 'Sin transcripción'}
-            </h2>
-          </div>
-        </div>
+      <Panel
+        titleId="job-title"
+        title={loading ? 'Creando la transcripción…' : 'Sin transcripción'}
+      >
         {error ? (
-          <p className="job-error" role="alert">
-            {error}
-          </p>
+          <Notice kind="error" title={error} />
         ) : loading ? (
-          <p className="empty-state" role="status">
-            Enviando la grabación al motor local…
-          </p>
+          <div role="status">
+            <Busy description="Enviando la grabación al motor local…" />
+          </div>
         ) : (
-          <p className="empty-state">
+          <p className="voz-field-note">
             Elige una grabación y una opción para empezar.
           </p>
         )}
-      </article>
+      </Panel>
     )
   }
 
@@ -114,87 +128,85 @@ export function JobScreen({ job, loading, error, onCancel }: JobScreenProps) {
   const device = readString(selection?.execution?.device)
   const cloudProvider = providers.find((item) => item.id === providerId) ?? null
   const hasSelection = modelId !== null || profileName !== null || device !== null
+  const failed = job.state === 'FAILED'
+  const completed = job.state === 'COMPLETED'
 
   return (
-    <article
-      className={'job-card job-card--' + job.state.toLowerCase()}
-      aria-labelledby="job-title"
-    >
-      <div className="card-heading">
-        <div>
-          <p className="section-kicker">TRANSCRIPCIÓN</p>
-          <h2 id="job-title">{STATE_LABELS[job.state]}</h2>
-        </div>
-        {showProgress ? (
-          <button
-            type="button"
-            className="job-cancel"
+    <Panel
+      className={'voz-job voz-job--' + job.state.toLowerCase()}
+      titleId="job-title"
+      title={STATE_LABELS[job.state]}
+      actions={
+        showProgress ? (
+          <Button
+            kind="danger--tertiary"
+            size="sm"
+            renderIcon={StopFilledAlt}
             onClick={onCancel}
             disabled={cancelling || onCancel === undefined}
           >
             Cancelar
-          </button>
-        ) : null}
-      </div>
-
+          </Button>
+        ) : null
+      }
+    >
       {cloudProvider !== null ? (
-        <p className="cloud-privacy" role="note">
+        <div role="note" className="voz-job__cloud">
           <CloudBadge />
-          {showProgress
-            ? 'Tu audio se envía a ' +
-              cloudProvider.label +
-              ' mientras dura esta transcripción.'
-            : 'Esta transcripción usó ' +
-              cloudProvider.label +
-              ' (cloud): tu audio salió de tu equipo.'}
-        </p>
-      ) : null}
-
-      <ol className="job-stepper" aria-label="Etapas">
-        {PHASES.map((label, index) => (
-          <li
-            key={label}
-            className={
-              index < phase
-                ? 'is-done'
-                : index === phase
-                  ? 'is-current'
-                  : 'is-pending'
-            }
-            {...(index === phase ? { 'aria-current': 'step' as const } : {})}
-          >
-            {label}
-          </li>
-        ))}
-      </ol>
-
-      {showProgress ? (
-        <div className="job-progress" aria-live="polite">
-          <progress value={job.progress} max={1} aria-label="Progreso" />
-          <span className="job-percent">{percent + ' %'}</span>
+          <span>
+            {showProgress
+              ? 'Tu audio se envía a ' +
+                cloudProvider.label +
+                ' mientras dura esta transcripción.'
+              : 'Esta transcripción usó ' +
+                cloudProvider.label +
+                ' (cloud): tu audio salió de tu equipo.'}
+          </span>
         </div>
       ) : null}
 
-      {job.state === 'FAILED' ? (
-        <p className="job-error" role="alert">
-          {failureMessage(job.error_code)}
-        </p>
+      <ProgressIndicator
+        aria-label="Etapas"
+        currentIndex={phase}
+        spaceEqually
+        className="voz-job__steps"
+      >
+        {PHASES.map((label, index) => (
+          <ProgressStep
+            key={label}
+            label={label}
+            translateWithId={stepLabel}
+            {...INERT_STEP}
+            complete={completed}
+            invalid={failed && index === 3}
+            {...(index === phase ? { 'aria-current': 'step' as const } : {})}
+          />
+        ))}
+      </ProgressIndicator>
+
+      {showProgress ? (
+        <ProgressBar
+          label="Progreso"
+          value={percent}
+          max={100}
+          helperText={percent + ' %'}
+          {...(cancelling ? { status: 'active' as const } : {})}
+        />
       ) : null}
+
+      {failed ? <Notice kind="error" title={failureMessage(job.error_code)} /> : null}
 
       {job.state === 'CANCELLED' ? (
-        <p className="job-notice" role="status">
-          Cancelaste esta transcripción. La grabación original sigue intacta.
-        </p>
+        <Notice
+          kind="info"
+          title="Cancelaste esta transcripción. La grabación original sigue intacta."
+        />
       ) : null}
 
-      {error ? (
-        <p className="job-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <Notice kind="error" title={error} /> : null}
 
       {hasSelection ? (
-        <dl className="job-selection">
+        <dl className="voz-meta">
           {modelId ? (
             <div>
               <dt>Modelo</dt>
@@ -215,6 +227,6 @@ export function JobScreen({ job, loading, error, onCancel }: JobScreenProps) {
           ) : null}
         </dl>
       ) : null}
-    </article>
+    </Panel>
   )
 }

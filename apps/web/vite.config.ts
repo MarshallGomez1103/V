@@ -5,6 +5,12 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    preprocessorOptions: {
+      // Los parciales de Carbon aún usan if() de Sass; no son código nuestro.
+      scss: { quietDeps: true, silenceDeprecations: ['if-function'] },
+    },
+  },
   build: {
     outDir: '../../src/voz/static',
     emptyOutDir: true,
@@ -22,5 +28,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    setupFiles: ['./src/test/setup.ts'],
   },
 })

@@ -1,0 +1,21 @@
+@use '../styles/carbon' as *;
+
+// S7.06/S7.07: palabras clicables con palabra actual resaltada.
+
+.word-text .word[role='button'] {
+  cursor: pointer;
+
+  &:hover {
+    background: $layer-hover-02;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: 1px;
+  }
+}
+
+.word-text .word.is-current {
+  background: $interactive;
+  color: $text-on-color;
+}

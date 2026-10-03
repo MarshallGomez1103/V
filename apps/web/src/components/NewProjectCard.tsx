@@ -4,10 +4,19 @@ import {
   useId,
   useRef,
   useState,
-  type ChangeEvent,
-  type DragEvent,
   type FormEvent,
 } from 'react'
+import {
+  Button,
+  FileUploaderDropContainer,
+  FileUploaderItem,
+  Form,
+  ProgressBar,
+  Stack,
+  Tag,
+  TextInput,
+} from '@carbon/react'
+import { Renew } from '@carbon/icons-react'
 
 import { isAbortError } from '../api/errors'
 import {
@@ -22,6 +31,9 @@ import {
   describeProjectError,
   type Project,
 } from '../api/projects'
+import { Notice } from './Notice'
+import { Panel } from './Panel'
+import './NewProjectCard.scss'
 
 export interface ImportResult {
   project: Project
@@ -38,8 +50,6 @@ type Phase =
   | { kind: 'uploading'; fraction: number }
   | { kind: 'error'; message: string }
   | { kind: 'done'; result: ImportResult }
-
-const waveformHeights = [28, 52, 36, 68, 42, 78, 54, 32, 64, 86, 48, 70, 38, 58, 30]
 
 function defaultProjectName(): string {
   return 'Grabación ' + new Date().toLocaleDateString('es', { dateStyle: 'short' })
@@ -100,18 +110,13 @@ export function NewProjectCard({ onImported }: NewProjectCardProps) {
   const [name, setName] = useState(defaultProjectName)
   const [file, setFile] = useState<File | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [dragActive, setDragActive] = useState(false)
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const dragDepth = useRef(0)
   const createdProject = useRef<Project | null>(null)
   const controller = useRef<AbortController | null>(null)
 
   const titleId = useId()
   const nameId = useId()
-  const descriptionId = useId()
-  const fileInputId = useId()
 
   useEffect(() => {
     return () => {
@@ -123,60 +128,20 @@ export function NewProjectCard({ onImported }: NewProjectCardProps) {
   const trimmedName = name.trim()
   const canSubmit = !busy && trimmedName.length > 0 && file !== null
 
-  const acceptFiles = useCallback((list: FileList | null) => {
-    if (!list || list.length === 0) {
-      return
-    }
-    const first = list[0]
+  const acceptFiles = useCallback((added: File[]) => {
+    const first = added[0]
     if (!first) {
       return
     }
     setFile(first)
     createdProject.current = null
     setNotice(
-      list.length > 1
+      added.length > 1
         ? 'Solo se importa un archivo a la vez; se tomó "' + first.name + '".'
         : null,
     )
     setPhase((current) => (current.kind === 'done' ? { kind: 'idle' } : current))
   }, [])
-
-  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-    acceptFiles(event.target.files)
-    event.target.value = ''
-  }
-
-  const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    dragDepth.current += 1
-    if (!busy) {
-      setDragActive(true)
-    }
-  }
-
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = busy ? 'none' : 'copy'
-    }
-  }
-
-  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    dragDepth.current = Math.max(0, dragDepth.current - 1)
-    if (dragDepth.current === 0) {
-      setDragActive(false)
-    }
-  }
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    dragDepth.current = 0
-    setDragActive(false)
-    if (!busy) {
-      acceptFiles(event.dataTransfer.files)
-    }
-  }
 
   const runImport = async () => {
     if (!file || trimmedName.length === 0) {
@@ -232,24 +197,24 @@ export function NewProjectCard({ onImported }: NewProjectCardProps) {
     setPhase({ kind: 'idle' })
   }
 
-  const dropZoneClass =
-    'drop-zone' +
-    (dragActive ? ' drop-zone--active' : '') +
-    (file ? ' drop-zone--filled' : '')
-
   return (
-    <article className="import-card" aria-labelledby={titleId}>
-      <div className="card-heading">
-        <div>
-          <p className="section-kicker">NUEVO PROYECTO</p>
-          <h2 id={titleId}>Trae una grabación</h2>
-        </div>
-      </div>
-
+    <Panel
+      titleId={titleId}
+      title={phase.kind === 'done' ? 'Grabación importada' : 'Importar grabación'}
+      description={
+        phase.kind === 'done'
+          ? undefined
+          : 'El archivo se procesa solo en este equipo y el original siempre se conserva intacto.'
+      }
+    >
       {phase.kind === 'done' ? (
-        <div className="import-summary" role="status" aria-live="polite">
-          <h3>Importación completa</h3>
-          <dl className="import-summary-list">
+        <Stack gap={5}>
+          <Notice
+            kind="success"
+            title="Importación completa"
+            subtitle={phase.result.media.filename}
+          />
+          <dl className="voz-meta">
             <div>
               <dt>Proyecto</dt>
               <dd>{phase.result.project.name}</dd>
@@ -269,21 +234,24 @@ export function NewProjectCard({ onImported }: NewProjectCardProps) {
             <div>
               <dt>Huella</dt>
               <dd>
-                <code>{phase.result.media.sha256.slice(0, 8)}</code>
+                <Tag type="gray" size="sm">
+                  {phase.result.media.sha256.slice(0, 8)}
+                </Tag>
               </dd>
             </div>
           </dl>
-          <button type="button" onClick={reset}>
-            Importar otra grabación
-          </button>
-        </div>
+          <div>
+            <Button kind="tertiary" size="md" renderIcon={Renew} onClick={reset}>
+              Importar otra grabación
+            </Button>
+          </div>
+        </Stack>
       ) : (
-        <form className="import-form" onSubmit={handleSubmit} noValidate>
-          <div className="import-field">
-            <label htmlFor={nameId}>Nombre del proyecto</label>
-            <input
+        <Form onSubmit={handleSubmit} noValidate>
+          <Stack gap={6}>
+            <TextInput
               id={nameId}
-              type="text"
+              labelText="Nombre del proyecto"
               value={name}
               onChange={(event) => {
                 setName(event.target.value)
@@ -291,100 +259,81 @@ export function NewProjectCard({ onImported }: NewProjectCardProps) {
               disabled={busy}
               required
               autoComplete="off"
-              aria-invalid={trimmedName.length === 0}
+              invalid={trimmedName.length === 0}
+              invalidText="Escribe un nombre para el proyecto."
             />
-          </div>
 
-          <div
-            className={dropZoneClass}
-            aria-describedby={descriptionId}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <div className="wave-preview" aria-hidden="true">
-              {waveformHeights.map((height, index) => (
-                <span key={height + '-' + index} style={{ height: height + '%' }} />
-              ))}
+            <div className="voz-dropzone">
+              <FileUploaderDropContainer
+                labelText="Suelta aquí tu audio o video, o haz clic para elegir un archivo"
+                disabled={busy}
+                multiple
+                onAddFiles={(_event, { addedFiles }) => {
+                  acceptFiles(addedFiles)
+                }}
+              />
             </div>
+            <p className="voz-field-note">
+              Cualquier formato compatible con FFmpeg.
+            </p>
 
             {file ? (
-              <>
-                <h3>Archivo listo</h3>
-                <p id={descriptionId} className="import-file">
-                  <span className="import-file-name">{file.name}</span>
-                  <span className="import-file-size">{formatBytes(file.size)}</span>
-                </p>
-              </>
-            ) : (
-              <>
-                <h3>Suelta aquí tu audio o video</h3>
-                <p id={descriptionId}>
-                  Cualquier formato compatible con FFmpeg. El archivo se procesa
-                  solo en este equipo.
-                </p>
-              </>
-            )}
-
-            <input
-              ref={fileInputRef}
-              id={fileInputId}
-              className="import-file-input"
-              type="file"
-              accept="audio/*,video/*"
-              aria-label="Archivo de audio o video"
-              onChange={handleInputChange}
-              disabled={busy}
-              hidden
-            />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {file ? 'Cambiar archivo' : 'Importar archivo'}
-            </button>
-            <small>El archivo original siempre se conservará intacto.</small>
-          </div>
-
-          {notice ? (
-            <p className="import-notice" role="status">
-              {notice}
-            </p>
-          ) : null}
-
-          {phase.kind === 'creating' || phase.kind === 'uploading' ? (
-            <div className="import-progress" role="status" aria-live="polite">
-              <progress
-                value={phase.kind === 'uploading' ? phase.fraction : undefined}
-                max={1}
-                aria-label="Progreso de la importación"
+              <FileUploaderItem
+                name={file.name}
+                status={busy ? 'uploading' : 'edit'}
+                size="lg"
+                iconDescription="Quitar archivo"
+                disabled={busy}
+                onDelete={() => {
+                  setFile(null)
+                  setNotice(null)
+                  createdProject.current = null
+                }}
               />
-              <span>
-                {phase.kind === 'creating'
-                  ? 'Creando proyecto…'
-                  : 'Subiendo ' + Math.round(phase.fraction * 100) + ' %'}
-              </span>
-            </div>
-          ) : null}
+            ) : null}
+            {file ? (
+              <p className="voz-field-note">
+                {'Archivo listo · ' + formatBytes(file.size)}
+              </p>
+            ) : null}
 
-          {phase.kind === 'error' ? (
-            <div className="import-error" role="alert">
-              <p>{phase.message}</p>
-              <button type="button" onClick={() => void runImport()} disabled={!canSubmit}>
-                Reintentar
-              </button>
-            </div>
-          ) : null}
+            {notice ? <Notice kind="info" title={notice} /> : null}
 
-          <div className="import-actions">
-            <button type="submit" className="import-submit" disabled={!canSubmit}>
-              {busy ? 'Importando…' : 'Crear proyecto e importar'}
-            </button>
-          </div>
-        </form>
+            {busy ? (
+              <ProgressBar
+                label="Progreso de la importación"
+                {...(phase.kind === 'uploading'
+                  ? { value: Math.round(phase.fraction * 100), max: 100 }
+                  : {})}
+                helperText={
+                  phase.kind === 'creating'
+                    ? 'Creando proyecto…'
+                    : 'Subiendo ' + Math.round(phase.fraction * 100) + ' %'
+                }
+              />
+            ) : null}
+
+            {phase.kind === 'error' ? (
+              <Notice
+                kind="error"
+                title="No se pudo importar"
+                subtitle={phase.message}
+                action={{
+                  label: 'Reintentar',
+                  disabled: !canSubmit,
+                  onClick: () => void runImport(),
+                }}
+              />
+            ) : null}
+
+            <div>
+              <Button type="submit" kind="primary" disabled={!canSubmit}>
+                {busy ? 'Importando…' : 'Crear proyecto e importar'}
+              </Button>
+            </div>
+          </Stack>
+        </Form>
       )}
-    </article>
+    </Panel>
   )
 }

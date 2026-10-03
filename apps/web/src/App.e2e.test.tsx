@@ -262,7 +262,7 @@ async function importAndTranscribe() {
   render(<App />)
 
   const file = new File(['RIFF-fake-wav'], 'clase.wav', { type: 'audio/wav' })
-  fireEvent.change(screen.getByLabelText('Archivo de audio o video'), {
+  fireEvent.change(screen.getByLabelText(/suelta aquí tu audio o video/i), {
     target: { files: [file] },
   })
   fireEvent.change(screen.getByLabelText('Nombre del proyecto'), {
@@ -332,7 +332,7 @@ describe('App E2E con API simulada', () => {
     expect(rows).toHaveLength(3)
     // Modo Leer por defecto: texto por palabras; Editar muestra el textarea.
     expect(within(rows[1] as HTMLElement).getByText(/Hoy vemos el servicio/)).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Editar' }))
     expect(
       screen.getByLabelText<HTMLTextAreaElement>('Texto del segmento s2').value,
     ).toBe('Hoy vemos el servicio.')
@@ -363,7 +363,7 @@ describe('App E2E con API simulada', () => {
 
   it('edita un segmento y el autosave envía PUT con la revisión cargada', async () => {
     await importAndTranscribe()
-    fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Editar' }))
     const textarea = await screen.findByLabelText('Texto del segmento s3')
 
     fireEvent.change(textarea, { target: { value: 'Gracias por venir hoy.' } })
@@ -401,13 +401,13 @@ describe('App E2E con API simulada', () => {
     await importAndTranscribe()
     await screen.findByRole('region', { name: 'Lista de segmentos' })
 
-    fireEvent.change(screen.getByLabelText('Buscar en la transcripción'), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar en la transcripción' }), {
       target: { value: 'servicio' },
     })
 
     expect(await screen.findByText('1 de 1')).toBeDefined()
 
-    fireEvent.change(screen.getByLabelText('Buscar en la transcripción'), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar en la transcripción' }), {
       target: { value: 'inexistente' },
     })
     expect(await screen.findByText('Sin coincidencias')).toBeDefined()
@@ -420,7 +420,7 @@ describe('App E2E con API simulada', () => {
       name: 'Lista de segmentos',
     })
 
-    fireEvent.change(screen.getByLabelText('Buscar en la transcripción'), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar en la transcripción' }), {
       target: { value: 'servicio' },
     })
     await screen.findByText('1 de 1')
@@ -430,25 +430,24 @@ describe('App E2E con API simulada', () => {
     expect(marks[0]?.textContent).toBe('servicio')
   })
 
-  it('el enlace de exportación apunta al transcript con el formato elegido', async () => {
-    await importAndTranscribe()
-    const link = await screen.findByRole('link', { name: 'Descargar' })
-
-    expect(link.getAttribute('href')).toBe(
-      '/api/transcripts/t1/export?format=txt',
-    )
-    expect(link.hasAttribute('download')).toBe(true)
-
-    fireEvent.click(screen.getByLabelText('Incluir tiempos'))
-    expect(link.getAttribute('href')).toBe(
-      '/api/transcripts/t1/export?format=txt&timestamps=true',
-    )
-
-    fireEvent.change(screen.getByLabelText('Formato'), {
-      target: { value: 'srt' },
+  it('el menú Exportar descarga el transcript con el formato elegido', async () => {
+    const clicked: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push(this.getAttribute('href') ?? '')
     })
-    expect(link.getAttribute('href')).toBe(
-      '/api/transcripts/t1/export?format=srt',
-    )
+    await importAndTranscribe()
+    await screen.findByRole('region', { name: 'Lista de segmentos' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Texto (.txt)' }))
+    expect(clicked.at(-1)).toBe('/api/transcripts/t1/export?format=txt')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Incluir tiempos/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Subtítulos SRT (.srt)' }))
+    expect(clicked.at(-1)).toBe('/api/transcripts/t1/export?format=srt')
   })
 })
