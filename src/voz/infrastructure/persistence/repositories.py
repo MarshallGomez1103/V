@@ -16,6 +16,7 @@ from sqlalchemy import (
     Table,
     delete,
     insert,
+    literal_column,
     select,
     update,
 )
@@ -658,7 +659,7 @@ class SqliteSpeakerRepository:
                 connection.execute(
                     select(speakers)
                     .where(speakers.c.project_id == str(project_id))
-                    .order_by(speakers.c.created_at, speakers.c.id)
+                    .order_by(speakers.c.created_at, literal_column("speakers.rowid"))
                 )
                 .mappings()
                 .all()
@@ -680,7 +681,7 @@ class SqliteSpeakerRepository:
                 connection.execute(
                     select(speakers)
                     .where(speakers.c.id.in_(in_segments) | speakers.c.id.in_(in_turns))
-                    .order_by(speakers.c.created_at, speakers.c.id)
+                    .order_by(speakers.c.created_at, literal_column("speakers.rowid"))
                 )
                 .mappings()
                 .all()

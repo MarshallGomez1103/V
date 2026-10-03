@@ -44,7 +44,7 @@ def test_core_layers_and_ui_never_mention_elevenlabs(
 
 def test_the_adapter_lives_only_in_infrastructure_cloud() -> None:
     definitions = [
-        str(path.relative_to(ROOT))
+        path.relative_to(ROOT).as_posix()
         for path in sorted(SRC.rglob("*.py"))
         if "class ElevenLabsScribeProvider" in path.read_text(encoding="utf-8")
     ]
