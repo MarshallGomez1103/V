@@ -221,3 +221,82 @@ def test_portable_storage_refuses_a_symlinked_originals_directory(
 
     assert error.value.code is MediaStorageErrorCode.UNSAFE_STORAGE_PATH
     assert list(elsewhere.iterdir()) == []
+
+
+def test_remove_directory_tree_deletes_nested_read_only_files(
+    tmp_path: Path, platform_mode: str
+) -> None:
+    root = tmp_path / "data"
+    project = root / "projects" / "p1"
+    (project / "originals").mkdir(parents=True)
+    (project / "derivatives" / "deep").mkdir(parents=True)
+    original = project / "originals" / "a.original"
+    original.write_bytes(b"x")
+    original.chmod(0o444)
+    (project / "derivatives" / "deep" / "b.wav").write_bytes(b"y")
+    keep = root / "projects" / "p2"
+    keep.mkdir()
+    (keep / "c").write_bytes(b"z")
+
+    assert safe_fs.remove_directory_tree(root, ("projects", "p1")) is True
+
+    assert not project.exists()
+    assert (keep / "c").read_bytes() == b"z"
+
+
+def test_remove_directory_tree_reports_a_missing_directory(
+    tmp_path: Path, platform_mode: str
+) -> None:
+    assert safe_fs.remove_directory_tree(tmp_path, ("projects", "nope")) is False
+    assert safe_fs.remove_directory_tree(tmp_path / "absent", ("x",)) is False
+
+
+@requires_symlinks
+def test_remove_directory_tree_never_follows_links(
+    tmp_path: Path, platform_mode: str
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "precious.txt").write_text("keep")
+    project = tmp_path / "data" / "projects" / "p1"
+    project.mkdir(parents=True)
+    (project / "dirlink").symlink_to(outside, target_is_directory=True)
+    (project / "filelink").symlink_to(outside / "precious.txt")
+
+    assert safe_fs.remove_directory_tree(tmp_path / "data", ("projects", "p1"))
+
+    assert not project.exists()
+    assert (outside / "precious.txt").read_text() == "keep"
+
+
+@requires_symlinks
+def test_remove_directory_tree_refuses_a_linked_project_directory(
+    tmp_path: Path, platform_mode: str
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "precious.txt").write_text("keep")
+    projects = tmp_path / "data" / "projects"
+    projects.mkdir(parents=True)
+    (projects / "p1").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        safe_fs.remove_directory_tree(tmp_path / "data", ("projects", "p1"))
+
+    assert (outside / "precious.txt").read_text() == "keep"
+
+
+def test_storage_delete_project_files_is_idempotent(
+    tmp_path: Path, platform_mode: str
+) -> None:
+    storage = FileSystemMediaStorage(tmp_path / "data")
+    project_id = uuid4()
+    original = storage.original_path_for(project_id, uuid4())
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"x")
+    original.chmod(0o444)
+
+    storage.delete_project_files(project_id)
+    storage.delete_project_files(project_id)
+
+    assert not original.parent.parent.exists()

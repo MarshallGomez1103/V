@@ -17,7 +17,12 @@ from voz.application.ports.repositories import (
     SpeakerTurnRepository,
     TranscriptRepository,
 )
-from voz.domain.entities.speaker import Speaker, speaker_palette_color
+from voz.application.speaker_matching import match_clusters_to_speakers
+from voz.domain.entities.speaker import (
+    SPEAKER_PALETTE,
+    Speaker,
+    speaker_palette_color,
+)
 from voz.domain.entities.speaker_turn import SpeakerTurn
 
 
@@ -38,10 +43,11 @@ class AssignSpeakersOutcome:
 class AssignSpeakers:
     """Map provider clusters to ``Speaker`` identities and label segments.
 
-    Idempotent: the cluster -> speaker mapping of the transcript is recovered
-    from its stored turns, so re-running keeps existing speakers (with their
-    renames and colors) instead of duplicating them, then replaces the turns
-    and segment assignments.
+    Idempotent: a new cluster takes over the existing speaker (with its rename
+    and color) that talks over the same stretches of the previous turns, so
+    re-running, even with another speaker count, keeps people instead of
+    duplicating them; then it replaces the turns and segment assignments and
+    drops speakers nobody references any more.
 
     # ponytail: repos separados sin transacción común; un fallo entre pasos deja
     # speakers sin turns, y re-ejecutar los recrearía. Unificar si duele.
@@ -66,24 +72,37 @@ class AssignSpeakers:
         )
 
         known = {s.id: s for s in self.speakers.list_by_project(transcript.project_id)}
-        speaker_by_cluster: dict[str, Speaker] = {}
-        for turn in self.speaker_turns.list_by_transcript(transcript_id):
-            if turn.speaker_id is not None and turn.speaker_id in known:
-                speaker_by_cluster.setdefault(
-                    turn.cluster_label, known[turn.speaker_id]
-                )
+        previous = [
+            (turn.start_ms, turn.end_ms, turn.speaker_id)
+            for turn in self.speaker_turns.list_by_transcript(transcript_id)
+            if turn.speaker_id is not None and turn.speaker_id in known
+        ]
+        before = {s.id for s in self.speakers.list_by_transcript(transcript_id)}
+        speaker_by_cluster: dict[str, Speaker] = {
+            cluster: known[speaker_id]
+            for cluster, speaker_id in match_clusters_to_speakers(
+                result.turns, previous
+            ).items()
+        }
 
+        used_names = {speaker.name for speaker in speaker_by_cluster.values()}
+        used_colors = {speaker.color for speaker in speaker_by_cluster.values()}
         ordered: list[Speaker] = []
         for index, cluster in enumerate(reconciliation.cluster_order):
             speaker = speaker_by_cluster.get(cluster)
             if speaker is None:
-                speaker = Speaker(
-                    transcript.project_id,
-                    f"Speaker {index + 1}",
+                number = index + 1
+                while f"Speaker {number}" in used_names:
+                    number += 1
+                color = next(
+                    (c for c in SPEAKER_PALETTE if c not in used_colors),
                     speaker_palette_color(index),
                 )
+                speaker = Speaker(transcript.project_id, f"Speaker {number}", color)
                 self.speakers.add(speaker)
                 speaker_by_cluster[cluster] = speaker
+                used_names.add(speaker.name)
+                used_colors.add(speaker.color)
             ordered.append(speaker)
 
         turns = tuple(
@@ -103,6 +122,7 @@ class AssignSpeakers:
             for segment_id, cluster in reconciliation.assignments.items()
         }
         self.segments.update_speakers(segment_speakers)
+        self.speakers.delete_unreferenced(before - {s.id for s in ordered})
 
         assigned = sum(1 for speaker_id in segment_speakers.values() if speaker_id)
         return AssignSpeakersOutcome(

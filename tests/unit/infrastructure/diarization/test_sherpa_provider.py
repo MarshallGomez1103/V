@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+import threading
 import wave
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -126,6 +127,7 @@ def test_satisfies_the_port_and_maps_sorted_integer_milliseconds(
     assert result.turns[0].end_ms == 1000  # 0.9996 s rounds, never truncates
     assert {turn.cluster for turn in result.turns} == {"0", "1", "2"}
     assert engine.calls == [(-1, 0.3, 32_000)]
+    assert sherpa.DEFAULT_THRESHOLD == 0.4  # measured, see the table in sherpa.py
 
 
 def test_auto_uses_the_threshold_and_keeps_the_override(
@@ -389,3 +391,138 @@ def test_on_progress_receives_fractions_from_the_engine_callback(
     )
 
     assert fractions == [0.1, 0.5, 1.0]
+
+
+class _ResidualEngine:
+    """A teacher of 60 s and a 1 s stray voice that clustering called a speaker."""
+
+    def diarize(
+        self,
+        samples: npt.NDArray[np.float32],
+        *,
+        num_clusters: int,
+        threshold: float,
+        progress: sherpa.Progress,
+    ) -> Sequence[_Raw]:
+        del samples, num_clusters, threshold, progress
+        return [_Raw(0.0, 60.0, 0), _Raw(61.0, 62.0, 1)]
+
+
+def test_residual_speakers_are_folded_unless_a_count_is_demanded(
+    models: tuple[Path, Path],
+) -> None:
+    def clusters(hint: SpeakerCountHint, merge: bool = True) -> int:
+        provider = SherpaOnnxDiarizationProvider(
+            segmentation_model=models[0],
+            embedding_model=models[1],
+            engine_factory=lambda seg, emb, threads: _ResidualEngine(),
+            merge_residual=merge,
+        )
+        return len(
+            {
+                t.cluster
+                for t in provider.diarize(
+                    audio=_wav(), options=DiarizationOptions(hint)
+                ).turns
+            }
+        )
+
+    assert clusters(SpeakerCountHint()) == 1
+    assert clusters(SpeakerCountHint(), merge=False) == 2
+    assert clusters(SpeakerCountHint(minimum=2)) == 2
+
+
+_FAKE_CHILD = """
+import sys
+data = sys.stdin.buffer.read(int(sys.argv[6]) * 4)
+assert len(data) == int(sys.argv[6]) * 4
+mode = sys.argv[7]
+print("native log noise", flush=True)
+if mode == "hang":
+    import time
+    time.sleep(60)
+if mode == "crash":
+    sys.exit(3)
+print("VOZ P 1 2", flush=True)
+print("VOZ P 2 2", flush=True)
+print("VOZ R 0.0 2.5 0")
+print("VOZ R 3.0 4.0 1")
+print("VOZ END", flush=True)
+"""
+
+
+def _child_provider(
+    monkeypatch: pytest.MonkeyPatch, models: tuple[Path, Path], mode: str
+) -> SherpaOnnxDiarizationProvider:
+    """The real child-process engine, with a fake worker speaking its protocol."""
+    import subprocess
+    import sys
+
+    real_popen = subprocess.Popen
+
+    def popen(
+        command: list[str], *, stdin: int, stdout: int, stderr: int, creationflags: int
+    ) -> subprocess.Popen[bytes]:
+        return real_popen(
+            [sys.executable, "-c", _FAKE_CHILD, *command[3:], mode],
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            creationflags=creationflags,
+        )
+
+    monkeypatch.setattr(sherpa.subprocess, "Popen", popen)
+    real_import = sherpa.importlib.import_module
+
+    def fake_import(name: str) -> object:
+        return object() if name == "sherpa_onnx" else real_import(name)
+
+    monkeypatch.setattr(sherpa.importlib, "import_module", fake_import)
+    return SherpaOnnxDiarizationProvider(
+        segmentation_model=models[0], embedding_model=models[1], merge_residual=False
+    )
+
+
+def test_child_engine_streams_progress_and_turns(
+    monkeypatch: pytest.MonkeyPatch, models: tuple[Path, Path]
+) -> None:
+    provider = _child_provider(monkeypatch, models, "ok")
+    seen: list[float] = []
+
+    result = provider.diarize(
+        audio=_wav(seconds=1), options=DiarizationOptions(), on_progress=seen.append
+    )
+
+    assert seen == [0.5, 1.0]
+    assert [(t.start_ms, t.end_ms, t.cluster) for t in result.turns] == [
+        (0, 2500, "0"),
+        (3000, 4000, "1"),
+    ]
+
+
+def test_child_engine_crash_is_a_provider_failure(
+    monkeypatch: pytest.MonkeyPatch, models: tuple[Path, Path]
+) -> None:
+    provider = _child_provider(monkeypatch, models, "crash")
+
+    with pytest.raises(DiarizationError) as failure:
+        provider.diarize(audio=_wav(), options=DiarizationOptions())
+
+    assert failure.value.code == _CODE.PROVIDER_FAILED
+
+
+def test_cancelling_kills_a_silent_child_quickly(
+    monkeypatch: pytest.MonkeyPatch, models: tuple[Path, Path]
+) -> None:
+    import time
+
+    provider = _child_provider(monkeypatch, models, "hang")
+    token = _Token()
+    threading.Timer(0.5, lambda: setattr(token, "cancelled", True)).start()
+    started = time.monotonic()
+
+    with pytest.raises(DiarizationError) as failure:
+        provider.diarize(audio=_wav(), options=DiarizationOptions(), cancellation=token)
+
+    assert failure.value.code == _CODE.CANCELLED
+    assert time.monotonic() - started < 10

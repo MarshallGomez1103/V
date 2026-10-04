@@ -31,6 +31,7 @@ from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.import_external_model import ImportExternalModel
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
+from voz.application.library import ListLibrary
 from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.model_tasks import ModelTaskRunner
 from voz.application.normalize_media import NormalizeImportedMedia
@@ -47,8 +48,14 @@ from voz.application.ports.transcription import (
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.application.prepare_inference_audio import PrepareInferenceAudio
 from voz.application.project_glossary import ProjectGlossary
-from voz.application.projects import CreateProject, ListProjects
+from voz.application.projects import (
+    CreateProject,
+    DeleteProject,
+    ListProjects,
+    RenameProject,
+)
 from voz.application.recoverable_transcription import RecoverableTranscription
+from voz.application.rediarize import RediarizeTranscript
 from voz.application.speakers import (
     AssignSegmentSpeaker,
     ListTranscriptSpeakers,
@@ -115,6 +122,7 @@ from voz.infrastructure.model_registry import ManagedModelCatalog, RoutingModelS
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
+from voz.infrastructure.persistence.library import SqliteLibraryReader
 from voz.infrastructure.persistence.migrate import BACKUPS_DIRECTORY, upgrade_to_head
 from voz.infrastructure.persistence.project_glossaries import (
     SqliteProjectGlossaryRepository,
@@ -141,6 +149,7 @@ from voz.interfaces.api.health import router as health_router
 from voz.interfaces.api.job_events import create_job_events_router
 from voz.interfaces.api.job_views import job_view as job_view_without_selection
 from voz.interfaces.api.jobs import create_jobs_router, job_has_transcript, job_view
+from voz.interfaces.api.library import create_library_router
 from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
 from voz.interfaces.api.model_tasks import create_model_tasks_router
@@ -478,7 +487,12 @@ def create_app(
             ProjectGlossary(
                 projects, glossaries, providers=("faster-whisper", "elevenlabs")
             ),
+            rename=RenameProject(projects),
+            delete=DeleteProject(projects, jobs, media_storage, projects),
         )
+    )
+    application.include_router(
+        create_library_router(ListLibrary(SqliteLibraryReader(resolved_engine)))
     )
     application.include_router(create_quality_profiles_router())
     application.include_router(
@@ -512,6 +526,9 @@ def create_app(
             runner,
             SqliteSpeakerTurnRepository(resolved_engine),
             checkpoints=SqliteTranscriptionCheckpointStore(resolved_engine),
+            rediarize=RediarizeTranscript(
+                transcripts, jobs, selections, diarization_availability
+            ),
         )
     )
     application.include_router(create_job_events_router(jobs, view=view))

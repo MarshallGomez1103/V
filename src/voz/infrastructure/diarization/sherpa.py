@@ -9,12 +9,18 @@ from __future__ import annotations
 
 import importlib
 import os
+import queue
+import subprocess
+import sys
+import threading
 import wave
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, BinaryIO, Protocol, cast
+from typing import IO, TYPE_CHECKING, BinaryIO, Protocol, cast
 
+from voz.application.diarization_cleanup import merge_residual_clusters
 from voz.application.ports.diarization import (
     DiarizationError,
     DiarizationFailureCode,
@@ -33,9 +39,15 @@ if TYPE_CHECKING:
 
 _Code = DiarizationFailureCode
 _SAMPLE_RATE = 16_000
-# Measured on real Spanish dialogue: 0.5 merges distinct voices, 0.3 separates
-# A/B/A. Over-segmenting is preferable: merging two speakers in the UI is easy.
-DEFAULT_THRESHOLD = 0.3
+# Measured on a real 1 h 47 min class (teacher + a few students), raw clusters ->
+# after folding residual speakers:
+#   0.3 -> 11 -> 5  two clusters of 36 % + 33 % (together the 69 % that a single
+#                   cluster holds from 0.4 up: the teacher, split in two)
+#   0.4 ->  6 -> 3  teacher 69 %, students 27 % + 3.5 %
+#   0.45 -> 5 -> 2, 0.5 -> 3 -> 2, 0.6 -> 2 -> 2, 0.7 -> 1 -> 1
+# 0.4 keeps the teacher whole plus a third voice; merging two speakers in the UI
+# is easy, splitting one is not.
+DEFAULT_THRESHOLD = 0.4
 Progress = Callable[[int, int], int]
 """``(processed_chunks, num_chunks)``; a non-zero return aborts the run."""
 MAX_DEFAULT_THREADS = 8
@@ -73,7 +85,7 @@ class _EngineFactory(Protocol):
     ) -> _Engine: ...
 
 
-class _SherpaEngine:
+class SherpaEngine:
     """Models are loaded once; only the clustering stage changes between runs."""
 
     def __init__(
@@ -134,17 +146,116 @@ class _SherpaResult(Protocol):
     def sort_by_start_time(self) -> Sequence[_RawTurn]: ...
 
 
+@dataclass(slots=True)
+class _Turn:
+    start: float
+    end: float
+    speaker: int
+
+
+_POLL_SECONDS = 0.2
+
+
+def _feed(stdin: IO[bytes], samples: Samples) -> None:
+    try:
+        stdin.write(memoryview(samples).cast("B"))
+        stdin.close()
+    except OSError:  # the child died or was killed: the reader reports it
+        pass
+
+
+def _pump(stdout: IO[bytes], lines: queue.Queue[str | None]) -> None:
+    for raw in stdout:
+        lines.put(raw.decode("utf-8", "replace").rstrip())
+    lines.put(None)
+
+
+class _ChildEngine:
+    """One child process per run: its native, GIL-holding call cannot stall VOZ.
+
+    ponytail: the models are reloaded on every run (about a second) instead of
+    keeping a warm worker; runs last minutes, so a persistent worker is not worth
+    its lifecycle.
+    """
+
+    def __init__(self, segmentation: Path, embedding: Path, threads: int) -> None:
+        self._segmentation = segmentation
+        self._embedding = embedding
+        self._threads = threads
+
+    def diarize(
+        self,
+        samples: Samples,
+        *,
+        num_clusters: int,
+        threshold: float,
+        progress: Progress,
+    ) -> Sequence[_RawTurn]:
+        command = [
+            sys.executable,
+            "-m",
+            "voz.infrastructure.diarization.worker",
+            str(self._segmentation),
+            str(self._embedding),
+            str(self._threads),
+            str(num_clusters),
+            str(threshold),
+            str(len(samples)),
+        ]
+        child = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Windows
+        )
+        assert child.stdin is not None and child.stdout is not None
+        lines: queue.Queue[str | None] = queue.Queue()
+        threading.Thread(target=_pump, args=(child.stdout, lines), daemon=True).start()
+        threading.Thread(target=_feed, args=(child.stdin, samples), daemon=True).start()
+        turns: list[_Turn] = []
+        finished = False
+        try:
+            while True:
+                try:
+                    line = lines.get(timeout=_POLL_SECONDS)
+                except queue.Empty:
+                    if progress(0, 0):  # idle tick: lets a cancel kill a silent phase
+                        return []
+                    continue
+                if line is None:
+                    break
+                fields = line.split()
+                if len(fields) < 2 or fields[0] != "VOZ":
+                    continue  # native log noise
+                if fields[1] == "P" and progress(int(fields[2]), int(fields[3])):
+                    return []
+                if fields[1] == "R":
+                    turns.append(
+                        _Turn(float(fields[2]), float(fields[3]), int(fields[4]))
+                    )
+                elif fields[1] == "END":
+                    finished = True
+        finally:
+            if child.poll() is None:
+                child.kill()
+            child.wait()
+        if not finished:
+            raise RuntimeError("the diarization worker ended without a result")
+        return turns
+
+
 def _default_engine_factory(
     segmentation_model: Path, embedding_model: Path, num_threads: int
 ) -> _Engine:
     try:
-        module = importlib.import_module("sherpa_onnx")
+        importlib.import_module("sherpa_onnx")
     except ImportError as error:
         raise DiarizationError(
             _Code.RUNTIME_UNAVAILABLE,
             "The local diarization runtime is not installed.",
         ) from error
-    return _SherpaEngine(module, segmentation_model, embedding_model, num_threads)
+    return _ChildEngine(segmentation_model, embedding_model, num_threads)
 
 
 def _invalid_audio(detail: str) -> DiarizationError:
@@ -190,6 +301,7 @@ class SherpaOnnxDiarizationProvider:
         threshold: float = DEFAULT_THRESHOLD,
         num_threads: int | None = None,
         engine_factory: _EngineFactory = _default_engine_factory,
+        merge_residual: bool = True,
     ) -> None:
         if threshold <= 0:
             raise ValueError("threshold must be positive")
@@ -200,6 +312,7 @@ class SherpaOnnxDiarizationProvider:
             default_diarization_threads() if num_threads is None else num_threads
         )
         self._engine_factory = engine_factory
+        self._merge_residual = merge_residual
         self._engine: _Engine | None = None
         self._lock = RLock()
         self._closed = False
@@ -222,7 +335,9 @@ class SherpaOnnxDiarizationProvider:
 
         ``on_progress`` receives 0..1 while the speaker embeddings are computed
         (the first seconds, loading and segmentation, report nothing). A second
-        clustering pass for a speaker-count hint starts again from 0.
+        clustering pass for a speaker-count hint starts again from 0. Residual
+        clusters (almost no speech) are folded into their nearest neighbour,
+        never below the requested exact/minimum count.
         """
         self._raise_if_cancelled(cancellation)
         samples = _read_samples(audio)
@@ -239,7 +354,13 @@ class SherpaOnnxDiarizationProvider:
                     engine, samples, num_clusters, cancellation, on_progress
                 )
 
-            return DiarizationResult(turns=tuple(_solve(run, options.speakers)))
+            turns = _solve(run, options.speakers)
+            if self._merge_residual:
+                hint = options.speakers
+                turns = merge_residual_clusters(
+                    turns, keep_at_least=hint.exact or hint.minimum or 1
+                )
+            return DiarizationResult(turns=tuple(turns))
 
     def _engine_for(self) -> _Engine:
         if self._engine is None:

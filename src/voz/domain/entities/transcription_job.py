@@ -314,6 +314,27 @@ class TranscriptionJob:
             updated_at=timestamp,
         )
 
+    def reopen_for_diarization(
+        self, *, progress: object, at: datetime | None = None
+    ) -> Self:
+        """Return a finished job sent back to ``DIARIZING`` to redo only speakers.
+
+        The transcript is kept; the pipeline then ends in ``COMPLETED`` again.
+        """
+
+        if not self.state.is_terminal:
+            raise ValueError("only a finished job can be reopened")
+        timestamp = self._monotonic_timestamp(at, "reopen")
+        return replace(
+            self,
+            state=TranscriptionJobState.DIARIZING,
+            progress=_require_progress(progress),
+            updated_at=timestamp,
+            error_code=None,
+            stage_started_at=timestamp,
+            stage_progress=None,
+        )
+
     def restart_stage(self, *, at: datetime | None = None) -> Self:
         """Restart the clock of the current stage (work redone after a recovery)."""
 

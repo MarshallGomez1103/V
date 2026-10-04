@@ -23,6 +23,7 @@ from voz.application.get_transcription_options import (
     GetTranscriptionOptions,
     option_identity,
 )
+from voz.application.ports.diarization import DiarizationOptions
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.application.ports.transcription_options import (
     InstallationStatus,
@@ -162,6 +163,9 @@ class Selections:
 
     def record_diarization_error(self, job_id: UUID, code: str) -> None:
         del job_id, code
+
+    def replace_diarization(self, job_id: UUID, options: DiarizationOptions) -> None:
+        del job_id, options
 
 
 PROJECT = Project("Demo", id=uuid4(), created_at=NOW)

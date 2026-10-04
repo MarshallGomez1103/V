@@ -34,6 +34,11 @@ from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
 )
+from voz.application.rediarize import (
+    RediarizeError,
+    RediarizeFailureCode,
+    RediarizeTranscript,
+)
 from voz.application.word_speakers import SpeakerTimeline
 from voz.domain.entities.transcription_job import (
     TranscriptionJob,
@@ -72,6 +77,21 @@ class CreateJobRequest:
     """Quality profile name (S13.02); ``None`` means ``default``."""
     prompt: str | None = None
     """Style instruction for the ASR engine; at most 600 characters once stripped."""
+
+
+@dataclass(frozen=True, slots=True)
+class RediarizeRequest:
+    speakers: object = None
+    """``{"exact"?, "minimum"?, "maximum"?}``; empty or missing means automatic."""
+
+
+_REDIARIZE_STATUS: dict[RediarizeFailureCode, int] = {
+    RediarizeFailureCode.TRANSCRIPT_NOT_FOUND: 404,
+    RediarizeFailureCode.JOB_NOT_FOUND: 409,
+    RediarizeFailureCode.JOB_ALREADY_ACTIVE: 409,
+    RediarizeFailureCode.DIARIZATION_UNAVAILABLE: 409,
+    RediarizeFailureCode.DIARIZATION_MODELS_MISSING: 409,
+}
 
 
 def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
@@ -230,6 +250,7 @@ def create_jobs_router(
     runner: JobRunner,
     speaker_turns_repo: SpeakerTurnRepository | None = None,
     checkpoints: TranscriptionCheckpointStore | None = None,
+    rediarize: RediarizeTranscript | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["jobs"])
 
@@ -328,7 +349,34 @@ def create_jobs_router(
             ]
         }
 
+    def post_rediarize(
+        transcript_id: UUID, request: RediarizeRequest
+    ) -> dict[str, object]:
+        assert rediarize is not None
+        options = parse_diarization(
+            {
+                "enabled": True,
+                "speakers": {} if request.speakers is None else request.speakers,
+            }
+        )
+        assert options is not None
+        try:
+            started = rediarize.execute(transcript_id, options)
+        except RediarizeError as error:
+            raise _error(
+                _REDIARIZE_STATUS[error.code], error.code.value, error.user_message
+            ) from None
+        runner.enqueue(started.job.id)
+        return job_view(started.job, started.selection, has_transcript=True)
+
     router.add_api_route("/jobs", post_job, methods=["POST"], status_code=201)
+    if rediarize is not None:
+        router.add_api_route(
+            "/transcripts/{transcript_id}/rediarize",
+            post_rediarize,
+            methods=["POST"],
+            status_code=202,
+        )
     router.add_api_route("/jobs", list_jobs, methods=["GET"])
     router.add_api_route("/jobs/{job_id}", get_job, methods=["GET"])
     router.add_api_route(

@@ -7,11 +7,15 @@ existentes, nunca reejecutan la diarización. Los errores usan
 ## Item de hablante
 
 ```json
-{"id": "uuid", "name": "Ana", "color": "#4e79a7", "segment_count": 12}
+{"id": "uuid", "name": "Ana", "color": "#4e79a7", "segment_count": 12,
+ "talk_ms": 184200, "first_ms": 750}
 ```
 
 `color` es `#rrggbb` en minúsculas. `segment_count` cuenta los segmentos que hoy
-apuntan al hablante. Un hablante "pertenece" a una transcripción si alguno de
+apuntan al hablante. `talk_ms` es la suma de la duración de esos segmentos
+(tiempo de habla; el porcentaje lo calcula la UI sobre la suma de todos) y
+`first_ms` el inicio de su primer segmento (`null` y `0` sin segmentos), para
+saltar a su primera intervención. Siguen a las ediciones manuales de segmentos. Un hablante "pertenece" a una transcripción si alguno de
 sus segmentos o turnos (`speaker_turns`) pertenece a ella.
 
 ## `GET /api/transcripts/{transcript_id}/speakers`

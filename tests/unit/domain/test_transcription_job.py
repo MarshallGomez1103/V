@@ -425,3 +425,26 @@ def test_new_timing_fields_are_validated() -> None:
             updated_at=job.updated_at,
             stage_progress=2.0,
         )
+
+
+def test_reopen_for_diarization_only_from_a_finished_job() -> None:
+    done = TranscriptionJob(
+        id=JOB_ID,
+        project_id=PROJECT_ID,
+        media_asset_id=MEDIA_ASSET_ID,
+        state=TranscriptionJobState.COMPLETED,
+        progress=1.0,
+        created_at=STARTED_AT,
+        updated_at=STARTED_AT,
+        started_at=STARTED_AT,
+    )
+    at = STARTED_AT + timedelta(hours=1)
+
+    reopened = done.reopen_for_diarization(progress=0.8, at=at)
+
+    assert reopened.state is TranscriptionJobState.DIARIZING
+    assert (reopened.progress, reopened.stage_progress) == (0.8, None)
+    assert reopened.stage_started_at == at and reopened.started_at == STARTED_AT
+    assert reopened.can_transition_to(TranscriptionJobState.MERGING)
+    with pytest.raises(ValueError, match="finished"):
+        reopened.reopen_for_diarization(progress=0.8, at=at)

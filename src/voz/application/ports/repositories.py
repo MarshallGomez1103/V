@@ -7,7 +7,7 @@ domain entities and UUID identities.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -171,6 +171,10 @@ class SpeakerRepository(Protocol):
 
     def transcript_ids(self, speaker_id: UUID) -> frozenset[UUID]:
         """Return transcripts whose segments or turns reference the speaker."""
+        ...
+
+    def delete_unreferenced(self, speaker_ids: Collection[UUID]) -> None:
+        """Delete those speakers that no segment or turn references any more."""
         ...
 
     def merge(self, source_id: UUID, target_id: UUID) -> None:

@@ -484,6 +484,13 @@ class JobRunner:
                     "Speaker diarization is not wired.",
                 )
             provider = self.diarization_provider_for()
+            if not self._derivative_exists(audio_source):
+                # A speakers-only rerun may find the derivative gone.
+                self.audio_preparer.prepare(
+                    project_id=job.project_id,
+                    media_asset_id=job.media_asset_id,
+                    cancellation=token,
+                )
             with audio_source.open() as audio:
                 result = provider.diarize(
                     audio=audio,

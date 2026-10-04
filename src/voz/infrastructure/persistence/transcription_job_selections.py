@@ -245,7 +245,7 @@ def _selection_from_row(row: RowMapping) -> JobSelection:
 class SqliteTranscriptionJobSelectionRepository:
     """One selection row per job, keyed by the job identity.
 
-    Immutable except for ``diarization_error_code``, recorded once by the runner.
+    Immutable except for the speaker options and ``diarization_error_code``.
     """
 
     def __init__(self, engine: Engine) -> None:
@@ -276,6 +276,17 @@ class SqliteTranscriptionJobSelectionRepository:
                 update(transcription_job_selections)
                 .where(transcription_job_selections.c.job_id == str(job_id))
                 .values(diarization_error_code=code)
+            )
+
+    def replace_diarization(self, job_id: UUID, options: DiarizationOptions) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                update(transcription_job_selections)
+                .where(transcription_job_selections.c.job_id == str(job_id))
+                .values(
+                    diarization_json=_diarization_json(options),
+                    diarization_error_code=None,
+                )
             )
 
 

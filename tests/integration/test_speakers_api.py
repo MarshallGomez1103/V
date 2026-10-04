@@ -161,12 +161,16 @@ def test_list_returns_only_transcript_speakers_with_counts(harness: Harness) -> 
                 "name": "Speaker 1",
                 "color": "#4e79a7",
                 "segment_count": 2,
+                "talk_ms": 500,
+                "first_ms": 0,
             },
             {
                 "id": str(harness.beto.id),
                 "name": "Speaker 2",
                 "color": "#f28e2b",
                 "segment_count": 1,
+                "talk_ms": 250,
+                "first_ms": 600,
             },
         ]
     }
@@ -191,6 +195,8 @@ def test_patch_renames_and_recolors_persistently(harness: Harness) -> None:
         "name": "Ana",
         "color": "#aabbcc",
         "segment_count": 2,
+        "talk_ms": 500,
+        "first_ms": 0,
     }
     stored = harness.speakers.get(harness.ana.id)
     assert stored is not None and (stored.name, stored.color) == ("Ana", "#aabbcc")
@@ -229,6 +235,8 @@ def test_merge_moves_segments_and_turns_and_deletes_source(harness: Harness) -> 
             "name": "Speaker 2",
             "color": "#f28e2b",
             "segment_count": 3,
+            "talk_ms": 750,
+            "first_ms": 0,
         }
     }
     assert harness.speakers.get(harness.ana.id) is None

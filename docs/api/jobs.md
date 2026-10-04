@@ -347,3 +347,91 @@ rutas). El código se persiste en `transcription_job_selections.diarization_erro
 vuelve a diarizar al reanudarse. Se eligió la tabla de selecciones y no
 `transcription_jobs` para no ampliar la entidad de dominio `TranscriptionJob`,
 cuyo `error_code` solo es válido para jobs `FAILED`.
+
+### Umbral de clustering y hablantes residuales (plan v3, CP-A3)
+
+Por defecto el motor estima el número de hablantes con un umbral de distancia
+(`DEFAULT_THRESHOLD` en `infrastructure/diarization/sherpa.py`). Medido con la
+grabación real de una clase de 1 h 47 min (profesor y pocos estudiantes), sobre
+copia de la base y los medios en un XDG temporal:
+
+| Umbral | Clusters crudos | Tras fundir residuales | Reparto del habla tras fundir |
+| --- | --- | --- | --- |
+| 0.3 | 11 | 5 | 35.7 / 32.9 / 21.0 / 6.7 / 3.6 % |
+| **0.4** (default) | 6 | **3** | 69.0 / 27.5 / 3.5 % |
+| 0.45 | 5 | 2 | 68.9 / 31.1 % |
+| 0.5 | 3 | 2 | 68.5 / 31.5 % |
+| 0.6 | 2 | 2 | 68.5 / 31.5 % |
+| 0.7 | 1 | 1 | 100 % |
+
+Con 0.3 el profesor aparece partido en dos clusters (35.7 % + 32.9 % ≈ el 69 % que
+un solo cluster agrupa desde 0.4). 0.4 conserva al profesor entero y una tercera
+voz; unir dos hablantes en la UI es fácil, separar uno no. El default era 0.3.
+
+**Hablantes residuales.** El proveedor funde cada cluster con muy poca habla
+(menos del 2 % del habla total, o menos de 10 s con un tope del 5 % para que un
+audio corto no pierda a sus dos interlocutores) en el cluster mayor más cercano
+**en el tiempo** (`application/diarization_cleanup.py`; marcado `ponytail:`
+porque el motor no expone embeddings). Nunca baja del `exact`/`minimum` pedido.
+En la grabación real: 11 clusters crudos a 0.3 pasan a 5.
+
+**El motor corre en un proceso hijo** (`infrastructure/diarization/worker.py`).
+La llamada nativa de sherpa-onnx retiene el GIL todo el paso de segmentación
+(unos 4 min en 1 h 47 min), lo que congelaba el servidor entero: el SSE, el
+progreso y el botón Cancelar. Medido en un clip de 4 min: hueco máximo de un hilo
+latido 8.3 s antes, 0.1 s ahora. Cancelar mata el hijo en menos de 0.2 s incluso
+en la fase silenciosa. Coste: los modelos se recargan en cada pasada (~1 s).
+
+## Recalcular hablantes (`POST /api/transcripts/{transcript_id}/rediarize`)
+
+Recalcula **solo** los hablantes de una transcripción terminada, sin volver a
+transcribir (no se llama al ASR ni se tocan textos, tiempos, ediciones ni
+revisiones).
+
+```json
+{"speakers": {"exact": 2}}
+```
+
+`speakers` admite `exact`, `minimum`, `maximum` con las reglas de la
+diarización (1–32, `exact` excluye a los otros, `minimum <= maximum`); `{}` o sin
+`speakers` = el motor estima. → **202** con la vista del job (`JobView`, como
+`POST /api/jobs`): es **el mismo job de la transcripción**, reabierto en
+`DIARIZING` (`progress` 0.8, `stage_progress` `null` al inicio, `transcript_id`
+el de siempre). Se sigue con `GET /api/jobs/{id}` o el SSE
+`/api/jobs/{id}/events` (que hay que volver a abrir tras el 202): `stage_progress`
+y `eta_seconds` como en cualquier job, y al acabar vuelve a `COMPLETED`.
+
+| Estado | Código | Significado |
+| --- | --- | --- |
+| 404 | `transcript_not_found` | la transcripción no existe |
+| 409 | `rediarize_unavailable` | no hay un job que la haya producido |
+| 409 | `job_already_active` | hay otro job sin terminar (el worker es único) |
+| 409 | `diarization_unavailable` | falta el runtime de diarización |
+| 409 | `diarization_models_missing` | faltan los modelos de hablantes (se bajan en el gestor de modelos) |
+| 422 | `diarization_options_invalid` | cuerpo inválido |
+
+Semántica:
+
+- Se guardan las nuevas pistas en la selección del job
+  (`transcription_job_selections.diarization_json`, y se limpia
+  `diarization_error_code`); el estado `COMPLETED`/`FAILED`/`CANCELLED` previo se
+  pierde (la entidad ofrece `reopen_for_diarization`). Sin migración.
+- **Nombres y colores se conservan por solapamiento**: cada cluster nuevo toma al
+  hablante antiguo que habla en los mismos tramos, si ese solapamiento cubre al
+  menos el 50 % del habla del cluster o el 50 % del habla del hablante antiguo
+  (una persona que el cálculo anterior había partido y ahora vuelve entera
+  conserva su nombre). Un hablante antiguo va a un solo cluster, el de mayor
+  solapamiento primero (`application/speaker_matching.py`); un cluster que
+  mezcla varias personas antiguas toma el nombre de la que más solapa, como al
+  fusionar a mano. Los demás reciben "Speaker N" y un color libre de la paleta.
+  Los hablantes antiguos que ya nadie referencia se borran.
+- Las asignaciones manuales de segmentos a hablantes (`PUT /api/segments/{id}/speaker`)
+  **se reemplazan** por las del nuevo cálculo.
+- Si el recálculo falla (modelos, audio, proveedor) el job termina `COMPLETED`
+  con `diarization_error_code` y los hablantes anteriores intactos (misma regla que
+  el primer cálculo). Si el derivado de audio ya no existe se regenera.
+- Cancelar (`POST /api/jobs/{id}/cancel`) lo deja `CANCELLED` con el texto y los
+  hablantes anteriores intactos; se puede volver a recalcular (cualquier job
+  terminal con transcript sirve). Si el servidor se apaga a mitad, el job queda
+  en `DIARIZING` y se reanuda al arrancar.
+- `GET /api/library` muestra el job como `DIARIZING` mientras dura.

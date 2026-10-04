@@ -24,6 +24,7 @@ from voz.infrastructure.safe_fs import (
     DirectoryHandle,
     fchmod,
     open_directory_chain,
+    remove_directory_tree,
 )
 
 _COPY_CHUNK_BYTES = 1024 * 1024
@@ -234,6 +235,21 @@ class FileSystemMediaStorage:
                 ) from error
         finally:
             directory.close()
+
+    def delete_project_files(self, project_id: UUID) -> None:
+        """Remove every original and derivative of a project; idempotent.
+
+        Only the UUID-derived ``projects/<id>`` directory is touched, links are
+        never followed and read-only originals are removed.
+        """
+        self._require_uuid(project_id, field="project_id")
+        try:
+            remove_directory_tree(self._storage_root, ("projects", str(project_id)))
+        except OSError as error:
+            raise MediaStorageError(
+                MediaStorageErrorCode.IO_ERROR,
+                "The project files could not be deleted.",
+            ) from error
 
     @staticmethod
     def _require_uuid(value: object, *, field: str) -> None:

@@ -69,6 +69,10 @@ class TranscriptionJobSelectionRepository(Protocol):
         """Persist why diarization failed; the rest of the snapshot is immutable."""
         ...
 
+    def replace_diarization(self, job_id: UUID, options: DiarizationOptions) -> None:
+        """Ask for a new speaker run: store its options and clear the old error."""
+        ...
+
 
 @runtime_checkable
 class JobWithSelectionWriter(Protocol):

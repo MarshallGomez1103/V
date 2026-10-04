@@ -47,6 +47,8 @@ def speaker_view(summary: SpeakerSummary) -> dict[str, object]:
         "name": speaker.name,
         "color": speaker.color,
         "segment_count": summary.segment_count,
+        "talk_ms": summary.talk_ms,
+        "first_ms": summary.first_ms,
     }
 
 

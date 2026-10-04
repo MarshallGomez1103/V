@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
@@ -423,6 +423,14 @@ class SqliteProjectRepository:
         row = _one_or_none(self._engine, projects, project_id)
         return None if row is None else _project_from_row(row)
 
+    def delete_project(self, project_id: UUID) -> bool:
+        """One statement: ``ON DELETE CASCADE`` removes every dependent row."""
+        with self._engine.begin() as connection:
+            result = connection.execute(
+                delete(projects).where(projects.c.id == str(project_id))
+            )
+        return result.rowcount == 1
+
     def list_all(self) -> Sequence[Project]:
         with self._engine.connect() as connection:
             rows = (
@@ -717,6 +725,27 @@ class SqliteSpeakerRepository:
                 )
             ).all()
         return frozenset(UUID(str(row[0])) for row in rows)
+
+    def delete_unreferenced(self, speaker_ids: Collection[UUID]) -> None:
+        ids = [str(speaker_id) for speaker_id in speaker_ids]
+        if not ids:
+            return
+        with self._engine.begin() as connection:
+            connection.execute(
+                delete(speakers).where(
+                    speakers.c.id.in_(ids),
+                    speakers.c.id.not_in(
+                        select(segments.c.speaker_id).where(
+                            segments.c.speaker_id.is_not(None)
+                        )
+                    ),
+                    speakers.c.id.not_in(
+                        select(speaker_turns.c.speaker_id).where(
+                            speaker_turns.c.speaker_id.is_not(None)
+                        )
+                    ),
+                )
+            )
 
     def merge(self, source_id: UUID, target_id: UUID) -> None:
         source, target = str(source_id), str(target_id)

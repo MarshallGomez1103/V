@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
@@ -39,15 +40,29 @@ class SegmentSpeakerInvalid(ValueError):
 class SpeakerSummary:
     speaker: Speaker
     segment_count: int
+    talk_ms: int = 0
+    """Summed duration of the speaker's segments."""
+    first_ms: int | None = None
+    """Start of the speaker's first segment; ``None`` without segments."""
+
+
+def _summarize(speaker: Speaker, owned: Iterable[Segment]) -> SpeakerSummary:
+    count = talk = 0
+    first: int | None = None
+    for segment in owned:
+        count += 1
+        talk += segment.end_ms - segment.start_ms
+        first = segment.start_ms if first is None else min(first, segment.start_ms)
+    return SpeakerSummary(speaker, count, talk, first)
 
 
 def _count(
     segments: SegmentRepository, speakers: SpeakerRepository, speaker: Speaker
 ) -> SpeakerSummary:
-    return SpeakerSummary(
+    return _summarize(
         speaker,
-        sum(
-            1
+        (
+            segment
             for transcript_id in speakers.transcript_ids(speaker.id)
             for segment in segments.list_by_transcript(transcript_id)
             if segment.speaker_id == speaker.id
@@ -64,12 +79,12 @@ class ListTranscriptSpeakers:
     def execute(self, transcript_id: UUID) -> list[SpeakerSummary]:
         if self.transcripts.get(transcript_id) is None:
             raise TranscriptNotFound(str(transcript_id))
-        counts: dict[UUID, int] = {}
+        owned: dict[UUID, list[Segment]] = {}
         for segment in self.segments.list_by_transcript(transcript_id):
             if segment.speaker_id is not None:
-                counts[segment.speaker_id] = counts.get(segment.speaker_id, 0) + 1
+                owned.setdefault(segment.speaker_id, []).append(segment)
         return [
-            SpeakerSummary(speaker, counts.get(speaker.id, 0))
+            _summarize(speaker, owned.get(speaker.id, ()))
             for speaker in self.speakers.list_by_transcript(transcript_id)
         ]
 

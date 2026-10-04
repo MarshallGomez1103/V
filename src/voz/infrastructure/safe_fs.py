@@ -119,6 +119,27 @@ class DirectoryHandle:
     def chmod(self, name: str, mode: int) -> None:
         os.chmod(self.path / name, mode)
 
+    def listdir(self) -> list[str]:
+        return os.listdir(self._fd if self._fd is not None else self.path)
+
+    def open_subdirectory(self, name: str) -> DirectoryHandle:
+        """Open a child directory; refuses links and non-directories."""
+        if self._fd is not None:
+            return DirectoryHandle(
+                self.path / name, os.open(name, _directory_flags(), dir_fd=self._fd)
+            )
+        target = self.path / name
+        info = target.lstat()
+        if is_link_like(target, info) or not stat.S_ISDIR(info.st_mode):
+            raise OSError(f"{name} is not a plain directory")
+        return DirectoryHandle(target, None)
+
+    def rmdir(self, name: str) -> None:
+        if self._fd is not None:
+            os.rmdir(name, dir_fd=self._fd)
+        else:
+            os.rmdir(self.path / name)
+
     def fsync(self) -> None:
         if self._fd is not None:
             os.fsync(self._fd)
@@ -224,3 +245,45 @@ def _open_chain_by_path(
         if is_link_like(current, info) or not stat.S_ISDIR(info.st_mode):
             raise OSError(f"{component} is not a plain directory")
     return DirectoryHandle(current, None)
+
+
+def remove_directory_tree(root: Path, components: Iterable[str]) -> bool:
+    """Delete ``root/<components...>`` and everything below it.
+
+    Links are removed as links, never followed: nothing outside the tree is read
+    or deleted. Read-only files (immutable originals) are removed too. Returns
+    ``False`` when the directory does not exist. Raises ``OSError`` when the
+    chain contains a link or deletion fails.
+    """
+    names = tuple(components)
+    if not names:
+        raise ValueError("components must not be empty")
+    try:
+        parent = open_directory_chain(root, names[:-1], create=False)
+    except FileNotFoundError:
+        return False
+    try:
+        try:
+            _remove_child_tree(parent, names[-1])
+        except FileNotFoundError:
+            return False
+        parent.fsync()
+        return True
+    finally:
+        parent.close()
+
+
+def _remove_child_tree(parent: DirectoryHandle, name: str) -> None:
+    child = parent.open_subdirectory(name)
+    try:
+        for entry in child.listdir():
+            info = child.stat(entry, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode):
+                child.unlink(entry)  # a symlink is unlinked, its target kept
+            elif is_link_like(child.path / entry, info):
+                child.rmdir(entry)  # NTFS junction: drop the junction only
+            else:
+                _remove_child_tree(child, entry)
+    finally:
+        child.close()
+    parent.rmdir(name)

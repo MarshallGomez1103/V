@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
+from voz.application.library import media_type_or_guess
 from voz.application.ports.repositories import MediaAssetRepository
 from voz.infrastructure.media_storage import FileSystemMediaStorage
 
@@ -47,6 +48,24 @@ def create_media_stream_router(
             headers=dict(_HEADERS),
         )
 
+    async def media_info(media_asset_id: UUID) -> dict[str, object]:
+        """Path-free metadata, so a reopened job can show its recording."""
+        asset = await run_in_threadpool(media_assets.get, media_asset_id)
+        if asset is None:
+            raise _error(
+                404, "media_asset_not_found", "The media asset does not exist."
+            )
+        return {
+            "media_asset_id": str(asset.id),
+            "project_id": str(asset.project_id),
+            "filename": asset.display_name,
+            "media_type": media_type_or_guess(asset.media_type, asset.display_name),
+            "duration_ms": asset.duration_ms,
+            "sha256": asset.content_sha256,
+            "size_bytes": asset.size_bytes,
+        }
+
+    router.add_api_route("/media/{media_asset_id}", media_info, methods=["GET"])
     router.add_api_route(
         "/media/{media_asset_id}/original",
         stream_original,
