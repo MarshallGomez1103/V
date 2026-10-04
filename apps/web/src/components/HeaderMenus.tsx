@@ -7,10 +7,12 @@ import type { MessageKey } from '../i18n/messages'
 import {
   ACCENT_SWATCH,
   ACCENTS,
+  DESIGN_SYSTEMS,
   THEME_PREFERENCES,
   THEME_SWATCH,
   useAppearance,
   type Accent,
+  type DesignSystem,
   type ThemePreference,
 } from '../theme/appearance'
 import { DesktopShortcut } from './DesktopShortcut'
@@ -88,6 +90,11 @@ const THEME_LABELS: Record<ThemePreference, MessageKey> = {
   g100: 'theme.g100',
 }
 
+const DESIGN_LABELS: Record<DesignSystem, [label: MessageKey, hint: MessageKey]> = {
+  carbon: ['design.carbon', 'design.carbon.hint'],
+  m3: ['design.m3', 'design.m3.hint'],
+}
+
 const ACCENT_LABELS: Record<Accent, MessageKey> = {
   blue: 'accent.blue',
   teal: 'accent.teal',
@@ -102,13 +109,34 @@ const ACCENT_LABELS: Record<Accent, MessageKey> = {
 /** Ajustes: tema de Carbon, color de acento (se recuerdan en este navegador) e icono de escritorio. */
 export function SettingsMenu() {
   const { t } = useI18n()
-  const { theme, accent, setTheme, setAccent } = useAppearance()
+  const { theme, accent, design, setTheme, setAccent, setDesign } = useAppearance()
   const groupId = useId()
   return (
     <HeaderMenu label={t('settings.label')} icon={<Settings size={20} />}>
       {(open) => (
       <>
       <fieldset className="voz-choices">
+        <legend className="voz-choices__legend">{t('appearance.design')}</legend>
+        {DESIGN_SYSTEMS.map((option) => (
+          <label key={option} className="voz-choice" title={t(DESIGN_LABELS[option][1])}>
+            <input
+              type="radio"
+              name={groupId + '-design'}
+              className="voz-choice__input"
+              checked={design === option}
+              onChange={() => {
+                setDesign(option)
+              }}
+            />
+            <span
+              className={'voz-choice__swatch voz-choice__shape voz-choice__shape--' + option}
+              aria-hidden="true"
+            />
+            <span>{t(DESIGN_LABELS[option][0])}</span>
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="voz-choices voz-choices--accent">
         <legend className="voz-choices__legend">{t('appearance.theme')}</legend>
         {THEME_PREFERENCES.map((option) => (
           <label key={option} className="voz-choice" title={option === 'system' ? t('theme.system.hint') : undefined}>

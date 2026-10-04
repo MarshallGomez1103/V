@@ -332,6 +332,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   document.documentElement.className = ''
+  document.documentElement.removeAttribute('style')
+  document.documentElement.removeAttribute('data-design')
   window.localStorage.clear()
 })
 
@@ -751,6 +753,45 @@ describe('ajustes', () => {
     expect(document.documentElement.dataset.accent).toBe('green')
     expect(window.localStorage.getItem('voz.accent')).toBe('green')
     expect(document.querySelector('.voz-app')?.getAttribute('data-accent')).toBe('green')
+  })
+
+  it('elige el sistema de diseño Material 3, publica sus colores y lo recuerda', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustes' }))
+    expect(screen.getByRole('radio', { name: 'Carbon' })).toHaveProperty('checked', true)
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Material 3' }))
+    expect(window.localStorage.getItem('voz.design')).toBe('m3')
+    await waitFor(() => {
+      expect(document.documentElement.dataset.design).toBe('m3')
+    })
+    expect(document.documentElement.style.getPropertyValue('--md-sys-color-primary')).toMatch(
+      /^#[0-9a-f]{6}$/,
+    )
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Carbon' }))
+    expect(window.localStorage.getItem('voz.design')).toBe('carbon')
+    await waitFor(() => {
+      expect(document.documentElement.dataset.design).toBe('carbon')
+    })
+    expect(document.documentElement.style.getPropertyValue('--md-sys-color-primary')).toBe('')
+  })
+
+  it('cambiar el acento con Material 3 recalcula los colores', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustes' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Material 3' }))
+    await waitFor(() => {
+      expect(document.documentElement.dataset.design).toBe('m3')
+    })
+    const blue = document.documentElement.style.getPropertyValue('--md-sys-color-primary')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Rojo' }))
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--md-sys-color-primary')).not.toBe(
+        blue,
+      )
+    })
   })
 
   it('un localStorage que falla no rompe la app', () => {

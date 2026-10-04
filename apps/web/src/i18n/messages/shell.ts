@@ -36,6 +36,17 @@ export const shell = {
 
   // Apariencia
   'settings.label': ['Ajustes', 'Settings'],
+  'appearance.design': ['Sistema de diseño', 'Design system'],
+  'design.carbon': ['Carbon', 'Carbon'],
+  'design.carbon.hint': [
+    'IBM Carbon: esquinas rectas y colores planos. Es el diseño por defecto.',
+    'IBM Carbon: square corners and flat colors. This is the default design.',
+  ],
+  'design.m3': ['Material 3', 'Material 3'],
+  'design.m3.hint': [
+    'Material Design 3 de Google: esquinas redondeadas, botones de píldora y colores derivados del acento. Solo cambia el aspecto, no las funciones.',
+    'Google Material Design 3: rounded corners, pill buttons and colors derived from the accent. It only changes the look, not the features.',
+  ],
   'appearance.theme': ['Tema', 'Theme'],
   'appearance.accent': ['Color de acento', 'Accent color'],
   'theme.system': ['Automático', 'Automatic'],

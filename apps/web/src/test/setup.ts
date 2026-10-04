@@ -2,13 +2,14 @@ import { configure } from '@testing-library/react'
 import { beforeEach } from 'vitest'
 
 import { setLang } from '../i18n/i18n'
-import { setAccent, setThemePreference } from '../theme/appearance'
+import { setAccent, setDesign, setThemePreference } from '../theme/appearance'
 
 // Las pruebas fijan español (el idioma por defecto sigue a `navigator.language`).
 beforeEach(() => {
   setLang('es')
   setThemePreference('system')
   setAccent('blue')
+  setDesign('carbon')
 })
 
 // jsdom no implementa matchMedia ni ResizeObserver, que Carbon y el tema usan.

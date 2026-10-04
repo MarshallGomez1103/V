@@ -32,5 +32,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     // Las consultas por rol sobre la app completa son lentas en jsdom.
     testTimeout: 30_000,
+    // material-color-utilities es ESM con imports sin extensión: Node plano no los
+    // resuelve, así que Vitest lo procesa con Vite (como hace el build).
+    server: { deps: { inline: ['@material/material-color-utilities'] } },
   },
 })

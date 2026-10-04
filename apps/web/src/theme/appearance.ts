@@ -25,6 +25,13 @@ export const ACCENTS = [
 ] as const
 export type Accent = (typeof ACCENTS)[number]
 
+/**
+ * Sistema de diseño: Carbon (por defecto, todo rectangular) o una piel Material 3
+ * (docs/design/material3.md). Es solo aspecto: los componentes son los mismos.
+ */
+export const DESIGN_SYSTEMS = ['carbon', 'm3'] as const
+export type DesignSystem = (typeof DESIGN_SYSTEMS)[number]
+
 /** Color representativo (rampa 60 de Carbon) para la muestra del selector. */
 export const ACCENT_SWATCH: Readonly<Record<Accent, string>> = {
   blue: '#0f62fe',
@@ -47,6 +54,7 @@ export const THEME_SWATCH: Readonly<Record<CarbonTheme, string>> = {
 
 const THEME_KEY = 'voz.theme'
 const ACCENT_KEY = 'voz.accent'
+const DESIGN_KEY = 'voz.design'
 const LIGHT_QUERY = '(prefers-color-scheme: light)'
 
 function read(key: string): string | null {
@@ -73,17 +81,24 @@ function isAccent(value: string | null): value is Accent {
   return value !== null && (ACCENTS as readonly string[]).includes(value)
 }
 
+function isDesign(value: string | null): value is DesignSystem {
+  return value !== null && (DESIGN_SYSTEMS as readonly string[]).includes(value)
+}
+
 export interface Appearance {
   theme: ThemePreference
   accent: Accent
+  design: DesignSystem
 }
 
 function load(): Appearance {
   const theme = read(THEME_KEY)
   const accent = read(ACCENT_KEY)
+  const design = read(DESIGN_KEY)
   return {
     theme: isThemePreference(theme) ? theme : 'system',
     accent: isAccent(accent) ? accent : 'blue',
+    design: isDesign(design) ? design : 'carbon',
   }
 }
 
@@ -123,6 +138,62 @@ export function applyAppearance(theme: CarbonTheme, accent: Accent): void {
 
 applyAppearance(resolveTheme(state.theme, systemPrefersLight()), state.accent)
 
+/** Prefijos de las variables CSS que genera la piel M3 (ver theme/m3.ts). */
+const M3_VAR_PREFIXES = ['--md-sys-color-', '--voz-m3-']
+
+function clearM3Variables(root: HTMLElement): void {
+  for (const name of Array.from(root.style)) {
+    if (M3_VAR_PREFIXES.some((prefix) => name.startsWith(prefix))) {
+      root.style.removeProperty(name)
+    }
+  }
+}
+
+let designRun = 0
+
+/**
+ * Aplica el sistema de diseño en <html> (`data-design`). Con M3 carga el generador de
+ * color (import dinámico: Carbon no paga ese peso) y publica los roles ANTES de marcar
+ * `data-design`, para que no haya un instante sin colores. Si la carga falla se queda en
+ * Carbon. Una llamada más nueva descarta a la anterior.
+ */
+export async function applyDesign(
+  design: DesignSystem,
+  accent: Accent,
+  theme: CarbonTheme,
+): Promise<void> {
+  const run = ++designRun
+  const root = document.documentElement
+  if (design === 'carbon') {
+    clearM3Variables(root)
+    root.dataset.design = 'carbon'
+    return
+  }
+  try {
+    const m3 = await import('./m3')
+    if (run !== designRun) {
+      return
+    }
+    m3.applyM3Roles(root, ACCENT_SWATCH[accent], accent === 'neutral', isDarkTheme(theme))
+    root.dataset.design = 'm3'
+  } catch {
+    if (run === designRun) {
+      clearM3Variables(root)
+      root.dataset.design = 'carbon'
+    }
+  }
+}
+
+/** Tema de Carbon oscuro (Gray 90 y Gray 100). */
+export function isDarkTheme(theme: CarbonTheme): boolean {
+  return theme === 'g90' || theme === 'g100'
+}
+
+/** Aplica el diseño guardado; main.tsx lo espera para no pintar M3 sin sus colores. */
+export function settleDesign(): Promise<void> {
+  return applyDesign(state.design, state.accent, resolveTheme(state.theme, systemPrefersLight()))
+}
+
 function emit() {
   listeners.forEach((listener) => {
     listener()
@@ -141,6 +212,14 @@ export function setAccent(accent: Accent): void {
   write(ACCENT_KEY, accent)
   if (accent !== state.accent) {
     state = { ...state, accent }
+    emit()
+  }
+}
+
+export function setDesign(design: DesignSystem): void {
+  write(DESIGN_KEY, design)
+  if (design !== state.design) {
+    state = { ...state, design }
     emit()
   }
 }
@@ -168,9 +247,10 @@ export interface AppearanceApi extends Appearance {
   resolved: CarbonTheme
   setTheme: (theme: ThemePreference) => void
   setAccent: (accent: Accent) => void
+  setDesign: (design: DesignSystem) => void
 }
 
-/** Tema y acento, persistidos en localStorage; también refleja la elección en <html>. */
+/** Tema, acento y diseño, persistidos en localStorage; también refleja la elección en <html>. */
 export function useAppearance(): AppearanceApi {
   const current = useSyncExternalStore(subscribe, () => state)
   const light = useSyncExternalStore(subscribeSystem, systemPrefersLight)
@@ -178,12 +258,14 @@ export function useAppearance(): AppearanceApi {
 
   useEffect(() => {
     applyAppearance(resolved, current.accent)
-  }, [resolved, current.accent])
+    void applyDesign(current.design, current.accent, resolved)
+  }, [resolved, current.accent, current.design])
 
   return {
     ...current,
     resolved,
     setTheme: setThemePreference,
     setAccent,
+    setDesign,
   }
 }

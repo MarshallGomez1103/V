@@ -1,0 +1,69 @@
+// Tipografía M3: Roboto Flex variable (solo eje de peso, subconjunto latino: es/en) y
+// la escala de M3 sobre los tokens de tipo de Carbon. Solo con `[data-design='m3']`;
+// el @font-face se declara siempre pero el archivo solo se descarga si algo lo usa.
+// Los estilos de tipo de Carbon no fijan `font-family` (la heredan), salvo los de
+// código, que siguen en IBM Plex Mono.
+@font-face {
+  font-family: 'Roboto Flex';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 1000;
+  src: url('../../../node_modules/@fontsource-variable/roboto-flex/files/roboto-flex-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+[data-design='m3'] {
+  --m3-font: 'Roboto Flex', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  body,
+  .voz-app,
+  button,
+  input,
+  select,
+  textarea {
+    font-family: var(--m3-font);
+  }
+
+  // Escala M3 (tamaño / interlineado / peso / tracking) sobre los tokens de Carbon.
+  // label-medium
+  --cds-label-01-font-size: 0.75rem;
+  --cds-label-01-line-height: 1rem;
+  --cds-label-01-font-weight: 500;
+  --cds-label-01-letter-spacing: 0.03125rem;
+  // body-small
+  --cds-helper-text-01-font-size: 0.75rem;
+  --cds-helper-text-01-line-height: 1rem;
+  --cds-helper-text-01-letter-spacing: 0.025rem;
+  --cds-caption-01-letter-spacing: 0.025rem;
+  // body-medium
+  --cds-body-compact-01-line-height: 1.25rem;
+  --cds-body-compact-01-letter-spacing: 0.015625rem;
+  --cds-body-01-line-height: 1.25rem;
+  --cds-body-01-letter-spacing: 0.015625rem;
+  // body-large
+  --cds-body-compact-02-line-height: 1.5rem;
+  --cds-body-compact-02-letter-spacing: 0.03125rem;
+  --cds-body-02-line-height: 1.5rem;
+  --cds-body-02-letter-spacing: 0.03125rem;
+  // title-small / title-medium / title-large
+  --cds-heading-compact-01-font-weight: 500;
+  --cds-heading-compact-01-letter-spacing: 0.00625rem;
+  --cds-heading-01-font-weight: 500;
+  --cds-heading-01-letter-spacing: 0.00625rem;
+  --cds-heading-compact-02-font-weight: 500;
+  --cds-heading-compact-02-letter-spacing: 0.009375rem;
+  --cds-heading-02-font-weight: 500;
+  --cds-heading-02-letter-spacing: 0.009375rem;
+  --cds-heading-03-font-size: 1.375rem;
+  --cds-heading-03-line-height: 1.75rem;
+  --cds-heading-03-font-weight: 400;
+  --cds-heading-03-letter-spacing: 0;
+  // headline-small (títulos de diálogo)
+  --cds-heading-04-font-size: 1.5rem;
+  --cds-heading-04-line-height: 2rem;
+  --cds-heading-04-font-weight: 400;
+  --cds-heading-04-letter-spacing: 0;
+}

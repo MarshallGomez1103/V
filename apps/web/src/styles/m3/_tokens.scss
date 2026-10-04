@@ -1,0 +1,208 @@
+// Material 3 sobre Carbon (docs/design/material3.md, sección 6.3): remapea los tokens
+// `--cds-*` a roles M3. Los roles (`--md-sys-color-*`) los publica theme/m3.ts en <html>
+// con el acento elegido, ya en claro u oscuro; por eso aquí no hay ramas por tema.
+// Las capas de estado (hover 8 %, foco/presionado 12 %) se calculan con color-mix.
+
+@function r($name) {
+  @return var(--md-sys-color-#{$name});
+}
+
+// `$pct` % del color de contenido sobre la base: la «capa de estado» de M3.
+@function layer($content, $base, $pct) {
+  @return color-mix(in srgb, #{$content} #{$pct}, #{$base});
+}
+
+@function veil($content, $pct) {
+  @return color-mix(in srgb, #{$content} #{$pct}, transparent);
+}
+
+$hover: 8%;
+$press: 12%;
+$disabled: 38%;
+
+// Zonas de Carbon: las clases que pone appearance.ts en <html> y <Theme> en la app.
+// `[data-design]` + clase (0,2,0) y orden posterior a `_accent` ganan sin !important.
+$zones: '.cds--white, .cds--g10, .cds--g90, .cds--g100';
+
+@mixin m3-tokens {
+  // Fondo y capas: la profundidad sale del tono de superficie, no de sombras.
+  --cds-background: #{r('surface')};
+  --cds-background-hover: #{veil(r('on-surface'), $hover)};
+  --cds-background-active: #{veil(r('on-surface'), $press)};
+  --cds-background-selected: #{r('secondary-container')};
+  --cds-background-selected-hover: #{layer(r('on-secondary-container'), r('secondary-container'), $hover)};
+  --cds-background-brand: #{r('primary')};
+  --cds-background-inverse: #{r('inverse-surface')};
+  --cds-background-inverse-hover: #{layer(r('inverse-on-surface'), r('inverse-surface'), $hover)};
+
+  --cds-layer-01: #{r('surface-container-low')};
+  --cds-layer-02: #{r('surface-container')};
+  --cds-layer-03: #{r('surface-container-high')};
+  --cds-layer-hover-01: #{layer(r('on-surface'), r('surface-container-low'), $hover)};
+  --cds-layer-hover-02: #{layer(r('on-surface'), r('surface-container'), $hover)};
+  --cds-layer-hover-03: #{layer(r('on-surface'), r('surface-container-high'), $hover)};
+  --cds-layer-active-01: #{layer(r('on-surface'), r('surface-container-low'), $press)};
+  --cds-layer-active-02: #{layer(r('on-surface'), r('surface-container'), $press)};
+  --cds-layer-active-03: #{layer(r('on-surface'), r('surface-container-high'), $press)};
+  --cds-layer-selected-01: #{r('secondary-container')};
+  --cds-layer-selected-02: #{r('secondary-container')};
+  --cds-layer-selected-03: #{r('secondary-container')};
+  --cds-layer-selected-hover-01: #{layer(r('on-secondary-container'), r('secondary-container'), $hover)};
+  --cds-layer-selected-hover-02: #{layer(r('on-secondary-container'), r('secondary-container'), $hover)};
+  --cds-layer-selected-hover-03: #{layer(r('on-secondary-container'), r('secondary-container'), $hover)};
+  --cds-layer-selected-inverse: #{r('inverse-surface')};
+  --cds-layer-selected-disabled: #{veil(r('on-surface'), $disabled)};
+  --cds-layer-accent-01: #{r('surface-container-highest')};
+  --cds-layer-accent-02: #{r('surface-container-highest')};
+  --cds-layer-accent-03: #{r('surface-container-highest')};
+  --cds-layer-accent-hover-01: #{layer(r('on-surface'), r('surface-container-highest'), $hover)};
+  --cds-layer-accent-hover-02: #{layer(r('on-surface'), r('surface-container-highest'), $hover)};
+  --cds-layer-accent-hover-03: #{layer(r('on-surface'), r('surface-container-highest'), $hover)};
+  --cds-layer-accent-active-01: #{layer(r('on-surface'), r('surface-container-highest'), $press)};
+  --cds-layer-accent-active-02: #{layer(r('on-surface'), r('surface-container-highest'), $press)};
+  --cds-layer-accent-active-03: #{layer(r('on-surface'), r('surface-container-highest'), $press)};
+  --cds-layer-background-01: #{r('surface')};
+  --cds-layer-background-02: #{r('surface-container-low')};
+  --cds-layer-background-03: #{r('surface-container')};
+
+  // Campos: M3 los rellena con surface-container-highest.
+  --cds-field-01: #{r('surface-container-highest')};
+  --cds-field-02: #{r('surface-container-highest')};
+  --cds-field-03: #{r('surface-container-highest')};
+  --cds-field-hover-01: #{layer(r('on-surface'), r('surface-container-highest'), $hover)};
+  --cds-field-hover-02: #{layer(r('on-surface'), r('surface-container-highest'), $hover)};
+  --cds-field-hover-03: #{layer(r('on-surface'), r('surface-container-highest'), $hover)};
+
+  // Bordes.
+  --cds-border-subtle-00: #{r('outline-variant')};
+  --cds-border-subtle-01: #{r('outline-variant')};
+  --cds-border-subtle-02: #{r('outline-variant')};
+  --cds-border-subtle-03: #{r('outline-variant')};
+  --cds-border-subtle-selected-01: #{r('outline-variant')};
+  --cds-border-subtle-selected-02: #{r('outline-variant')};
+  --cds-border-subtle-selected-03: #{r('outline-variant')};
+  --cds-border-strong-01: #{r('outline')};
+  --cds-border-strong-02: #{r('outline')};
+  --cds-border-strong-03: #{r('outline')};
+  --cds-border-tile-01: #{r('outline-variant')};
+  --cds-border-tile-02: #{r('outline-variant')};
+  --cds-border-tile-03: #{r('outline-variant')};
+  --cds-border-inverse: #{r('primary')};
+  --cds-border-interactive: #{r('primary')};
+  --cds-border-disabled: #{veil(r('on-surface'), $press)};
+
+  // Texto e iconos.
+  --cds-text-primary: #{r('on-surface')};
+  --cds-text-secondary: #{r('on-surface-variant')};
+  --cds-text-helper: #{r('on-surface-variant')};
+  --cds-text-placeholder: #{veil(r('on-surface-variant'), 60%)};
+  --cds-text-error: #{r('error')};
+  --cds-text-inverse: #{r('inverse-on-surface')};
+  --cds-text-on-color: #{r('on-primary')};
+  --cds-text-disabled: #{veil(r('on-surface'), $disabled)};
+  --cds-text-on-color-disabled: #{veil(r('on-surface'), $disabled)};
+  --cds-icon-primary: #{r('on-surface-variant')};
+  --cds-icon-secondary: #{r('on-surface-variant')};
+  --cds-icon-inverse: #{r('inverse-on-surface')};
+  --cds-icon-on-color: #{r('on-primary')};
+  --cds-icon-interactive: #{r('primary')};
+  --cds-icon-disabled: #{veil(r('on-surface'), $disabled)};
+  --cds-icon-on-color-disabled: #{veil(r('on-surface'), $disabled)};
+
+  // Enlaces y acento (sustituye lo que fija _accent.scss).
+  --cds-interactive: #{r('primary')};
+  --cds-link-primary: #{r('primary')};
+  --cds-link-primary-hover: #{layer(r('on-surface'), r('primary'), $hover)};
+  --cds-link-secondary: #{r('primary')};
+  --cds-link-visited: #{r('tertiary')};
+  --cds-link-inverse: #{r('inverse-primary')};
+  --cds-link-inverse-hover: #{layer(r('inverse-on-surface'), r('inverse-primary'), $hover)};
+  --cds-link-inverse-active: #{r('inverse-on-surface')};
+  --cds-focus: #{r('secondary')};
+  --cds-focus-inset: #{r('surface')};
+  --cds-focus-inverse: #{r('inverse-primary')};
+  --cds-highlight: #{r('primary-container')};
+
+  // Estados: M3 no trae éxito/aviso/info; los dos primeros son roles a medida.
+  --cds-support-error: #{r('error')};
+  --cds-support-error-inverse: #{r('error')};
+  --cds-support-success: var(--voz-m3-success);
+  --cds-support-success-inverse: var(--voz-m3-success);
+  --cds-support-warning: var(--voz-m3-warning);
+  --cds-support-warning-inverse: var(--voz-m3-warning);
+  --cds-support-info: #{r('primary')};
+  --cds-support-info-inverse: #{r('primary')};
+  --cds-support-caution-minor: var(--voz-m3-warning);
+  --cds-support-caution-major: var(--voz-m3-warning);
+  --cds-support-caution-undefined: #{r('tertiary')};
+  --cds-status-red: #{r('error')};
+  --cds-status-orange: var(--voz-m3-warning);
+  --cds-status-orange-outline: var(--voz-m3-warning);
+  --cds-status-yellow: var(--voz-m3-warning);
+  --cds-status-yellow-outline: var(--voz-m3-warning);
+  --cds-status-green: var(--voz-m3-success);
+  --cds-status-blue: #{r('primary')};
+  --cds-status-purple: #{r('tertiary')};
+  --cds-status-gray: #{r('outline')};
+
+  // Botones: relleno = primary; secundario = tonal (secondary-container); terciario =
+  // contorno (el color del texto lo ajusta _components.scss).
+  --cds-button-separator: #{r('surface')};
+  --cds-button-primary: #{r('primary')};
+  --cds-button-primary-hover: #{layer(r('on-primary'), r('primary'), $hover)};
+  --cds-button-primary-active: #{layer(r('on-primary'), r('primary'), $press)};
+  --cds-button-secondary: #{r('secondary-container')};
+  --cds-button-secondary-hover: #{layer(r('on-secondary-container'), r('secondary-container'), $hover)};
+  --cds-button-secondary-active: #{layer(r('on-secondary-container'), r('secondary-container'), $press)};
+  --cds-button-tertiary: #{r('primary')};
+  --cds-button-tertiary-hover: #{veil(r('primary'), $hover)};
+  --cds-button-tertiary-active: #{veil(r('primary'), $press)};
+  --cds-button-danger-primary: #{r('error')};
+  --cds-button-danger-secondary: #{r('error')};
+  --cds-button-danger-hover: #{layer(r('on-error'), r('error'), $hover)};
+  --cds-button-danger-active: #{layer(r('on-error'), r('error'), $press)};
+  --cds-button-disabled: #{veil(r('on-surface'), $press)};
+
+  --cds-toggle-off: #{r('outline')};
+  --cds-skeleton-background: #{r('surface-container-high')};
+  --cds-skeleton-element: #{r('surface-container-highest')};
+  --cds-overlay: #{veil(r('scrim'), 32%)};
+  --cds-shadow: #{veil(r('shadow'), 30%)};
+  --cds-content-switcher-background: transparent;
+  --cds-content-switcher-background-hover: #{veil(r('on-surface'), $hover)};
+  --cds-content-switcher-selected: #{r('secondary-container')};
+
+  --cds-notification-background-error: #{r('surface-container-high')};
+  --cds-notification-background-success: #{r('surface-container-high')};
+  --cds-notification-background-info: #{r('surface-container-high')};
+  --cds-notification-background-warning: #{r('surface-container-high')};
+
+  // Etiquetas: contenedores M3 (fondo `*-container`, texto `on-*-container`).
+  @each $name, $bg, $fg in (
+    ('red', 'error-container', 'on-error-container'),
+    ('magenta', 'tertiary-container', 'on-tertiary-container'),
+    ('purple', 'tertiary-container', 'on-tertiary-container'),
+    ('blue', 'primary-container', 'on-primary-container'),
+    ('cyan', 'primary-container', 'on-primary-container'),
+    ('teal', 'secondary-container', 'on-secondary-container'),
+    ('gray', 'surface-container-highest', 'on-surface'),
+    ('cool-gray', 'surface-container-highest', 'on-surface'),
+    ('warm-gray', 'surface-container-highest', 'on-surface')
+  ) {
+    --cds-tag-background-#{$name}: #{r($bg)};
+    --cds-tag-color-#{$name}: #{r($fg)};
+    --cds-tag-hover-#{$name}: #{layer(r($fg), r($bg), $hover)};
+    --cds-tag-border-#{$name}: #{r('outline')};
+  }
+  --cds-tag-background-green: var(--voz-m3-success-container);
+  --cds-tag-color-green: var(--voz-m3-on-success-container);
+  --cds-tag-hover-green: #{layer(var(--voz-m3-on-success-container), var(--voz-m3-success-container), $hover)};
+  --cds-tag-border-green: var(--voz-m3-success);
+}
+
+[data-design='m3'] {
+  &:is(#{$zones}),
+  :is(#{$zones}) {
+    @include m3-tokens;
+  }
+}

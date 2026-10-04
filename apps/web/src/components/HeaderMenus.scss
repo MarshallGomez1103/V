@@ -108,6 +108,16 @@
   border: 1px solid $border-strong-01;
 }
 
+// Muestra del sistema de diseño: la forma que tendrán los botones (recta o píldora).
+.voz-choice__shape {
+  background: $interactive;
+  border-color: transparent;
+}
+
+.voz-choice__shape--m3 {
+  border-radius: 9999px;
+}
+
 // «Automático»: mitad oscuro, mitad claro.
 .voz-choice__swatch[data-system='true'] {
   background: linear-gradient(135deg, #161616 50%, #ffffff 50%);

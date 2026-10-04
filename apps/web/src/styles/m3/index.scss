@@ -1,0 +1,6 @@
+// Piel Material 3 (docs/design/material3.md). Se importa DESPUÉS de Carbon, `_accent` y
+// `_shape`; todo cuelga de `[data-design='m3']`, así que Carbon no cambia.
+@use './tokens';
+@use './type';
+@use './shape';
+@use './components';

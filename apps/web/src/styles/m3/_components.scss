@@ -1,0 +1,385 @@
+// Ajustes por componente de la piel M3: formas, estados, elevación y movimiento.
+// Los colores ya vienen de `_tokens.scss`; aquí solo se cambia lo que los tokens no
+// alcanzan. Todo bajo `[data-design='m3']` (Carbon no se toca).
+@media (prefers-reduced-motion: no-preference) {
+  [data-design='m3'] {
+    .cds--btn,
+    .cds--tag,
+    .cds--toggle__switch,
+    .cds--toggle__switch::before,
+    .cds--list-box,
+    .cds--text-input,
+    .cds--text-area,
+    .cds--select-input,
+    .cds--search-input,
+    .voz-panel,
+    .voz-menu__item,
+    .voz-choice,
+    .cds--data-table tr {
+      transition-duration: var(--m3-duration);
+      transition-timing-function: var(--m3-ease);
+    }
+  }
+}
+
+[data-design='m3'] {
+  // --- Botones: píldora, etiqueta centrada, label-large (14/20, peso 500) ---
+  .cds--btn {
+    border-radius: var(--m3-shape-full);
+    font-weight: 500;
+    letter-spacing: 0.00625rem;
+    min-block-size: 2.5rem;
+    padding-block: 0;
+    padding-inline: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    // Carbon reserva ~4rem a la derecha para el icono y alinea el texto a la izquierda.
+    max-inline-size: none;
+    box-shadow: none;
+
+    &.cds--btn--sm {
+      min-block-size: 2rem;
+      padding-inline: 1rem;
+    }
+
+    &.cds--btn--lg,
+    &.cds--btn--xl {
+      min-block-size: 3rem;
+    }
+
+    &.cds--btn--icon-only {
+      padding: 0;
+      min-inline-size: 2.5rem;
+    }
+
+    // Icono junto a la etiqueta, no pegado a la derecha.
+    .cds--btn__icon {
+      position: static;
+      margin-inline-start: 0.5rem;
+      inline-size: 1.125rem;
+      block-size: 1.125rem;
+    }
+
+    &.cds--btn--primary {
+      color: var(--md-sys-color-on-primary);
+    }
+
+    &.cds--btn--secondary {
+      color: var(--md-sys-color-on-secondary-container);
+    }
+
+    &.cds--btn--danger {
+      color: var(--md-sys-color-on-error);
+    }
+
+    // Contorno: borde outline y texto primary; el relleno aparece solo como capa de estado.
+    &.cds--btn--tertiary {
+      border-color: var(--md-sys-color-outline);
+      color: var(--md-sys-color-primary);
+
+      &:hover,
+      &:active {
+        color: var(--md-sys-color-primary);
+        border-color: var(--md-sys-color-outline);
+      }
+
+      &:focus {
+        border-color: var(--md-sys-color-secondary);
+      }
+    }
+
+    &.cds--btn--ghost,
+    &.cds--btn--danger--ghost {
+      color: var(--md-sys-color-primary);
+
+      &:hover {
+        color: var(--md-sys-color-primary);
+      }
+    }
+
+    &.cds--btn--danger--ghost,
+    &.cds--btn--danger--tertiary {
+      color: var(--md-sys-color-error);
+    }
+
+    &:disabled,
+    &.cds--btn--disabled {
+      color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+      border-color: transparent;
+    }
+
+    &:is(.cds--btn--primary, .cds--btn--secondary, .cds--btn--danger):hover {
+      box-shadow: var(--m3-elevation-1);
+    }
+
+    &:focus-visible,
+    &:focus {
+      box-shadow: none;
+      outline: 3px solid var(--md-sys-color-secondary);
+      outline-offset: 2px;
+      border-color: transparent;
+    }
+
+    &.cds--btn--tertiary:focus {
+      border-color: var(--md-sys-color-outline);
+    }
+  }
+
+  // --- Campos rellenos: esquinas superiores de 4 px, indicador inferior ---
+  .cds--text-input,
+  .cds--text-area,
+  .cds--select-input,
+  .cds--number input[type='number'],
+  .cds--password-input,
+  .cds--list-box {
+    border-radius: var(--m3-shape-xs) var(--m3-shape-xs) 0 0;
+  }
+
+  .cds--text-input,
+  .cds--text-area,
+  .cds--select-input,
+  .cds--number input[type='number'] {
+    border-block-end: 1px solid var(--md-sys-color-on-surface-variant);
+
+    &:focus {
+      outline: none;
+      border-block-end: 2px solid var(--md-sys-color-primary);
+    }
+  }
+
+  .cds--text-input__field-outer-wrapper,
+  .cds--number,
+  .cds--select-input__wrapper {
+    border-radius: var(--m3-shape-xs) var(--m3-shape-xs) 0 0;
+  }
+
+  .cds--label,
+  .cds--form-label {
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  // Búsqueda: barra completa redondeada.
+  .cds--search-input {
+    border-radius: var(--m3-shape-full);
+    border-block-end: 0;
+    padding-inline-start: 3rem;
+  }
+
+  .cds--search-magnifier-icon {
+    inset-inline-start: 1rem;
+  }
+
+  .cds--search-close {
+    border-radius: var(--m3-shape-full);
+    inset-inline-end: 0.25rem;
+  }
+
+  // --- Desplegables, menús y popovers: elevación 2 ---
+  .cds--list-box__menu,
+  .cds--menu,
+  .cds--popover-content,
+  .voz-headermenu__content {
+    border-radius: var(--m3-shape-xs);
+    box-shadow: var(--m3-elevation-2);
+    border: 0;
+  }
+
+  .voz-headermenu__content {
+    border-radius: var(--m3-shape-md);
+    background: var(--md-sys-color-surface-container);
+    padding-block: 0.5rem;
+  }
+
+  .cds--list-box__menu {
+    background: var(--md-sys-color-surface-container);
+  }
+
+  .cds--list-box--expanded {
+    border-radius: var(--m3-shape-xs) var(--m3-shape-xs) 0 0;
+  }
+
+  .cds--tooltip-content,
+  .cds--popover--high-contrast .cds--popover-content {
+    border-radius: var(--m3-shape-xs);
+  }
+
+  // --- Diálogos: 28 px, superficie alta, elevación 3 y acciones a la derecha ---
+  .cds--modal-container {
+    border-radius: var(--m3-shape-xl);
+    background: var(--md-sys-color-surface-container-high);
+    box-shadow: var(--m3-elevation-3);
+    overflow: hidden;
+  }
+
+  .cds--modal-header {
+    padding-block-start: 1.5rem;
+    padding-inline: 1.5rem;
+    margin-block-end: 1rem;
+  }
+
+  // Carbon deja 3rem abajo para un degradado; M3 no lo usa.
+  .cds--modal-content {
+    padding-inline: 1.5rem;
+    padding-block-end: 1rem;
+    margin-block-end: 0;
+  }
+
+  .cds--modal-content__regular-content {
+    padding-inline-end: 0;
+  }
+
+  .cds--tile--is-selected,
+  .cds--tile--is-selected:hover {
+    outline-color: var(--md-sys-color-primary);
+    border-color: var(--md-sys-color-primary);
+  }
+
+  .cds--modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    block-size: auto;
+    padding: 1.5rem;
+
+    .cds--btn {
+      flex: 0 0 auto;
+      inline-size: auto;
+      max-inline-size: none;
+      min-inline-size: 5rem;
+      block-size: 2.5rem;
+      min-block-size: 2.5rem;
+      padding-block: 0;
+      padding-inline: 1.5rem;
+    }
+  }
+
+  .cds--modal-close {
+    border-radius: var(--m3-shape-full);
+    inset-block-start: 0.75rem;
+    inset-inline-end: 0.75rem;
+  }
+
+  // --- Superficies propias de VOZ ---
+  // Cada panel va dentro de un Layer con fondo propio: también necesita la esquina.
+  .voz-panel,
+  .cds--tile,
+  .voz-content .cds--layer__with-background,
+  .cds--file__drop-container,
+  .cds--file-browse-btn {
+    border-radius: var(--m3-shape-md);
+  }
+
+  .cds--inline-notification,
+  .cds--actionable-notification {
+    border-radius: var(--m3-shape-md);
+    border-inline-start-width: 0;
+    box-shadow: none;
+    overflow: hidden;
+  }
+
+  // --- Etiquetas (chips M3: 8 px) ---
+  .cds--tag,
+  .cds--tag__label {
+    border-radius: var(--m3-shape-sm);
+  }
+
+  // --- Interruptor M3 ---
+  .cds--toggle__switch,
+  .cds--toggle__switch::before,
+  .cds--toggle__appearance .cds--toggle__switch::before {
+    border-radius: var(--m3-shape-full);
+  }
+
+  // --- Radio y casilla ---
+  .cds--radio-button__appearance,
+  .cds--radio-button__appearance::before,
+  .cds--radio-button:checked + .cds--radio-button__label .cds--radio-button__appearance::before {
+    border-radius: 50%;
+  }
+
+  .cds--checkbox-label::before {
+    border-radius: 2px;
+  }
+
+  // --- Progreso ---
+  .cds--progress-bar__track,
+  .cds--progress-bar__bar {
+    border-radius: var(--m3-shape-full);
+  }
+
+  // --- Selector de contenido = botón segmentado ---
+  .cds--content-switcher {
+    border-radius: var(--m3-shape-full);
+    border: 1px solid var(--md-sys-color-outline);
+    overflow: hidden;
+    block-size: 2.5rem;
+  }
+
+  .cds--content-switcher-btn {
+    outline-offset: -3px;
+
+    &::after {
+      display: none;
+    }
+
+    &.cds--content-switcher--selected {
+      color: var(--md-sys-color-on-secondary-container);
+    }
+  }
+
+  // --- Tabla ---
+  .cds--data-table-container {
+    border-radius: var(--m3-shape-md);
+    overflow: hidden;
+  }
+
+  .cds--data-table thead tr th,
+  .cds--data-table thead tr {
+    background: var(--md-sys-color-surface-container-highest);
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  // --- Ajustes de VOZ: muestras de tema y acento redondas ---
+  .voz-choice__swatch,
+  .voz-accent__swatch {
+    border-radius: var(--m3-shape-full);
+  }
+
+  // La muestra de Carbon sigue recta aunque la interfaz esté en M3.
+  .voz-choice__shape--carbon {
+    border-radius: 0;
+  }
+
+  .voz-menu__item,
+  .voz-choice {
+    border-radius: var(--m3-shape-full);
+    margin-inline: 0.5rem;
+    inline-size: calc(100% - 1rem);
+  }
+
+  // --- Reproductor: control deslizante M3 (pista redonda, tirador circular) ---
+  .voz-range {
+    &::-webkit-slider-runnable-track {
+      border-radius: var(--m3-shape-full);
+    }
+
+    &::-moz-range-track {
+      border-radius: var(--m3-shape-full);
+    }
+
+    &::-webkit-slider-thumb {
+      inline-size: 1rem;
+      block-size: 1rem;
+      margin-block-start: -6px;
+      border-radius: var(--m3-shape-full);
+      background: var(--md-sys-color-primary);
+    }
+
+    &::-moz-range-thumb {
+      inline-size: 1rem;
+      block-size: 1rem;
+      border-radius: var(--m3-shape-full);
+      background: var(--md-sys-color-primary);
+    }
+  }
+}

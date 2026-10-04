@@ -1,6 +1,6 @@
 # Material 3 como diseño alternativo de VOZ
 
-Estado: investigación cerrada (Fase C1 del plan v3). Implementación pendiente (C2/C3).
+Estado: investigación cerrada (C1) e implementación hecha (C2/C3, sección 9).
 Fecha de la investigación: 3 de octubre de 2026.
 
 ## 1. Decisión
@@ -373,8 +373,10 @@ modal, headline para títulos de página. La fuente monoespaciada (tiempos, tran
 Carbon sigue rectangular: `_shape.scss` y `border-radius: 0` de la app no se tocan. La
 capa M3 define `--m3-shape-*` con los valores de la sección 3.3 y los aplica a:
 
-- Botones (`.cds--btn`), IconButton, Tag, Toggle y RadioButton: `full`.
-- Tiles, Popover, Menu, Dropdown/ListBox abierto, notificaciones: `medium` (12 px).
+- Botones (`.cds--btn`), IconButton, Toggle y buscador: `full`; RadioButton circular.
+- Tag: `small` (8 px, como los chips de M3).
+- Tiles, paneles, panel de Ajustes y notificaciones: `medium` (12 px). Menús y
+  listas desplegables: `extra-small` (4 px), como el menú de M3.
 - Modal: `extra-large` (28 px).
 - TextInput/Select/Search/NumberInput: contenedor relleno con esquinas superiores de 4 px
   y línea inferior del `outline`/`primary` al foco (variante "filled" de M3).
@@ -498,3 +500,44 @@ Riesgos:
 - https://github.com/mui/material-ui/issues/29345
 - https://github.com/weppa-cloud/material3-mcp-server
 - https://fontsource.org/fonts/roboto-flex
+
+## 9. Implementación (C2 y C3)
+
+Hecha el 2026-10-03 siguiendo las secciones 6.1 a 6.9, con estas diferencias:
+
+- Los tokens de tipo de Carbon son variables CSS (`--cds-body-compact-01-font-size`,
+  etc.) y los estilos sans no fijan `font-family` (la heredan), así que la tipografía M3 se
+  aplica poniendo la familia en `body`, `.voz-app` y los controles, y sobrescribiendo las
+  variables de la escala; el código sigue en IBM Plex Mono.
+- `data-design` solo se marca **después** de publicar los roles (`applyDesign` es
+  asíncrona y una llamada nueva descarta la anterior); `main.tsx` espera `settleDesign()`
+  para no pintar M3 sin colores en el primer render.
+- Los 8 acentos usan `SchemeVibrant`; `neutral` usa `SchemeMonochrome`. Éxito y aviso son
+  roles a medida (`--voz-m3-success*`, `--voz-m3-warning*`), armonizados hacia el acento.
+- Vitest necesita `test.server.deps.inline: ['@material/material-color-utilities']`
+  (`apps/web/vite.config.ts`): sin eso falla por los imports sin extensión de la sección 4.3.
+- `@material/web` y `@lit/react` **no** se instalaron: ningún control hizo falta (6.9).
+- Dependencias nuevas (versiones exactas): `@material/material-color-utilities` 0.4.0
+  (Apache-2.0; bloque aparte de 19,5 kB gzip, solo se descarga en modo M3) y
+  `@fontsource-variable/roboto-flex` 5.3.0 (OFL-1.1; un único `woff2` de 34 kB del eje
+  `wght`, se descarga solo si algo usa la fuente). Ni una URL externa en el bundle.
+
+Archivos: `apps/web/src/theme/appearance.ts` y `m3.ts` (más sus tests),
+`apps/web/src/styles/m3/` (`_tokens`, `_type`, `_shape`, `_components`), selector en
+`components/HeaderMenus.tsx` y textos en `i18n/messages/shell.ts`.
+
+Comparativas Carbon frente a M3 (dark/es y light/en: inicio, espacio de trabajo, Ajustes,
+exportar y renombrar) y los acentos: `docs/assets/screenshots/m3-*.png`.
+
+## Capturas
+
+Carbon (por defecto) frente a Material 3, con datos de demostración:
+
+| Carbon | Material 3 |
+| --- | --- |
+| ![Carbon, espacio de trabajo](../assets/screenshots/m3-carbon-dark-es-workspace.png) | ![Material 3, espacio de trabajo](../assets/screenshots/m3-m3-dark-es-workspace.png) |
+| ![Carbon, inicio](../assets/screenshots/m3-carbon-light-en-home.png) | ![Material 3, inicio](../assets/screenshots/m3-m3-light-en-home.png) |
+
+Ajustes en Material 3 ([oscuro](../assets/screenshots/m3-m3-dark-es-settings.png),
+[claro](../assets/screenshots/m3-m3-light-en-settings.png)) y
+[acentos](../assets/screenshots/m3-accents-dark-es.png).

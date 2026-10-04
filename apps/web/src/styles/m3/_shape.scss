@@ -1,0 +1,22 @@
+// Formas, elevación y movimiento de M3, solo con `[data-design='m3']`. Carbon (el modo
+// por defecto) sigue rectangular: `../_shape.scss` no se toca.
+// Valores de material-web (tokens/versions/v0_192): esquinas 0/4/8/12/16/28/full.
+[data-design='m3'] {
+  --m3-shape-xs: 4px;
+  --m3-shape-sm: 8px;
+  --m3-shape-md: 12px;
+  --m3-shape-lg: 16px;
+  --m3-shape-xl: 28px;
+  --m3-shape-full: 9999px;
+
+  // Elevación 1 a 3 (dos sombras: clave y ambiente) con el rol `shadow`.
+  --m3-elevation-1: 0 1px 2px color-mix(in srgb, var(--md-sys-color-shadow) 30%, transparent),
+    0 1px 3px 1px color-mix(in srgb, var(--md-sys-color-shadow) 15%, transparent);
+  --m3-elevation-2: 0 1px 2px color-mix(in srgb, var(--md-sys-color-shadow) 30%, transparent),
+    0 2px 6px 2px color-mix(in srgb, var(--md-sys-color-shadow) 15%, transparent);
+  --m3-elevation-3: 0 1px 3px color-mix(in srgb, var(--md-sys-color-shadow) 30%, transparent),
+    0 4px 8px 3px color-mix(in srgb, var(--md-sys-color-shadow) 15%, transparent);
+
+  --m3-ease: cubic-bezier(0.2, 0, 0, 1);
+  --m3-duration: 200ms;
+}

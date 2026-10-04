@@ -57,6 +57,7 @@
 // Después de Carbon: así sus reglas ganan por orden a las de los componentes.
 @use './accent';
 @use './shape';
+@use './m3';
 
 @include sans.light(normal, (Latin1, Pi));
 @include sans.regular((normal, italic), (Latin1, Pi));
