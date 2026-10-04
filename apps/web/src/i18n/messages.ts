@@ -1,5 +1,6 @@
 import { errors } from './messages/errors'
 import { job } from './messages/job'
+import { library } from './messages/library'
 import { models } from './messages/models'
 import { shell } from './messages/shell'
 import { transcribe } from './messages/transcribe'
@@ -14,6 +15,7 @@ export const MESSAGES = {
   ...transcribe,
   ...job,
   ...workspace,
+  ...library,
   ...models,
   ...errors,
 } as const

@@ -17,6 +17,7 @@ const outDir = env('CAPTURE_OUT')
 const profile = env('CAPTURE_PROFILE')
 const model = env('CAPTURE_MODEL')
 const haveModel = process.env.CAPTURE_HAVE_MODEL === '1'
+const haveDiar = process.env.CAPTURE_HAVE_DIAR === '1'
 const chromeCmd = (process.env.CHROME_CMD ?? 'flatpak run com.google.Chrome').split(' ')
 const WIDTH = 1440
 const HEIGHT = 1000
@@ -179,11 +180,17 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
-  await cdp.send('Page.navigate', { url })
-  await waitFor(`document.querySelector('h1') && document.querySelector('input[type=file]')`, 'la pagina de inicio')
+  // Inicio: la biblioteca (vacía al principio, con los pasos para empezar).
+  await cdp.send('Page.navigate', { url: url + '/#/' })
+  await waitFor(`document.querySelector('h1') && document.querySelector('.voz-library')`, 'la pagina de inicio')
   await waitFor(`document.querySelector('.voz-health .cds--tag')`, 'el estado de la API')
   await sleep(800)
   await shot('01-inicio.png')
+
+  // Nueva transcripción: la ruta #/nueva importa una grabación.
+  await click('main button.cds--btn--primary')
+  await waitFor(`location.hash === '#/nueva' && document.querySelector('input[type=file]')`, 'la pantalla de importar')
+  await sleep(400)
 
   // importar el audio de demo: se inyecta como un File real en el input de la zona de soltar
   const audioB64 = readFileSync(audioPath).toString('base64')
@@ -228,14 +235,19 @@ try {
   // configuración completa: reproductor, motor y calidad, opciones (hablantes, estilo, glosario)
   await shot('02-selector-motor.png', '#main-content .voz-grid', { through: '.voz-actionbar' })
 
-  // «Detectar quién habla» sin el modelo de hablantes: se ofrece descargarlo en línea y
-  // Transcribir queda bloqueado con su explicación (el entorno de capturas no lo instala).
+  // «Detectar quién habla»: sin el modelo de hablantes se ofrece descargarlo en línea y
+  // Transcribir queda bloqueado con su explicación. Con CAPTURE_DIARIZATION_DIR el modelo
+  // ya está y la opción queda activada para la transcripción.
   await page(`document.querySelector('button[role=switch]').click()`)
   await waitFor(`document.querySelector('.voz-diarization__mode')`, 'las opciones de hablantes')
   await sleep(1200)
   await shot('03-hablantes-modelo.png', panel('extras-title'))
-  await page(`document.querySelector('button[role=switch]').click()`)
-  await sleep(300)
+  if (!haveDiar) {
+    await page(`document.querySelector('button[role=switch]').click()`)
+    await sleep(300)
+  } else {
+    await waitFor(`document.querySelector('.voz-diarization__ready')`, 'el modelo de hablantes listo')
+  }
 
   if (haveModel) {
     // capturar el job en curso (opcional: con GPU puede terminar antes de verlo) y el terminado
@@ -269,13 +281,60 @@ try {
     await sleep(300)
     await shot('07-transcripcion.png', panel('segments-title'))
     await shot('08-propiedades.png', panel('props-title'), { through: panel('review-title') })
+    // la URL del trabajo es propia (#/t/<id>) y cuelga de Inicio
+    console.log('url del trabajo: ' + (await page(`location.hash`)))
+
+    // Exportar: modal con formato, opciones explicadas y vista previa
+    await clickText('button', 'Exportar')
+    await waitFor(`document.querySelector('.voz-export__preview')`, 'la vista previa de exportar')
+    await sleep(600)
+    await page(`document.querySelector('.voz-export button[role=switch]').click()`)
+    await sleep(900)
+    await shot('13-exportar.png')
+    await clickText('button', 'Cerrar')
+    await sleep(400)
+
+    // Audio: volumen por encima de 100 % con su aviso, velocidad en desplegable y atajos
+    await page(`(() => {
+      const el = document.querySelector('.voz-player__volumebar')
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '200')
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    })()`)
+    await sleep(400)
+    await shot('15-audio.png', panel('audio-title'))
+    await page(`(() => {
+      const el = document.querySelector('.voz-player__volumebar')
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '100')
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    })()`)
+
+    if (haveDiar) {
+      // Hablantes: tiempo de habla y %, filtrar, saltar y escuchar muestra
+      // El audio sintético puede no dar hablantes distinguibles: entonces se omite.
+      try {
+        await waitFor(`document.querySelectorAll('.voz-speakers__item').length > 0`, 'los hablantes', 15000)
+        await sleep(600)
+        await shot('14-hablantes.png', panel('speakers-title'))
+      } catch {
+        console.warn('aviso: el audio de demo no produjo hablantes; sin 14-hablantes.png')
+      }
+    }
+
+    // Inicio con la transcripción guardada
+    await click('header a[aria-label="VOZ, ir al inicio"]')
+    await waitFor(`document.querySelector('.voz-library tbody tr')`, 'la biblioteca con la transcripción')
+    await sleep(600)
+    await shot('12-biblioteca.png')
+    await page(`document.querySelector('.voz-library tbody a').click()`)
+    await waitFor(`document.querySelectorAll('.segments li').length > 0`, 'volver a abrir por la URL')
+    await sleep(400)
 
     // los mismos paneles en inglés, desde el selector de idioma de la cabecera
     await click(header('Idioma'))
     await sleep(300)
     await clickText('button', 'English')
     await sleep(600)
-    await shot('09-english.png', '#main-content .voz-grid', { through: panel('audio-title') })
+    await shot('09-english.png', '.voz-grid--job', { through: panel('audio-title') })
     // el menú sigue abierto tras elegir idioma
     await clickText('button', 'Español')
     await sleep(300)
@@ -289,7 +348,7 @@ try {
   }
 
   // gestor de modelos (con el modelo importado si lo hubo)
-  await page(`location.hash = 'modelos'`)
+  await page(`location.hash = '#/modelos'`)
   await waitFor(`document.querySelector('.voz-models table')`, 'el gestor de modelos')
   await waitFor(`!document.querySelector('.voz-models [aria-busy="true"]')`, 'el gestor de modelos')
   await sleep(500)

@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { createPlayhead } from '../lib/playhead'
 import { SpeakersPanel } from './SpeakersPanel'
 
 afterEach(() => {
@@ -247,5 +248,133 @@ describe('SpeakersPanel', () => {
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     expect(await screen.findByLabelText('Nombre de Ana')).toBeTruthy()
+  })
+})
+
+describe('SpeakersPanel: tiempo de habla, filtro, saltos y muestra', () => {
+  const segs = [
+    { id: 's1', start_ms: 0, end_ms: 6000, speaker_id: 'a' },
+    { id: 's2', start_ms: 6000, end_ms: 8000, speaker_id: 'b' },
+    { id: 's3', start_ms: 8000, end_ms: 12_000, speaker_id: 'a' },
+  ]
+
+  function setup(extra: Record<string, unknown> = {}) {
+    stubApi({ [LIST]: () => ({ status: 200, body: { speakers: [ANA, BETO] } }) })
+    const handlers = {
+      onFilter: vi.fn(),
+      onJump: vi.fn(),
+      onSample: vi.fn(),
+    }
+    const playhead = createPlayhead()
+    render(
+      <SpeakersPanel
+        transcriptId="t1"
+        segments={segs}
+        playhead={playhead}
+        filterId={null}
+        {...handlers}
+        {...extra}
+      />,
+    )
+    return { ...handlers, playhead }
+  }
+
+  it('muestra el tiempo de habla y el porcentaje calculados de los segmentos', async () => {
+    setup()
+    await screen.findByLabelText('Nombre de Ana')
+    expect(screen.getByText('0:10 · 83 %')).toBeTruthy()
+    expect(screen.getByText('0:02 · 17 %')).toBeTruthy()
+  })
+
+  it('prefiere talk_ms del servidor cuando viene', async () => {
+    stubApi({
+      [LIST]: () => ({
+        status: 200,
+        body: { speakers: [{ ...ANA, talk_ms: 30_000, first_ms: 0 }, { ...BETO, talk_ms: 10_000, first_ms: 6000 }] },
+      }),
+    })
+    render(<SpeakersPanel transcriptId="t1" segments={[]} onFilter={vi.fn()} />)
+    expect(await screen.findByText('0:30 · 75 %')).toBeTruthy()
+    expect(screen.getByText('0:10 · 25 %')).toBeTruthy()
+  })
+
+  it('filtra por hablante y lo quita al volver a pulsar', async () => {
+    const { onFilter } = setup()
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver solo a Ana en la transcripción' }))
+    expect(onFilter).toHaveBeenCalledWith('a')
+    cleanup()
+    const second = setup({ filterId: 'a' })
+    fireEvent.click(await screen.findAllByRole('button', { name: 'Mostrar a todos en la transcripción' }).then((all) => all[0] as HTMLElement))
+    expect(second.onFilter).toHaveBeenCalledWith(null)
+  })
+
+  it('salta a la intervención siguiente y anterior según la posición del audio', async () => {
+    const { onJump, playhead } = setup()
+    playhead.set(1000)
+    fireEvent.click(await screen.findByRole('button', { name: 'Intervención siguiente de Ana' }))
+    expect(onJump).toHaveBeenLastCalledWith({ start_ms: 8000, end_ms: 12_000, segment_id: 's3' })
+
+    playhead.set(9000)
+    fireEvent.click(screen.getByRole('button', { name: 'Intervención anterior de Ana' }))
+    expect(onJump).toHaveBeenLastCalledWith({ start_ms: 0, end_ms: 6000, segment_id: 's1' })
+  })
+
+  it('escuchar muestra entrega el segmento más largo del hablante', async () => {
+    const { onSample } = setup()
+    fireEvent.click(await screen.findByRole('button', { name: 'Escuchar una muestra de Ana' }))
+    expect(onSample).toHaveBeenCalledWith({ start_ms: 0, end_ms: 6000, segment_id: 's1' })
+  })
+})
+
+describe('SpeakersPanel: recalcular hablantes', () => {
+  it('pide cuántos hablantes hay y llama a onRecalculate', async () => {
+    stubApi({ [LIST]: () => ({ status: 200, body: { speakers: [ANA, BETO] } }) })
+    const onRecalculate = vi.fn(() => Promise.resolve())
+    render(
+      <SpeakersPanel
+        transcriptId="t1"
+        onRecalculate={onRecalculate}
+        recalc={{ phase: 'idle', pct: null, error: null }}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalcular hablantes' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Recalcular hablantes' })
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Exacto' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Recalcular' }))
+
+    await waitFor(() => {
+      expect(onRecalculate).toHaveBeenCalledWith({ exact: 2 })
+    })
+  })
+
+  it('si falta el modelo lo explica y ofrece ir a Modelos', async () => {
+    stubApi({ [LIST]: () => ({ status: 200, body: { speakers: [ANA] } }) })
+    const onOpenModels = vi.fn()
+    const err = Object.assign(new Error('Falta el modelo de hablantes.'), { code: 'diarization_models_missing' })
+    render(
+      <SpeakersPanel
+        transcriptId="t1"
+        onRecalculate={() => Promise.reject(err)}
+        onOpenModels={onOpenModels}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalcular hablantes' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Recalcular hablantes' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Recalcular' }))
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Ir a Modelos' }))
+    expect(onOpenModels).toHaveBeenCalledTimes(1)
+  })
+
+  it('mientras recalcula muestra el avance y bloquea el botón', async () => {
+    stubApi({ [LIST]: () => ({ status: 200, body: { speakers: [ANA] } }) })
+    render(
+      <SpeakersPanel
+        transcriptId="t1"
+        onRecalculate={() => Promise.resolve()}
+        recalc={{ phase: 'running', pct: 40, error: null }}
+      />,
+    )
+    expect(await screen.findByText('Recalculando hablantes: 40 %')).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Recalcular hablantes' }).disabled).toBe(true)
   })
 })

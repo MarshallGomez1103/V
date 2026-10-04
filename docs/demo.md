@@ -30,7 +30,7 @@ ingeniería», aunque el texto hablado decía «…entrega del proyecto…»).
 
 | Archivo | Qué muestra | Función real |
 | --- | --- | --- |
-| `01-inicio.png` | Pantalla de inicio (UI Shell de Carbon): importar grabación, estado de la API y «Transcripciones guardadas» (con los pasos para empezar si aún no hay ninguna) | Importación (S5), `/api/health`, trabajos guardados (`/api/projects`, `/api/jobs`) |
+| `01-inicio.png` | Inicio (`#/`, UI Shell de Carbon): estado de la API y la biblioteca de transcripciones; vacía al empezar, con los pasos para empezar y el botón «Nueva transcripción» | `/api/health`, biblioteca (`/api/library`) |
 | `02-selector-motor.png` | Configuración tras importar: ficha y reproductor del original, «Motor y calidad» (motor, perfil y sus parámetros técnicos con tooltips), «Opciones» (hablantes, instrucciones de estilo, glosario) y el botón Transcribir | Selector de motor (`/api/transcription-options`), perfiles, glosario |
 | `03-hablantes-modelo.png` | «Detectar quién habla» activado sin el modelo de hablantes: aviso, botón «Descargar modelo de hablantes (33 MB)» en línea y Transcribir bloqueado hasta tenerlo | Modelo `diarization:*` del gestor de modelos |
 | `04-job-en-curso.png` | El job mientras corre: etapas con su avance, tiempo transcurrido, restante estimado, dispositivo y modelo, y una frase de lo que ocurre. Solo se guarda si el script alcanza a verlo; con la GPU el job puede acabar antes | Job por SSE (`started_at`, `stage_progress`, `eta_seconds`) |
@@ -40,16 +40,20 @@ ingeniería», aunque el texto hablado decía «…entrega del proyecto…»).
 | `08-propiedades.png` | Panel de propiedades (archivo, idioma, modelo, perfil, calidad, dispositivo), Exportar, Hablantes (renombrar, color, fusionar) y cola de revisión | Exportación, hablantes, revisión |
 | `09-english.png` | Los mismos paneles en inglés, desde el selector de idioma de la cabecera | i18n español/inglés |
 | `10-ajustes.png` | Menú de ajustes: tema (Automático, White, Gray 10, 90 y 100), color de acento e icono de escritorio | Preferencias en `localStorage`, `/api/desktop-shortcut` |
+| `12-biblioteca.png` | Inicio con la transcripción guardada: tabla con buscar, nombre (enlace a su propia URL `#/t/<id>`), fecha, duración, estado, hablantes y las acciones Abrir, Renombrar y Eliminar | Biblioteca (`GET /api/library`), `PATCH`/`DELETE /api/projects/{id}` |
+| `13-exportar.png` | Modal «Exportar transcripción»: formato con su utilidad, opciones explicadas («Incluir tiempos», «Agrupar por hablante») y vista previa de las primeras líneas con las opciones actuales | Exportación (`/api/transcripts/{id}/export`) |
+| `14-hablantes.png` | Panel de hablantes con tiempo de habla y porcentaje, filtrar la transcripción, saltar a la intervención anterior/siguiente, escuchar una muestra y «Recalcular hablantes». Solo se genera con `CAPTURE_DIARIZATION_DIR` | `/api/transcripts/{id}/speakers` (`talk_ms`, `first_ms`), `POST /api/transcripts/{id}/rediarize` |
+| `15-audio.png` | Reproductor con volumen al 200 % (aviso de saturación), velocidad en desplegable y la línea de atajos | Web Audio (`GainNode`), reproductor (S7) |
 | `11-gestor-modelos.png` | Gestor de modelos (`DataTable`): estados rectangulares con tooltip, tamaños reales (en catálogo y en disco), sección «Hablantes» | Gestor de modelos (S8) |
 
 ### Lo que estas capturas no muestran
 
-- **Hablantes separados.** El entorno de capturas es una carpeta temporal sin el
-  modelo `diarization:sherpa-default` (no se descarga para las capturas). Por eso
-  el panel de hablantes sale vacío y la línea de tiempo de hablantes no se ve en
-  estas imágenes; sí se ve el aviso de descarga (`03`). La línea de tiempo se
-  verificó aparte con una transcripción real de 1h47m (1.312 segmentos, 11
-  hablantes) en una copia de los datos.
+- **Hablantes separados (sin `CAPTURE_DIARIZATION_DIR`).** El entorno de capturas es
+  una carpeta temporal sin el modelo `diarization:sherpa-default` (no se descarga para
+  las capturas). Por eso el panel de hablantes sale vacío y la línea de tiempo no se ve;
+  sí se ve el aviso de descarga (`03`). Con `CAPTURE_DIARIZATION_DIR` apuntando a una
+  carpeta con ese modelo (se copia al temporal, nunca se modifica) la transcripción
+  pide hablantes y se genera `14-hablantes.png`.
 - **Palabras con timing.** El segmento se compone de palabras clicables (37 en esta
   demo, comprobado en el DOM por el script), pero a la vista se leen como texto
   normal: la palabra actual solo se resalta durante la reproducción.
@@ -68,12 +72,14 @@ el script arranca el servidor con `uv run --no-sync` para no quitárselo), `node
 modelo `turbo` en el caché de Buzz. Sin ese modelo el script avisa y solo hace las
 capturas que no lo necesitan (`01` y `11`; esta ruta no se ha probado). Tarda unos
 10 segundos. Variables opcionales: `VOZ_CMD`, `CAPTURE_MODEL` (por defecto
-`turbo`) y `CHROME_CMD` (por defecto `flatpak run com.google.Chrome`).
+`turbo`), `CHROME_CMD` (por defecto `flatpak run com.google.Chrome`) y
+`CAPTURE_DIARIZATION_DIR` (carpeta del modelo de hablantes, opcional; ver arriba).
 
 Cómo funciona, por si hay que mantenerlo:
 
-- La UI guarda su estado solo en memoria, así que `chrome --screenshot` sirve
-  únicamente para la pantalla inicial. El resto se maneja con el protocolo de
+- Las rutas son por hash (`#/`, `#/nueva`, `#/t/<id>`, `#/modelos`, `#/proveedores`), pero
+  la importación y las configuraciones viven en memoria, así que `chrome --screenshot`
+  sirve únicamente para pantallas sueltas. El resto se maneja con el protocolo de
   depuración de Chrome (CDP) desde `scripts/capture-screenshots.mjs` (WebSocket
   y `fetch` de Node, sin dependencias): fuerza `prefers-color-scheme: dark`,
   importa el audio inyectando un `File` en el campo de archivo, elige el motor,
@@ -89,7 +95,7 @@ Cómo funciona, por si hay que mantenerlo:
   vista, así que la captura de la transcripción hace scroll antes de recortar.
 - Si cambia la UI (paneles `options-title`, `extras-title`, `job-title`,
   `audio-title`, `segments-title`, `props-title`, `review-title`, la clase
-  `.voz-models` y los botones de la cabecera por su nombre accesible), ajusta el `.mjs`.
+  `.voz-models`, `.voz-library`, `.voz-export` y los botones de la cabecera por su nombre accesible), ajusta el `.mjs`.
 - La UI elige idioma según el navegador: el script fija `voz.lang=es` en
   `localStorage` antes de cargar. Con `CHROME_NO_SANDBOX=1` añade `--no-sandbox`
   (para un Chromium local en vez del Chrome de flatpak).

@@ -1,11 +1,15 @@
 import { translate, translateCode } from '../i18n/i18n'
 import { isAbortError, readErrorCode } from './errors'
+import { isJobView, type JobView } from './jobs'
 
 export interface Speaker {
   id: string
   name: string
   color: string
   segment_count: number
+  /** Milisegundos de habla y primer instante; ausentes si el servidor aún no los informa. */
+  talk_ms?: number
+  first_ms?: number
 }
 
 export class SpeakerApiError extends Error {
@@ -39,6 +43,8 @@ function toSpeaker(value: unknown): Speaker | null {
       name: value.name,
       color: value.color,
       segment_count: value.segment_count,
+      ...(typeof value.talk_ms === 'number' ? { talk_ms: value.talk_ms } : {}),
+      ...(typeof value.first_ms === 'number' ? { first_ms: value.first_ms } : {}),
     }
   }
   return null
@@ -167,4 +173,28 @@ export async function assignSegmentSpeaker(
   if (!isRecord(payload) || typeof payload.id !== 'string') {
     throw invalidResponse()
   }
+}
+
+export interface RediarizeRequest {
+  exact?: number
+  minimum?: number
+  maximum?: number
+}
+
+/** Recalcula solo los hablantes (sin transcribir otra vez); devuelve el trabajo a seguir. */
+export async function rediarize(
+  transcriptId: string,
+  speakers: RediarizeRequest,
+  signal?: AbortSignal,
+): Promise<JobView> {
+  const payload = await request(
+    '/api/transcripts/' + encodeURIComponent(transcriptId) + '/rediarize',
+    'POST',
+    { speakers },
+    signal,
+  )
+  if (!isJobView(payload)) {
+    throw invalidResponse()
+  }
+  return payload
 }

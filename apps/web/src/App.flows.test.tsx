@@ -121,6 +121,7 @@ interface Api {
     taskState: 'running' | 'completed'
     jobs: ReturnType<typeof job>[]
     preview: { start_ms: number; end_ms: number; text: string }[]
+    library: 'items' | 'missing'
     shortcut: { supported: boolean; exists: boolean } | null
     shutdown: number
     installing: boolean
@@ -134,6 +135,7 @@ function installApi(): Api {
       diarInstalled: false,
       taskState: 'running',
       jobs: [],
+      library: 'items',
       preview: [],
       shortcut: { supported: true, exists: false },
       shutdown: 202,
@@ -155,6 +157,34 @@ function installApi(): Api {
           return Promise.resolve(json({ status: 'ok', version: '0.1.0' }))
         case route === 'GET /api/projects':
           return Promise.resolve(json({ projects: [PROJECT] }))
+        case route === 'GET /api/library': {
+          const latest = state.jobs[0]
+          return Promise.resolve(
+            state.library === 'missing'
+              ? json({}, 404)
+              : json({
+                  items: latest
+                    ? [
+                        {
+                          project_id: 'p1',
+                          name: PROJECT.name,
+                          created_at: PROJECT.created_at,
+                          media: { media_asset_id: 'a1', filename: 'clase.wav', duration_ms: 90_000 },
+                          latest_job: {
+                            id: latest.id,
+                            state: latest.state,
+                            transcript_id: latest.transcript_id,
+                            model_id: 'fixture',
+                            created_at: latest.created_at,
+                          },
+                          speaker_count: 1,
+                          segment_count: 2,
+                        },
+                      ]
+                    : [],
+                }),
+          )
+        }
         case route === 'POST /api/projects':
           return Promise.resolve(json(PROJECT, 201))
         case route === 'GET /api/jobs':
@@ -264,6 +294,11 @@ class FakeEventSource {
   close() {
     this.readyState = FakeEventSource.CLOSED
   }
+  dispatch(name: string) {
+    this.listeners.get(name)?.forEach((listener) => {
+      listener(new Event(name))
+    })
+  }
   emit(name: string, data: unknown) {
     const event = new MessageEvent(name, { data: JSON.stringify(data) })
     act(() => {
@@ -285,6 +320,11 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
   window.location.hash = ''
 })
+
+/** Las pruebas que importan un archivo parten de «Nueva transcripción». */
+function startFromNew() {
+  window.location.hash = '#/nueva'
+}
 
 afterEach(() => {
   cleanup()
@@ -312,6 +352,8 @@ function transcribeButton() {
 }
 
 describe('modelo de hablantes que falta', () => {
+  beforeEach(startFromNew)
+
   it('ofrece descargarlo en línea y bloquea Transcribir con una explicación hasta tenerlo', async () => {
     render(<App />)
     await importFile()
@@ -368,6 +410,8 @@ describe('modelo de hablantes que falta', () => {
 })
 
 describe('instrucciones de estilo', () => {
+  beforeEach(startFromNew)
+
   it('se envían como `prompt` recortadas y explican que Whisper imita, no obedece', async () => {
     render(<App />)
     await importFile()
@@ -413,6 +457,8 @@ describe('instrucciones de estilo', () => {
 })
 
 describe('texto visible mientras se procesa', () => {
+  beforeEach(startFromNew)
+
   async function start() {
     render(<App />)
     await importFile()
@@ -478,25 +524,79 @@ describe('texto visible mientras se procesa', () => {
 })
 
 describe('abrir lo guardado', () => {
-  it('lista las transcripciones guardadas y abre una terminada con su texto', async () => {
+  it('lista las transcripciones guardadas y abre una terminada por su propia URL', async () => {
     api.state.jobs = [job('COMPLETED', { progress: 1, transcript_id: 't1' })]
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: 'Transcripciones guardadas' })).toBeDefined()
-    fireEvent.click(await screen.findByRole('button', { name: 'Abrir' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
+    const table = await screen.findByRole('table', { name: 'Transcripciones guardadas' })
+    expect(within(table).getByText('Clase')).toBeDefined()
+    expect(within(table).getByText('1:30')).toBeDefined()
+    fireEvent.click(await screen.findByRole('button', { name: 'Abrir Clase' }))
+    expect(window.location.hash).toBe('#/t/job-1')
 
     const stream = FakeEventSource.instances.at(-1)
     stream?.emit('job', job('COMPLETED', { progress: 1, transcript_id: 't1' }))
     const list = await screen.findByRole('region', { name: 'Lista de segmentos' })
     expect(within(list).getByText('Hoy vemos el servicio.')).toBeDefined()
+    // El nombre sale de la biblioteca, no del archivo.
+    expect(screen.getByRole('heading', { name: 'Reproducción' })).toBeDefined()
+
+    // Atrás vuelve a Inicio.
+    act(() => {
+      window.location.hash = '#/'
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
+    expect(screen.queryByRole('region', { name: 'Lista de segmentos' })).toBeNull()
   })
 
-  it('retoma solo un trabajo que quedó en curso', async () => {
+  it('recargar #/t/<id> reabre ese trabajo sin pasar por Inicio', async () => {
+    api.state.jobs = [job('COMPLETED', { progress: 1, transcript_id: 't1' })]
+    window.location.hash = '#/t/job-1'
+    render(<App />)
+
+    const list = await screen.findByRole('region', { name: 'Lista de segmentos' }, { timeout: 5000 })
+    expect(within(list).getByText('Bienvenidos a la clase.')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeDefined()
+    expect(screen.getByRole('navigation', { name: 'Ruta de navegación' })).toBeDefined()
+  })
+
+  it('una URL de un trabajo que no existe lo dice y ofrece volver al inicio', async () => {
+    window.location.hash = '#/t/no-existe'
+    render(<App />)
+    await waitFor(() => {
+      expect(FakeEventSource.instances.length).toBeGreaterThan(0)
+    })
+    const stream = FakeEventSource.instances.at(-1) as FakeEventSource
+    stream.readyState = FakeEventSource.CLOSED
+    act(() => {
+      stream.dispatch('error')
+    })
+
+    expect(await screen.findByText('No se encontró esta transcripción')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Ir al inicio' }))
+    expect(window.location.hash).toBe('#/')
+  })
+
+  it('un trabajo en curso aparece en la lista con su estado y se abre desde ahí', async () => {
     api.state.jobs = [job('TRANSCRIBING', { stage_progress: 0.2 })]
     render(<App />)
 
+    const table = await screen.findByRole('table', { name: 'Transcripciones guardadas' })
+    expect(within(table).getByText('Transcribiendo el audio')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Clase' }))
     expect(await screen.findByRole('heading', { name: 'Transcribiendo el audio' })).toBeDefined()
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDefined()
+  })
+
+  it('con un servidor sin /api/library compone la lista con proyectos y trabajos', async () => {
+    api.state.library = 'missing'
+    api.state.jobs = [job('COMPLETED', { progress: 1, transcript_id: 't1' })]
+    render(<App />)
+
+    const table = await screen.findByRole('table', { name: 'Transcripciones guardadas' })
+    expect(within(table).getByText('Clase')).toBeDefined()
+    expect(api.calls.some((call) => call.path === '/api/projects')).toBe(true)
   })
 
   it('si no se pueden consultar, lo dice y deja reintentar', async () => {
@@ -505,17 +605,35 @@ describe('abrir lo guardado', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-        fail && urlOf(input).includes('/api/projects')
+        fail && /\/api\/(projects|library)/.test(urlOf(input))
           ? Promise.reject(new Error('sin red'))
           : original(input, init),
       ),
     )
     render(<App />)
 
-    expect(await screen.findByText('No se pudieron consultar las transcripciones guardadas')).toBeDefined()
+    expect(await screen.findByText('No se pudieron consultar las transcripciones')).toBeDefined()
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     expect(await screen.findByText(/todavía no hay transcripciones/i)).toBeDefined()
+  })
+
+  it('«Ajustar y repetir» vuelve a #/nueva con la misma grabación ya importada', async () => {
+    api.state.jobs = [job('FAILED', { error_code: 'asr_failed' })]
+    window.location.hash = '#/t/job-1'
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /ajustar y repetir/i }, { timeout: 5000 }))
+    expect(window.location.hash).toBe('#/nueva')
+    expect(await screen.findByRole('heading', { name: 'Motor y calidad' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'clase.wav' })).toBeDefined()
+  })
+
+  it('Nueva transcripción lleva a importar', async () => {
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva transcripción' }))
+    expect(window.location.hash).toBe('#/nueva')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transcribir' })).toBeDefined()
   })
 })
 
@@ -540,7 +658,7 @@ describe('cerrar el servidor', () => {
   it('avisa si hay un trabajo en curso: se reanudará al volver a abrir VOZ', async () => {
     api.state.jobs = [job('TRANSCRIBING')]
     render(<App />)
-    await screen.findByRole('heading', { name: 'Transcribiendo el audio' })
+    await screen.findByRole('table', { name: 'Transcripciones guardadas' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar servidor' }))
     const dialog = await screen.findByRole('dialog', { name: '¿Cerrar VOZ?' })
@@ -649,12 +767,12 @@ describe('ajustes', () => {
 
   it('cambia el idioma de toda la interfaz a inglés y lo recuerda', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Transcribir' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: 'Idioma' }))
     fireEvent.click(screen.getByRole('button', { name: 'English' }))
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Transcribe' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 1, name: 'Transcripts' })).toBeDefined()
     expect(screen.getByRole('button', { name: 'Close server' })).toBeDefined()
     expect(screen.getAllByRole('link', { name: 'Models' }).length).toBeGreaterThan(0)
     expect(window.localStorage.getItem('voz.lang')).toBe('en')

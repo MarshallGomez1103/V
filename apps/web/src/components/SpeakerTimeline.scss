@@ -116,3 +116,13 @@ $name-width: 9.5rem;
     display: none;
   }
 }
+
+// Hablante elegido en el panel: su fila destaca y las demás bajan de intensidad.
+.voz-tl__row.is-selected .voz-tl__name {
+  font-weight: 600;
+  box-shadow: inset 4px 0 0 $interactive;
+}
+
+.voz-tl__row.is-dim {
+  opacity: 0.45;
+}

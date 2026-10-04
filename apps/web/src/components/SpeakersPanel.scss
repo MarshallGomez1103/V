@@ -2,7 +2,7 @@
 
 .voz-speakers {
   display: grid;
-  gap: $spacing-03;
+  gap: $spacing-04;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -10,9 +10,60 @@
 
 .voz-speakers__item {
   display: grid;
+  gap: $spacing-02;
+  padding-inline-start: $spacing-03;
+  border-inline-start: 4px solid transparent;
+
+  &.is-filtering {
+    border-inline-start-color: $interactive;
+    background: $layer-selected-01;
+  }
+}
+
+.voz-speakers__line {
+  display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: $spacing-03;
+}
+
+// Tiempo de habla: barra del color del hablante y, al lado, «m:ss · n %».
+.voz-speakers__talk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.voz-speakers__bar {
+  display: block;
+  block-size: $spacing-03;
+  background: $layer-accent-01;
+}
+
+.voz-speakers__barfill {
+  display: block;
+  block-size: 100%;
+  min-inline-size: 2px;
+}
+
+.voz-speakers__time {
+  @include type-style('code-01');
+
+  color: $text-secondary;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.voz-speakers__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-02;
+}
+
+.voz-speakers__recalc {
+  display: grid;
+  gap: $spacing-05;
 }
 
 .voz-speakers__color {

@@ -11,7 +11,10 @@
 # Uso: scripts/capture-screenshots.sh [directorio-de-salida]
 # Requiere: uv, node >= 22, ffmpeg, espeak-ng, flatpak com.google.Chrome.
 # Variables: VOZ_CMD (por defecto `uv run --no-sync voz`), CAPTURE_MODEL (por
-# defecto `turbo`), CHROME_CMD (por defecto `flatpak run com.google.Chrome`).
+# defecto `turbo`), CHROME_CMD (por defecto `flatpak run com.google.Chrome`) y,
+# opcional, CAPTURE_DIARIZATION_DIR: carpeta con el modelo de hablantes (la que
+# VOZ guarda en models/diarization); se COPIA al temporal para capturar los
+# hablantes con su tiempo de habla (sin ella esas capturas se omiten).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,6 +50,12 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
 export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-$HOME/.local/share/uv/python}"
 export XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data"
 export XDG_CACHE_HOME="$work/cache" XDG_STATE_HOME="$work/state"
+
+have_diar=0
+if [[ -n "${CAPTURE_DIARIZATION_DIR:-}" && -d "$CAPTURE_DIARIZATION_DIR" ]]; then
+  mkdir -p "$work/data/voz/models"
+  cp -r "$CAPTURE_DIARIZATION_DIR" "$work/data/voz/models/diarization" && chmod -R u+w "$work/data/voz/models" && have_diar=1
+fi
 
 # --- audio de demo: dos voces alternando, con pausas ---
 (
@@ -99,7 +108,7 @@ fi
 
 # --- capturas ---
 CAPTURE_URL="$base" CAPTURE_AUDIO="$work/reunion-demo.wav" CAPTURE_OUT="$out" \
-CAPTURE_PROFILE="$profile" CAPTURE_MODEL="$model" CAPTURE_HAVE_MODEL="$have_model" \
+CAPTURE_PROFILE="$profile" CAPTURE_MODEL="$model" CAPTURE_HAVE_MODEL="$have_model" CAPTURE_HAVE_DIAR="$have_diar" \
 CHROME_CMD="$chrome_cmd" node "$root/scripts/capture-screenshots.mjs"
 
 echo "OK: capturas en $out"

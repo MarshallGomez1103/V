@@ -128,3 +128,15 @@
 .voz-app .cds--accordion__content {
   padding-inline-end: $spacing-02;
 }
+
+.voz-steps {
+  @include type-style('body-compact-01');
+
+  margin: 0;
+  padding-inline-start: $spacing-06;
+  color: $text-secondary;
+}
+
+.voz-crumbs {
+  margin-block-end: $spacing-05;
+}

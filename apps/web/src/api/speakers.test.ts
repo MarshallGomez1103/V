@@ -4,6 +4,7 @@ import {
   assignSegmentSpeaker,
   listSpeakers,
   mergeSpeakers,
+  rediarize,
   SpeakerApiError,
   updateSpeaker,
 } from './speakers'
@@ -110,5 +111,43 @@ describe('api/speakers', () => {
     )
 
     await expect(listSpeakers('t')).rejects.toBeInstanceOf(DOMException)
+  })
+})
+
+describe('api/speakers: v3', () => {
+  it('listSpeakers conserva talk_ms y first_ms cuando el servidor los envía', async () => {
+    stubFetch({ speakers: [{ ...ANA, talk_ms: 4000, first_ms: 250 }] })
+    await expect(listSpeakers('t')).resolves.toEqual([{ ...ANA, talk_ms: 4000, first_ms: 250 }])
+  })
+
+  it('rediarize hace POST con el rango pedido y devuelve el trabajo', async () => {
+    const view = {
+      id: 'j2',
+      project_id: 'p',
+      media_asset_id: 'm',
+      state: 'DIARIZING',
+      progress: 0.1,
+      error_code: null,
+      transcript_id: 't1',
+      created_at: '2026-10-01T10:00:00Z',
+      updated_at: '2026-10-01T10:00:00Z',
+    }
+    const fetchMock = stubFetch(view, 202)
+    await expect(rediarize('t/1', { minimum: 2, maximum: 4 })).resolves.toMatchObject({ id: 'j2' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/transcripts/t%2F1/rediarize',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ speakers: { minimum: 2, maximum: 4 } }),
+      }),
+    )
+  })
+
+  it('rediarize traduce diarization_models_missing', async () => {
+    stubFetch({ detail: { code: 'diarization_models_missing', message: 'x' } }, 409)
+    await expect(rediarize('t', { exact: 2 })).rejects.toMatchObject({
+      code: 'diarization_models_missing',
+      message: expect.stringContaining('modelo de hablantes') as string,
+    })
   })
 })

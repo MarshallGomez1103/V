@@ -27,6 +27,8 @@ interface SpeakerTimelineProps {
   onSeek: (ms: number) => void
   /** Los hablantes se están calculando: se avisa en lugar de mostrar una sola fila. */
   speakersPending?: boolean
+  /** Hablante elegido en el panel de hablantes: su fila se resalta y las demás se atenúan. */
+  selectedId?: string | null
 }
 
 interface Lane {
@@ -65,6 +67,7 @@ export function SpeakerTimeline({
   playhead,
   onSeek,
   speakersPending = false,
+  selectedId = null,
 }: SpeakerTimelineProps) {
   const { t, tn } = useI18n()
   const duration =
@@ -133,7 +136,13 @@ export function SpeakerTimeline({
       </div>
       <div className="voz-tl__lanes">
         {lanes.map((lane) => (
-          <div key={lane.id ?? 'none'} className="voz-tl__row">
+          <div
+            key={lane.id ?? 'none'}
+            className={
+              'voz-tl__row' +
+              (selectedId === null ? '' : lane.id === selectedId ? ' is-selected' : ' is-dim')
+            }
+          >
             <span className="voz-tl__name" title={lane.name}>
               <span
                 className="voz-tl__chip"

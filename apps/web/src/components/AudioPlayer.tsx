@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, IconButton } from '@carbon/react'
+import { Dropdown, IconButton } from '@carbon/react'
 import {
   Forward_5,
   Pause,
@@ -7,6 +7,7 @@ import {
   Rewind_5,
   VolumeMute,
   VolumeUp,
+  WarningAltFilled,
 } from '@carbon/icons-react'
 
 import { useI18n } from '../i18n/i18n'
@@ -21,10 +22,43 @@ export interface AudioPlayerProps {
   onTimeUpdate?: (ms: number) => void
   /** Duración conocida por la importación; sirve mientras el navegador no la mide. */
   durationMs?: number | null
+  /** Con un seek: pausa al llegar a este instante (muestras de un hablante). */
+  stopAtMs?: number | null
 }
 
-const RATES = [1, 1.25, 1.5, 2, 0.75] as const
+const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
+type Rate = (typeof RATES)[number]
 const SKIP_SECONDS = 5
+const MAX_PERCENT = 300
+
+interface Boost {
+  ctx: AudioContext
+  gain: GainNode
+}
+
+function audioContextClass(): typeof AudioContext | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const legacy = (window as unknown as { webkitAudioContext?: typeof AudioContext })
+    .webkitAudioContext
+  return typeof AudioContext === 'undefined' ? (legacy ?? null) : AudioContext
+}
+
+/** Teclas de atajo que no deben robarse cuando se está escribiendo o en un menú. */
+function ownsKeys(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  if (target instanceof HTMLInputElement && target.type === 'range') {
+    return false
+  }
+  return (
+    target.isContentEditable ||
+    target.matches('input, textarea, select, [contenteditable], [role=combobox], [role=listbox], [role=option], [role=menuitem]') ||
+    target.closest('.cds--modal, [role=dialog]') !== null
+  )
+}
 
 function originalMediaUrl(mediaAssetId: string): string {
   return '/api/media/' + encodeURIComponent(mediaAssetId) + '/original'
@@ -45,15 +79,22 @@ export function AudioPlayer({
   seekNonce,
   onTimeUpdate,
   durationMs = null,
+  stopAtMs = null,
 }: AudioPlayerProps) {
   const { t } = useI18n()
   const audioRef = useRef<HTMLAudioElement>(null)
   const [time, setTime] = useState(0)
   const [measured, setMeasured] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
-  const [volume, setVolume] = useState(1)
+  // Volumen en % (0–300). Hasta 100 % lo da el propio audio; más arriba entra un
+  // GainNode de Web Audio, que se crea una sola vez (un elemento admite una sola fuente).
+  const [percent, setPercent] = useState(100)
   const [muted, setMuted] = useState(false)
-  const [rate, setRate] = useState<(typeof RATES)[number]>(1)
+  const [rate, setRate] = useState<Rate>(1)
+  const boostRef = useRef<Boost | null>(null)
+  const stopRef = useRef<number | null>(null)
+  const canBoost = audioContextClass() !== null
+  const maxPercent = canBoost ? MAX_PERCENT : 100
 
   useEffect(() => {
     const audio = audioRef.current
@@ -61,41 +102,121 @@ export function AudioPlayer({
       return
     }
     audio.currentTime = Math.max(0, seekToMs) / 1000
+    stopRef.current = stopAtMs
+    void boostRef.current?.ctx.resume().catch(() => undefined)
     const playback: unknown = audio.play()
     if (playback instanceof Promise) {
       // El autoplay puede estar bloqueado; el usuario aún puede pulsar play.
       playback.catch(() => undefined)
     }
-  }, [seekNonce, seekToMs])
+  }, [seekNonce, seekToMs, stopAtMs])
 
-  if (mediaAssetId === null) {
-    return null
-  }
+  // Al desmontar se libera el contexto de audio, si llegó a crearse.
+  useEffect(
+    () => () => {
+      const boost = boostRef.current
+      boostRef.current = null
+      void boost?.ctx.close().catch(() => undefined)
+    },
+    [],
+  )
 
-  const duration =
+  const durationSeconds =
     measured !== null && Number.isFinite(measured) && measured > 0
       ? measured
       : durationMs !== null
         ? durationMs / 1000
         : 0
+  // Atajos globales: Espacio reproduce o pausa; ← y → mueven 5 s.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const audio = audioRef.current
+      if (
+        audio === null ||
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        ownsKeys(event.target)
+      ) {
+        return
+      }
+      const onButton = event.target instanceof HTMLElement && event.target.closest('button, a, summary') !== null
+      if (event.code === 'Space' && !onButton) {
+        event.preventDefault()
+        playOrPause(audio, boostRef.current)
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        if (event.target instanceof HTMLInputElement) {
+          return
+        }
+        event.preventDefault()
+        stopRef.current = null
+        const limit = durationSeconds > 0 ? durationSeconds : Number.MAX_SAFE_INTEGER
+        const delta = event.key === 'ArrowLeft' ? -SKIP_SECONDS : SKIP_SECONDS
+        audio.currentTime = Math.min(limit, Math.max(0, audio.currentTime + delta))
+        setTime(audio.currentTime)
+        onTimeUpdate?.(Math.round(audio.currentTime * 1000))
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [durationSeconds, onTimeUpdate])
+
+  if (mediaAssetId === null) {
+    return null
+  }
+
+  const duration = durationSeconds
 
   const sync = (audio: HTMLAudioElement) => {
     setTime(audio.currentTime)
     onTimeUpdate?.(Math.round(audio.currentTime * 1000))
+    if (stopRef.current !== null && audio.currentTime * 1000 >= stopRef.current) {
+      stopRef.current = null
+      audio.pause()
+    }
   }
 
   const toggle = () => {
     const audio = audioRef.current
+    if (audio !== null) {
+      playOrPause(audio, boostRef.current)
+    }
+  }
+
+  /** Aplica volumen (0–300 %) y silencio al audio o, si ya existe, al GainNode. */
+  const applyVolume = (nextPercent: number, nextMuted: boolean) => {
+    const audio = audioRef.current
     if (audio === null) {
       return
     }
-    if (audio.paused) {
-      const playback: unknown = audio.play()
-      if (playback instanceof Promise) {
-        playback.catch(() => undefined)
+    const level = nextMuted ? 0 : nextPercent / 100
+    if (boostRef.current === null && level > 1) {
+      const Context = audioContextClass()
+      if (Context !== null) {
+        try {
+          const ctx = new Context()
+          const gain = ctx.createGain()
+          ctx.createMediaElementSource(audio).connect(gain)
+          gain.connect(ctx.destination)
+          boostRef.current = { ctx, gain }
+        } catch {
+          // Sin Web Audio el tope queda en 100 %.
+        }
       }
+    }
+    const boost = boostRef.current
+    if (boost !== null) {
+      boost.gain.gain.value = level
+      audio.volume = 1
+      audio.muted = false
+      void boost.ctx.resume().catch(() => undefined)
     } else {
-      audio.pause()
+      audio.volume = Math.min(1, level)
+      audio.muted = nextMuted
     }
   }
 
@@ -104,13 +225,13 @@ export function AudioPlayer({
     if (audio === null) {
       return
     }
+    stopRef.current = null
     const limit = duration > 0 ? duration : Number.MAX_SAFE_INTEGER
     audio.currentTime = Math.min(limit, Math.max(0, audio.currentTime + seconds))
     sync(audio)
   }
 
-  const cycleRate = () => {
-    const next = RATES[(RATES.indexOf(rate) + 1) % RATES.length] ?? 1
+  const changeRate = (next: Rate) => {
     setRate(next)
     if (audioRef.current) {
       audioRef.current.playbackRate = next
@@ -138,6 +259,7 @@ export function AudioPlayer({
         }}
         onPlay={() => {
           setPlaying(true)
+          void boostRef.current?.ctx.resume().catch(() => undefined)
         }}
         onPause={() => {
           setPlaying(false)
@@ -150,7 +272,7 @@ export function AudioPlayer({
         <IconButton
           kind="ghost"
           size="md"
-          label={t('audio.back', { seconds: SKIP_SECONDS })}
+          label={t('audio.back', { seconds: SKIP_SECONDS }) + ' (←)'}
           onClick={() => {
             jump(-SKIP_SECONDS)
           }}
@@ -160,7 +282,7 @@ export function AudioPlayer({
         <IconButton
           kind="primary"
           size="md"
-          label={playing ? t('audio.pause') : t('audio.play')}
+          label={(playing ? t('audio.pause') : t('audio.play')) + ' (' + t('audio.key.space') + ')'}
           onClick={toggle}
         >
           {playing ? <Pause /> : <PlayFilledAlt />}
@@ -168,7 +290,7 @@ export function AudioPlayer({
         <IconButton
           kind="ghost"
           size="md"
-          label={t('audio.forward', { seconds: SKIP_SECONDS })}
+          label={t('audio.forward', { seconds: SKIP_SECONDS }) + ' (→)'}
           onClick={() => {
             jump(SKIP_SECONDS)
           }}
@@ -193,12 +315,13 @@ export function AudioPlayer({
           onChange={(event) => {
             const audio = audioRef.current
             if (audio) {
+              stopRef.current = null
               audio.currentTime = Number(event.currentTarget.value)
               sync(audio)
             }
           }}
         />
-        <div className="voz-player__volume">
+        <div className="voz-player__volume" title={t('audio.vol.tip')}>
           <IconButton
             kind="ghost"
             size="md"
@@ -206,44 +329,77 @@ export function AudioPlayer({
             onClick={() => {
               const next = !muted
               setMuted(next)
-              if (audioRef.current) {
-                audioRef.current.muted = next
-              }
+              applyVolume(percent, next)
             }}
           >
-            {muted || volume === 0 ? <VolumeMute /> : <VolumeUp />}
+            {muted || percent === 0 ? <VolumeMute /> : <VolumeUp />}
           </IconButton>
           <input
             type="range"
-            className="voz-range voz-player__volumebar"
+            className={
+              'voz-range voz-player__volumebar' + (percent > 100 ? ' voz-player__volumebar--boost' : '')
+            }
             min={0}
-            max={1}
-            step={0.05}
-            value={muted ? 0 : volume}
-            style={fillStyle(muted ? 0 : volume, 1)}
+            max={maxPercent}
+            step={5}
+            value={muted ? 0 : percent}
+            style={fillStyle(muted ? 0 : percent, maxPercent)}
             aria-label={t('audio.volume')}
+            aria-valuetext={t('audio.vol.label', { percent: muted ? 0 : percent })}
             onChange={(event) => {
               const next = Number(event.currentTarget.value)
-              setVolume(next)
+              setPercent(next)
               setMuted(false)
-              if (audioRef.current) {
-                audioRef.current.volume = next
-                audioRef.current.muted = false
-              }
+              applyVolume(next, false)
             }}
           />
+          <output className="voz-player__percent" aria-hidden="true">
+            {String(muted ? 0 : percent) + ' %'}
+          </output>
         </div>
-        <Button
-          kind="ghost"
-          size="md"
+        <Dropdown
+          id={'rate-' + mediaAssetId}
           className="voz-player__rate"
+          size="md"
+          label={t('audio.rate.label')}
+          titleText={t('audio.rate.label')}
+          hideLabel
           title={t('audio.rate.hint')}
-          aria-label={t('audio.rate', { rate: String(rate) })}
-          onClick={cycleRate}
-        >
-          {String(rate) + '×'}
-        </Button>
+          items={[...RATES]}
+          selectedItem={rate}
+          itemToString={(item) =>
+            item === null || item === undefined
+              ? ''
+              : item === 1
+                ? t('audio.rate.normal', { rate: item })
+                : t('audio.rate.option', { rate: item })
+          }
+          onChange={({ selectedItem }) => {
+            if (selectedItem !== null && selectedItem !== undefined) {
+              changeRate(selectedItem)
+            }
+          }}
+        />
       </div>
+      {percent > 100 && !muted ? (
+        <p className="voz-player__warn" role="status">
+          <WarningAltFilled size={16} aria-hidden="true" />
+          {t('audio.vol.warn')}
+        </p>
+      ) : null}
+      <p className="voz-field-note voz-player__keys">{t('audio.keys')}</p>
     </div>
   )
+}
+
+function playOrPause(audio: HTMLAudioElement, boost: Boost | null): void {
+  if (audio.paused) {
+    void boost?.ctx.resume().catch(() => undefined)
+    const playback: unknown = audio.play()
+    if (playback instanceof Promise) {
+      playback.catch(() => undefined)
+    }
+  } else {
+    audio.pause()
+  }
 }

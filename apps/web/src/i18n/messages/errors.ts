@@ -184,6 +184,14 @@ export const errors = {
     'No se pudo completar la acción (código {code}).',
     'Could not complete the action (code {code}).',
   ],
+  'err.speaker.diarization_models_missing': [
+    'Falta el modelo de hablantes. Instálalo en Modelos y vuelve a intentarlo.',
+    'The speaker model is missing. Install it in Models and try again.',
+  ],
+  'err.speaker.job_already_active': [
+    'Ya hay un trabajo en curso en este proyecto. Espera a que termine.',
+    'A job is already running in this project. Wait for it to finish.',
+  ],
   'err.speaker.action': ['No se pudo completar la acción.', 'Could not complete the action.'],
   'err.speaker.reassign': ['No se pudo reasignar el hablante.', 'Could not reassign the speaker.'],
 

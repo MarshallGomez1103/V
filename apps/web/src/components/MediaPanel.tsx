@@ -16,6 +16,7 @@ interface MediaPanelProps {
   imported: ImportResult
   seekToMs: number | null
   seekNonce: number
+  stopAtMs?: number | null
   currentMs: number
   onTimeUpdate: (ms: number) => void
   onSeek: (ms: number) => void
@@ -35,6 +36,7 @@ export function MediaPanel({
   imported,
   seekToMs,
   seekNonce,
+  stopAtMs = null,
   currentMs,
   onTimeUpdate,
   onSeek,
@@ -86,6 +88,7 @@ export function MediaPanel({
         mediaAssetId={media.media_asset_id}
         seekToMs={seekToMs}
         seekNonce={seekNonce}
+        stopAtMs={stopAtMs}
         onTimeUpdate={onTimeUpdate}
         durationMs={media.duration_ms}
       />

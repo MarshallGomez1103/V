@@ -65,11 +65,26 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
       description={t('review.description')}
       className="voz-review"
       actions={
-        <span role="status">
-          <Tag type={count > 0 ? 'warm-gray' : 'green'} size="md">
+        count > 0 && current ? (
+          <span role="status">
+          <Button
+            kind="tertiary"
+            size="sm"
+            title={t('review.goCount')}
+            onClick={() => {
+              onSelect(current)
+            }}
+          >
             {tn('review.count', count)}
-          </Tag>
-        </span>
+          </Button>
+          </span>
+        ) : (
+          <span role="status">
+            <Tag type="green" size="md">
+              {tn('review.count', count)}
+            </Tag>
+          </span>
+        )
       }
     >
       {flagged.length === 0 ? (
@@ -92,16 +107,23 @@ export function ReviewQueue({ segments, onSelect }: ReviewQueueProps) {
           </Select>
 
           {current ? (
-            <div className="voz-review__current">
-              <p className="voz-review__flags">
+            <button
+              type="button"
+              className="voz-review__current"
+              title={t('review.go')}
+              onClick={() => {
+                onSelect(current)
+              }}
+            >
+              <span className="voz-review__flags">
                 <WarningAltFilled size={16} aria-hidden="true" />
                 {current.quality.flags.map((flag) => flagLabel(flag, t)).join(' · ')}
-              </p>
-              <p className="voz-review__time">
+              </span>
+              <span className="voz-review__time">
                 {formatStamp(current.start_ms) + ' → ' + formatStamp(current.end_ms)}
-              </p>
-              <p className="voz-review__text">{current.text}</p>
-            </div>
+              </span>
+              <span className="voz-review__text">{current.text}</span>
+            </button>
           ) : (
             <p className="voz-field-note">{t('review.allDone')}</p>
           )}

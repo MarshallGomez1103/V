@@ -1,3 +1,4 @@
+import { configure } from '@testing-library/react'
 import { beforeEach } from 'vitest'
 
 import { setLang } from '../i18n/i18n'
@@ -37,3 +38,12 @@ if (typeof window.ResizeObserver !== 'function') {
     }
   }
 }
+
+// Los desplegables de Carbon (Dropdown) llaman a scrollIntoView, que jsdom no trae.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => undefined
+}
+
+// Los flujos de la app cargan varias peticiones simuladas en cadena: 1 s (el valor por
+// defecto) se queda corto en máquinas o runners lentos.
+configure({ asyncUtilTimeout: 4000 })

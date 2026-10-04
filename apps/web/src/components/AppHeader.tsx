@@ -14,14 +14,14 @@ import {
 import { useState } from 'react'
 
 import { useI18n } from '../i18n/i18n'
-import { NAV_ITEMS, type View } from '../lib/navigation'
+import { HOME, isCurrent, NAV_ITEMS, routeToHash, type Route } from '../lib/navigation'
 import { LanguageMenu, SettingsMenu } from './HeaderMenus'
 import { ShutdownAction } from './ShutdownAction'
 import './AppHeader.scss'
 
 interface AppHeaderProps {
-  view: View
-  onNavigate: (view: View) => void
+  route: Route
+  onNavigate: (route: Route) => void
   /** Hay una transcripción en curso (el cierre del servidor la avisa). */
   jobActive?: boolean
   /** El servidor se cerró desde el botón de la cabecera. */
@@ -49,7 +49,7 @@ function BrandMark() {
 
 /** UI Shell de Carbon: marca, navegación por secciones y acciones globales. */
 export function AppHeader({
-  view,
+  route,
   onNavigate,
   jobActive = false,
   onClosed,
@@ -61,7 +61,7 @@ export function AppHeader({
   const onClickSideNavExpand = () => {
     setSideNavExpanded((current) => !current)
   }
-  const go = (target: View) => (event: { preventDefault: () => void }) => {
+  const go = (target: Route) => (event: { preventDefault: () => void }) => {
     event.preventDefault()
     onNavigate(target)
     if (isSideNavExpanded) {
@@ -77,9 +77,9 @@ export function AppHeader({
         onClick={onClickSideNavExpand}
       />
       <HeaderName
-        href="#transcribir"
+        href={routeToHash(HOME)}
         prefix=""
-        onClick={go('transcribir')}
+        onClick={go(HOME)}
         aria-label={t('nav.home')}
       >
         <BrandMark />
@@ -88,10 +88,10 @@ export function AppHeader({
       <HeaderNavigation aria-label={t('nav.sections')}>
         {NAV_ITEMS.map((item) => (
           <HeaderMenuItem
-            key={item.id}
-            href={'#' + item.id}
-            {...(view === item.id ? { 'aria-current': 'page' as const } : {})}
-            onClick={go(item.id)}
+            key={item.route.name}
+            href={routeToHash(item.route)}
+            {...(isCurrent(item.route, route) ? { 'aria-current': 'page' as const } : {})}
+            onClick={go(item.route)}
           >
             {t(item.label)}
           </HeaderMenuItem>
@@ -116,10 +116,10 @@ export function AppHeader({
         <SideNavItems>
           {NAV_ITEMS.map((item) => (
             <SideNavLink
-              key={item.id}
-              href={'#' + item.id}
-              {...(view === item.id ? { 'aria-current': 'page' as const } : {})}
-              onClick={go(item.id)}
+              key={item.route.name}
+              href={routeToHash(item.route)}
+              {...(isCurrent(item.route, route) ? { 'aria-current': 'page' as const } : {})}
+              onClick={go(item.route)}
             >
               {t(item.label)}
             </SideNavLink>

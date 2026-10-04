@@ -1,0 +1,63 @@
+@use '../styles/carbon' as *;
+
+.voz-export {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-export .cds--tile-group > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: $spacing-03;
+}
+
+.voz-export .cds--radio-tile__wrapper,
+.voz-export__format.cds--tile {
+  block-size: 100%;
+}
+
+.voz-export__format.cds--tile {
+  min-block-size: 0;
+}
+
+.voz-export__tile {
+  display: grid;
+  gap: $spacing-02;
+}
+
+.voz-export__tilehelp {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}
+
+.voz-export__options {
+  display: grid;
+  gap: $spacing-05;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.voz-export__option {
+  display: grid;
+  gap: $spacing-02;
+}
+
+.voz-export__preview {
+  @include type-style('code-01');
+
+  max-block-size: 16rem;
+  margin: 0;
+  padding: $spacing-04;
+  overflow: auto;
+  background: $layer-02;
+  color: $text-primary;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}

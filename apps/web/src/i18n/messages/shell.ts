@@ -8,7 +8,7 @@ export const shell = {
 
   'nav.sections': ['Secciones de VOZ', 'VOZ sections'],
   'nav.menu': ['Menú de secciones', 'Sections menu'],
-  'nav.home': ['VOZ, ir a Transcribir', 'VOZ, go to Transcribe'],
+  'nav.home': ['VOZ, ir al inicio', 'VOZ, go to the home page'],
   'nav.transcribir': ['Transcribir', 'Transcribe'],
   'nav.modelos': ['Modelos', 'Models'],
   'nav.proveedores': ['Proveedores cloud', 'Cloud providers'],

@@ -20,4 +20,16 @@ describe('useSeek', () => {
     })
     expect(result.current.seekNonce).toBe(2)
   })
+
+  it('un seek con fin lo recuerda y el siguiente seek simple lo olvida', () => {
+    const { result } = renderHook(() => useSeek())
+    act(() => {
+      result.current.seek(1000, 9000)
+    })
+    expect(result.current.stopAtMs).toBe(9000)
+    act(() => {
+      result.current.seek(2000)
+    })
+    expect(result.current.stopAtMs).toBeNull()
+  })
 })

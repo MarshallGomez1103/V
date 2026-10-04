@@ -128,6 +128,14 @@ function installApi() {
         )
       case route === 'GET /api/transcripts/t1/segments':
         return Promise.resolve(json({ segments: SEGMENTS }))
+      case route === 'GET /api/transcripts/t1/export':
+        return Promise.resolve(
+          new Response(
+            url.searchParams.get('timestamps') === 'true'
+              ? '[00:00:00.000] Bienvenidos a la clase.\n[00:01:05.500] Hoy vemos el servicio.\n'
+              : 'Bienvenidos a la clase.\nHoy vemos el servicio.\n',
+          ),
+        )
       case route.startsWith('PUT /api/segments/'): {
         const id = url.pathname.split('/').pop()
         const original = SEGMENTS.find((segment) => segment.id === id)
@@ -233,6 +241,7 @@ let uploads: Upload[]
 let play: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
+  window.location.hash = '#/nueva'
   calls = installApi()
   uploads = installUploads()
   FakeEventSource.instances = []
@@ -246,6 +255,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  window.location.hash = ''
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -430,7 +440,19 @@ describe('App E2E con API simulada', () => {
     expect(marks[0]?.textContent).toBe('servicio')
   })
 
-  it('el menú Exportar descarga el transcript con el formato elegido', async () => {
+  it('crear el trabajo lleva a su URL #/t/<id> y Atrás vuelve a Nueva', async () => {
+    await importAndTranscribe()
+    expect(window.location.hash).toBe('#/t/job-1')
+    expect(screen.getByRole('navigation', { name: 'Ruta de navegación' })).toBeDefined()
+
+    act(() => {
+      window.location.hash = '#/nueva'
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transcribir' })).toBeDefined()
+    expect(screen.queryByRole('region', { name: 'Lista de segmentos' })).toBeNull()
+  })
+
+  it('Exportar abre un modal con formato, opciones explicadas y vista previa', async () => {
     const clicked: string[] = []
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement,
@@ -441,13 +463,40 @@ describe('App E2E con API simulada', () => {
     await screen.findByRole('region', { name: 'Lista de segmentos' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Texto (.txt)' }))
-    expect(clicked.at(-1)).toBe('/api/transcripts/t1/export?format=txt')
+    const dialog = await screen.findByRole('dialog', { name: 'Exportar transcripción' })
+    // Vista previa con las opciones actuales (sin tiempos).
+    expect(await within(dialog).findByText(/^Bienvenidos a la clase\./)).toBeDefined()
+    expect(within(dialog).getByText(/Pone al inicio de cada segmento el momento en que se dice/)).toBeDefined()
+    expect(within(dialog).getByText(/Junta lo que dice cada persona bajo su nombre/)).toBeDefined()
+
+    // Marcar una opción NO cierra el modal y refresca la vista previa.
+    fireEvent.click(within(dialog).getByRole('switch', { name: 'Incluir tiempos' }))
+    expect(await within(dialog).findByText(/\[00:00:00\.000\] Bienvenidos/)).toBeDefined()
+    expect(screen.getByRole('dialog', { name: 'Exportar transcripción' })).toBeDefined()
+    expect(calls.some((call) => call.path === '/api/transcripts/t1/export?format=txt&timestamps=true')).toBe(true)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Descargar/ }))
+    expect(clicked.at(-1)).toBe('/api/transcripts/t1/export?format=txt&timestamps=true')
+  })
+
+  it('en SRT las opciones del texto se desactivan con una explicación y se descarga SRT', async () => {
+    const clicked: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push(this.getAttribute('href') ?? '')
+    })
+    await importAndTranscribe()
+    await screen.findByRole('region', { name: 'Lista de segmentos' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Incluir tiempos/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Subtítulos SRT (.srt)' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Exportar transcripción' })
+    fireEvent.click(within(dialog).getByRole('switch', { name: 'Incluir tiempos' }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Subtítulos SRT/ }))
+
+    expect(within(dialog).getByRole<HTMLButtonElement>('switch', { name: 'Incluir tiempos' }).disabled).toBe(true)
+    expect(within(dialog).getByText(/ya trae sus propios tiempos/)).toBeDefined()
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Descargar/ }))
     expect(clicked.at(-1)).toBe('/api/transcripts/t1/export?format=srt')
   })
 })

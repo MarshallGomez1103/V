@@ -468,3 +468,63 @@ describe('SegmentList', () => {
     expect(screen.getByText('Hablantes en proceso')).toBeDefined()
   })
 })
+
+describe('SegmentList: filtro por hablante y foco', () => {
+  const speakers = [
+    { id: 'sp1', name: 'Ana', color: '#112233', segment_count: 2 },
+    { id: 'sp2', name: 'Beto', color: '#445566', segment_count: 1 },
+  ]
+  const withSpeaker = (segment: TranscriptSegment, speaker: string): TranscriptSegment => ({
+    ...segment,
+    speaker_id: speaker,
+  })
+  const data = () => ({
+    segments: [
+      withSpeaker(seg('s1', 0, 2000, 'Hola desde Ana.'), 'sp1'),
+      withSpeaker(seg('s2', 2000, 4000, 'Responde Beto.'), 'sp2'),
+      withSpeaker(seg('s3', 4000, 6000, 'Otra vez Ana.'), 'sp1'),
+    ],
+  })
+
+  it('muestra solo los segmentos del hablante y permite quitar el filtro', async () => {
+    stubFetch(data())
+    const onClearFilter = vi.fn()
+    render(
+      <SegmentList
+        transcriptId="t1"
+        speakers={speakers}
+        speakerFilter="sp1"
+        onClearFilter={onClearFilter}
+      />,
+    )
+
+    const list = await screen.findByRole('list')
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.queryByText('Responde Beto.')).toBeNull()
+    expect(screen.getByText('Solo Ana')).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar a todos' }))
+    expect(onClearFilter).toHaveBeenCalledTimes(1)
+  })
+
+  it('el foco resalta la fila pedida y desplaza la lista', async () => {
+    stubFetch(data())
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { value: scrollTo, configurable: true })
+    const { rerender } = render(<SegmentList transcriptId="t1" speakers={speakers} focus={null} />)
+    await screen.findByRole('list')
+    expect(document.querySelector('.is-focused-a, .is-focused-b')).toBeNull()
+
+    rerender(
+      <SegmentList transcriptId="t1" speakers={speakers} focus={{ segmentId: 's3', nonce: 1 }} />,
+    )
+    const focused = document.querySelector('.is-focused-b')
+    expect(focused?.textContent).toContain('Otra vez Ana.')
+
+    // Pedir el mismo segmento otra vez alterna la animación para reiniciarla.
+    rerender(
+      <SegmentList transcriptId="t1" speakers={speakers} focus={{ segmentId: 's3', nonce: 2 }} />,
+    )
+    expect(document.querySelector('.is-focused-a')?.textContent).toContain('Otra vez Ana.')
+  })
+})

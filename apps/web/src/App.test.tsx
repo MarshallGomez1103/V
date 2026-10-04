@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -32,6 +33,9 @@ function stubFetch(healthFails = 0) {
             disk: { models_bytes: 0, free_bytes: null },
             tasks: [],
             options: [],
+            items: [],
+            projects: [],
+            jobs: [],
           }),
       })
     }),
@@ -63,6 +67,7 @@ describe('App', () => {
   })
 
   it('renders the import card enabled and the health status', async () => {
+    window.location.hash = '#/nueva'
     const healthCalls = stubFetch(1)
 
     render(<App />)
@@ -97,11 +102,22 @@ describe('App', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Transcribir', 'Modelos', 'Proveedores cloud'])
+    ).toEqual(['Inicio', 'Transcribir', 'Modelos', 'Proveedores cloud'])
     expect(
-      within(nav).getByRole('link', { name: 'Transcribir' }).getAttribute('aria-current'),
+      within(nav).getByRole('link', { name: 'Inicio' }).getAttribute('aria-current'),
     ).toBe('page')
-    expect(screen.getByRole('heading', { level: 1, name: 'Transcribir' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
+  })
+
+  it('el logo de VOZ lleva a Inicio desde cualquier sección', () => {
+    stubFetch()
+    window.location.hash = '#/modelos'
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1, name: 'Modelos' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('link', { name: 'VOZ, ir al inicio' }))
+    expect(screen.getByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
+    expect(window.location.hash).toBe('#/')
   })
 
   it('navega entre secciones y refleja la sección en el hash', async () => {
@@ -113,13 +129,31 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Modelos' }),
     ).toBeDefined()
-    expect(screen.queryByRole('heading', { level: 1, name: 'Transcribir' })).toBeNull()
-    expect(window.location.hash).toBe('#modelos')
+    expect(screen.queryByRole('heading', { level: 1, name: 'Transcripciones' })).toBeNull()
+    expect(window.location.hash).toBe('#/modelos')
 
     fireEvent.click(within(nav).getByRole('link', { name: 'Proveedores cloud' }))
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Proveedores cloud' }),
     ).toBeDefined()
+  })
+
+  it('Atrás y Adelante del navegador cambian de sección', async () => {
+    stubFetch()
+    render(<App />)
+    const nav = screen.getByRole('navigation', { name: 'Secciones de VOZ' })
+    fireEvent.click(within(nav).getByRole('link', { name: 'Modelos' }))
+    fireEvent.click(within(nav).getByRole('link', { name: 'Proveedores cloud' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Proveedores cloud' })).toBeDefined()
+
+    act(() => {
+      window.location.hash = '#/modelos'
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Modelos' })).toBeDefined()
+    act(() => {
+      window.location.hash = '#/'
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
   })
 
   it('usa el tema oscuro g100 por defecto y g10 si el sistema prefiere claro', () => {

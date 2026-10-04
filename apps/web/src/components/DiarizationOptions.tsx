@@ -132,33 +132,31 @@ function ModelBlock({ model, t }: { model: DiarizationModelState; t: Translate }
   }
 }
 
-export function DiarizationOptions({
-  value,
-  onChange,
-  disabled = false,
-  model,
-}: DiarizationOptionsProps) {
+interface SpeakerCountPickerProps {
+  value: DiarizationRequest['speakers']
+  onChange: (speakers: DiarizationRequest['speakers']) => void
+  disabled?: boolean
+}
+
+/** Cuántos hablantes hay: automático, número exacto o rango (mínimo y máximo). */
+export function SpeakerCountPicker({ value, onChange, disabled = false }: SpeakerCountPickerProps) {
   const { t } = useI18n()
   const name = useId()
-  const [mode, setMode] = useState<Mode>(() => modeOf(value.speakers))
-  const { exact, minimum, maximum } = value.speakers
+  const [mode, setMode] = useState<Mode>(() => modeOf(value))
+  const { exact, minimum, maximum } = value
 
   function choose(next: Mode) {
     setMode(next)
-    onChange({
-      ...value,
-      speakers:
-        next === 'exact'
-          ? { exact: 2 }
-          : next === 'range'
-            ? { minimum: 1, maximum: 4 }
-            : {},
-    })
+    onChange(
+      next === 'exact'
+        ? { exact: 2 }
+        : next === 'range'
+          ? { minimum: 1, maximum: 4 }
+          : {},
+    )
   }
 
-  function setSpeakers(speakers: DiarizationRequest['speakers']) {
-    onChange({ ...value, speakers })
-  }
+  const setSpeakers = onChange
 
   const countProps = {
     translateWithId: (id: string) =>
@@ -171,28 +169,7 @@ export function DiarizationOptions({
   }
 
   return (
-    <div className="voz-diarization">
-      <div className="voz-diarization__head">
-        <Toggle
-          id={name + '-enabled'}
-          labelText={t('diar.toggle')}
-          labelA={t('diar.off')}
-          labelB={t('diar.on')}
-          size="sm"
-          toggled={value.enabled}
-          disabled={disabled}
-          onToggle={(checked) => {
-            onChange({ ...value, enabled: checked })
-          }}
-        />
-        <InfoTip label="diar.help.label">
-          <p>{t('diar.help.1')}</p>
-          <p>{t('diar.help.2')}</p>
-        </InfoTip>
-      </div>
-      {value.enabled && model ? <ModelBlock model={model} t={t} /> : null}
-      {value.enabled ? (
-        <div className="voz-diarization__mode">
+  <div className="voz-diarization__mode">
           <span className="cds--label" id={name + '-count'}>
             {t('diar.count')}
           </span>
@@ -260,6 +237,48 @@ export function DiarizationOptions({
             </div>
           ) : null}
         </div>
+
+  )
+}
+
+export function DiarizationOptions({
+  value,
+  onChange,
+  disabled = false,
+  model,
+}: DiarizationOptionsProps) {
+  const { t } = useI18n()
+  const name = useId()
+
+  return (
+    <div className="voz-diarization">
+      <div className="voz-diarization__head">
+        <Toggle
+          id={name + '-enabled'}
+          labelText={t('diar.toggle')}
+          labelA={t('diar.off')}
+          labelB={t('diar.on')}
+          size="sm"
+          toggled={value.enabled}
+          disabled={disabled}
+          onToggle={(checked) => {
+            onChange({ ...value, enabled: checked })
+          }}
+        />
+        <InfoTip label="diar.help.label">
+          <p>{t('diar.help.1')}</p>
+          <p>{t('diar.help.2')}</p>
+        </InfoTip>
+      </div>
+      {value.enabled && model ? <ModelBlock model={model} t={t} /> : null}
+      {value.enabled ? (
+        <SpeakerCountPicker
+          value={value.speakers}
+          onChange={(speakers) => {
+            onChange({ ...value, speakers })
+          }}
+          disabled={disabled}
+        />
       ) : null}
     </div>
   )

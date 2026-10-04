@@ -1,0 +1,49 @@
+@use '../styles/carbon' as *;
+
+.voz-library__name {
+  display: grid;
+  gap: $spacing-01;
+  min-inline-size: 0;
+}
+
+.voz-library__link {
+  @include type-style('productive-heading-01');
+
+  color: $link-primary;
+  text-decoration: none;
+
+  &:hover {
+    color: $link-primary-hover;
+    text-decoration: underline;
+  }
+}
+
+.voz-library__sub {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}
+
+.voz-library__actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+}
+
+.voz-library__none {
+  padding: $spacing-05;
+}
+
+.voz-library__steps-title {
+  @include type-style('productive-heading-01');
+
+  margin: 0;
+}
+
+.voz-library__steps {
+  @include type-style('body-compact-01');
+
+  margin: 0;
+  padding-inline-start: $spacing-06;
+  color: $text-secondary;
+}

@@ -1,9 +1,24 @@
 @use '../styles/carbon' as *;
 
 .voz-review__current {
+  display: block;
+  inline-size: 100%;
   padding: $spacing-04 $spacing-05;
+  border: 0;
   border-inline-start: 3px solid $support-warning;
   background: $layer-02;
+  color: inherit;
+  cursor: pointer;
+  text-align: start;
+
+  &:hover {
+    background: $layer-hover-02;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
 }
 
 .voz-review__flags {
@@ -23,6 +38,7 @@
 .voz-review__text {
   @include type-style('body-02');
 
+  display: block;
   margin: 0;
 }
 
@@ -35,6 +51,7 @@
 .voz-review__time {
   @include type-style('code-01');
 
+  display: block;
   margin: 0;
   color: $text-secondary;
 }

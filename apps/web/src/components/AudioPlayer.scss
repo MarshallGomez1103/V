@@ -35,9 +35,8 @@
 }
 
 .voz-player__rate {
-  min-inline-size: 3.5rem;
-  justify-content: center;
-  padding-inline: $spacing-03;
+  flex: 0 0 9.5rem;
+  inline-size: 9.5rem;
 }
 
 // Barra rectangular: pista de 4 px con la parte recorrida llena y tirador en forma
@@ -96,4 +95,47 @@
   &:hover::-webkit-slider-thumb {
     background: $interactive;
   }
+}
+
+.voz-player__percent {
+  @include type-style('code-01');
+
+  min-inline-size: 5ch;
+  color: $text-secondary;
+  font-variant-numeric: tabular-nums;
+}
+
+// Más de 100 %: la barra se pinta con el color de advertencia.
+.voz-player__volumebar--boost {
+  &::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      to right,
+      $interactive 0 33.333%,
+      $support-warning 33.333% var(--voz-fill, 0%),
+      $layer-accent-01 var(--voz-fill, 0%) 100%
+    );
+  }
+
+  &::-moz-range-progress {
+    background: $support-warning;
+  }
+}
+
+.voz-player__warn {
+  @include type-style('helper-text-01');
+
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-02;
+  margin: $spacing-03 0 0;
+  color: $text-secondary;
+
+  svg {
+    flex: none;
+    color: $support-warning;
+  }
+}
+
+.voz-player__keys {
+  margin-block-start: $spacing-03;
 }

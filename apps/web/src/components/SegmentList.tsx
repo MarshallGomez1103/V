@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { Button, IconButton, Search } from '@carbon/react'
+import { Button, DismissibleTag, IconButton, Search } from '@carbon/react'
 import { ArrowDown, ArrowUp, PlayFilledAlt, WarningAltFilled } from '@carbon/icons-react'
 
 import { getSegments, type TranscriptSegment } from '../api/jobs'
@@ -51,6 +51,12 @@ interface SegmentListProps {
   headerActions?: ReactNode
   // Aviso encima de la lista (p. ej. «hablantes en proceso»).
   notice?: ReactNode
+  // Muestra solo los segmentos de este hablante (`null` = todos).
+  speakerFilter?: string | null
+  // Cada cambio de `nonce` desplaza la lista a ese segmento y lo resalta un momento.
+  focus?: { segmentId: string; nonce: number } | null
+  // Quita el filtro de hablante desde la etiqueta de la lista.
+  onClearFilter?: () => void
 }
 
 type Outcome =
@@ -67,6 +73,7 @@ function durationAttribute(ms: number): string {
 }
 
 const NO_RANGES: readonly TextRange[] = []
+const noop = () => undefined
 const SCROLL_KEYS = new Set([
   'ArrowUp',
   'ArrowDown',
@@ -144,6 +151,8 @@ interface SegmentRowProps {
   query: string
   color: string | undefined
   speakerName: string | undefined
+  // Paridad del `nonce` de foco si esta fila es el segmento resaltado (reinicia la animación).
+  focusPhase: 'a' | 'b' | undefined
   onSeek: ((startMs: number) => void) | undefined
   renderText: SegmentListProps['renderText']
   renderSpeaker: SegmentListProps['renderSpeaker']
@@ -161,6 +170,7 @@ const SegmentRow = memo(function SegmentRow({
   query,
   color,
   speakerName,
+  focusPhase,
   onSeek,
   renderText,
   renderSpeaker,
@@ -175,7 +185,10 @@ const SegmentRow = memo(function SegmentRow({
   const flagged = flags.length > 0
   return (
     <li
-      className={flagged ? 'segment-row has-flags' : 'segment-row'}
+      className={
+        (flagged ? 'segment-row has-flags' : 'segment-row') +
+        (focusPhase ? ' is-focused-' + focusPhase : '')
+      }
       data-segment-index={index}
       aria-posinset={index + 1}
       aria-setsize={total}
@@ -239,6 +252,9 @@ function isEditable(target: EventTarget): boolean {
 
 interface TranscriptViewProps {
   segments: TranscriptSegment[]
+  speakerFilter: string | null
+  focus: SegmentListProps['focus']
+  onClearFilter: () => void
   speakers: readonly Speaker[]
   onSeek: SegmentListProps['onSeek']
   currentMs: number | undefined
@@ -247,7 +263,10 @@ interface TranscriptViewProps {
 }
 
 function TranscriptView({
-  segments,
+  segments: allSegments,
+  speakerFilter,
+  focus,
+  onClearFilter,
   speakers,
   onSeek,
   currentMs,
@@ -264,6 +283,13 @@ function TranscriptView({
   // Alturas medidas por fila y la estimación (media) para las que aún no se midieron.
   const [measure, setMeasure] = useState<Measure>(NO_MEASURES)
 
+  const segments = useMemo(
+    () =>
+      speakerFilter === null
+        ? allSegments
+        : allSegments.filter((segment) => segment.speaker_id === speakerFilter),
+    [allSegments, speakerFilter],
+  )
   const search: SearchIndex = useMemo(
     () => buildSearchIndex(segments, query),
     [segments, query],
@@ -348,6 +374,37 @@ function TranscriptView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow, activeIndex])
 
+  const scrollRef = useRef(scrollToIndex)
+  useEffect(() => {
+    scrollRef.current = scrollToIndex
+  })
+  const focusNonce = focus?.nonce
+  const focusId = focus?.segmentId
+  useEffect(() => {
+    if (focusNonce === undefined || focusId === undefined) {
+      return
+    }
+    const index = segments.findIndex((segment) => segment.id === focusId)
+    if (index < 0) {
+      return
+    }
+    scrollRef.current(index)
+    // Se vuelve a seguir la reproducción (el salto la reanuda); las filas lejanas se
+    // miden al pintarse, así que la posición se corrige una vez medidas.
+    const follow = setTimeout(() => {
+      setFollow(true)
+    }, 0)
+    const timer = setTimeout(() => {
+      scrollRef.current(index)
+    }, 250)
+    return () => {
+      clearTimeout(follow)
+      clearTimeout(timer)
+    }
+    // Solo importa cuándo se pide un foco nuevo, no cada cambio de la lista.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce, focusId])
+
   useEffect(() => {
     if (currentHit) {
       scrollToIndex(currentHit.segment)
@@ -393,6 +450,13 @@ function TranscriptView({
         query={search.query}
         color={speaker?.color}
         speakerName={speaker?.name}
+        focusPhase={
+          focus !== null && focus !== undefined && focus.segmentId === segment.id
+            ? focus.nonce % 2 === 0
+              ? 'a'
+              : 'b'
+            : undefined
+        }
         onSeek={onSeek}
         renderText={renderText}
         renderSpeaker={renderSpeaker}
@@ -448,6 +512,18 @@ function TranscriptView({
         >
           <ArrowDown />
         </IconButton>
+        {speakerFilter !== null ? (
+          <DismissibleTag
+            type="gray"
+            size="md"
+            text={t('spk.filtering', {
+              name: speakerById.get(speakerFilter)?.name ?? t('tl.unassigned'),
+            })}
+            dismissTooltipLabel={t('spk.filtering.clear')}
+            title={t('spk.filtering.clear')}
+            onClose={onClearFilter}
+          />
+        ) : null}
         {!follow && currentMs !== undefined ? (
           <Button
             kind="tertiary"
@@ -491,6 +567,11 @@ function TranscriptView({
           }
         }}
       >
+        {segments.length === 0 ? (
+          <p className="voz-field-note segment-filter-empty" role="status">
+            {t('spk.filtering.none')}
+          </p>
+        ) : null}
         {/* Solo se pintan las filas visibles (más un margen): una transcripción de
             horas con miles de segmentos sigue abriéndose al instante. */}
         <ol
@@ -518,6 +599,9 @@ export function SegmentList({
   onSegmentsLoaded,
   headerActions,
   notice,
+  speakerFilter = null,
+  focus = null,
+  onClearFilter = noop,
 }: SegmentListProps) {
   const { t, tn } = useI18n()
   // El estado se asocia al id cargado; si no coincide con la prop, seguimos
@@ -604,6 +688,9 @@ export function SegmentList({
         <TranscriptView
           key={transcriptId}
           segments={state.segments}
+          speakerFilter={speakerFilter}
+          focus={focus}
+          onClearFilter={onClearFilter}
           speakers={speakers}
           onSeek={onSeek}
           currentMs={currentMs}

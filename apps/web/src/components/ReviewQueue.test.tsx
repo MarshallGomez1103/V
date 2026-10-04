@@ -100,4 +100,18 @@ describe("ReviewQueue", () => {
       ).hasAttribute('disabled'),
     ).toBe(true);
   });
+
+  it("al pulsar «N segmentos por revisar» o el segmento actual se lleva el foco al segmento", () => {
+    const onSelect = vi.fn();
+    render(<ReviewQueue segments={SEGMENTS} onSelect={onSelect} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "3 segmentos por revisar" }),
+    );
+    expect(onSelect).toHaveBeenLastCalledWith(SEGMENTS[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Thank you\./ }));
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenLastCalledWith(SEGMENTS[1]);
+  });
 });

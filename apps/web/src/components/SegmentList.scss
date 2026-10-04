@@ -158,3 +158,47 @@
     gap: $spacing-02 $spacing-05;
   }
 }
+
+// Foco pedido desde fuera (cola de revisión, saltos por hablante): el fondo se apaga solo.
+// Dos animaciones idénticas alternadas: cambiar de nombre reinicia el efecto en la misma fila.
+@keyframes voz-focus-a {
+  from {
+    background: $highlight;
+  }
+
+  to {
+    background: transparent;
+  }
+}
+
+@keyframes voz-focus-b {
+  from {
+    background: $highlight;
+  }
+
+  to {
+    background: transparent;
+  }
+}
+
+.segments .segment-row.is-focused-a {
+  animation: voz-focus-a 2.8s ease-out;
+  box-shadow: inset 4px 0 0 $focus;
+}
+
+.segments .segment-row.is-focused-b {
+  animation: voz-focus-b 2.8s ease-out;
+  box-shadow: inset 4px 0 0 $focus;
+}
+
+.segment-filter-empty {
+  padding: $spacing-05;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segments .segment-row.is-focused-a,
+  .segments .segment-row.is-focused-b {
+    animation: none;
+    background: $highlight;
+  }
+}

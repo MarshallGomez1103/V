@@ -36,3 +36,31 @@ export function exportDocumentUrl(transcriptId: string, options: ExportOptions):
     '/api/transcripts/' + encodeURIComponent(transcriptId) + '/export?' + params.toString()
   )
 }
+
+export const PREVIEW_LINES = 14
+
+/** Primeras líneas del documento que se descargaría con estas opciones (vista previa). */
+export async function fetchExportPreview(
+  url: string,
+  signal?: AbortSignal,
+): Promise<{ text: string; truncated: boolean }> {
+  // ponytail: se pide el documento entero y se recorta aquí; el backend no pagina.
+  const response = await fetch(url, signal ? { signal } : {})
+  if (!response.ok) {
+    throw new Error('export_preview_' + String(response.status))
+  }
+  const lines = (await response.text()).split('\n')
+  const shown = lines.slice(0, PREVIEW_LINES)
+  const text = shown.map((line) => (line.length > 160 ? line.slice(0, 160) + '…' : line)).join('\n')
+  return { text, truncated: lines.length > PREVIEW_LINES }
+}
+
+/** Descarga directa: el servidor fija nombre y tipo con `Content-Disposition`. */
+export function downloadFrom(href: string): void {
+  const link = document.createElement('a')
+  link.href = href
+  link.download = ''
+  document.body.append(link)
+  link.click()
+  link.remove()
+}
