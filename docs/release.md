@@ -1,65 +1,69 @@
-# Versionado y proceso de release
+# Versioning and release process
 
-VOZ sigue [SemVer 2.0.0](https://semver.org/lang/es/). La versión vive en un solo
-lugar de verdad, `pyproject.toml` (`[project] version`), y `src/voz/__init__.py`
-(`voz.__version__`) debe coincidir: `tests/packaging/test_version_consistency.py`
-lo comprueba y falla si divergen. El historial visible para usuarios está en
-[CHANGELOG.md](../CHANGELOG.md).
+V follows [SemVer 2.0.0](https://semver.org/). The version lives in a single
+source of truth, `pyproject.toml` (`[project] version`), and
+`src/voz/__init__.py` (`voz.__version__`) must match it:
+`tests/packaging/test_version_consistency.py` checks this and fails if they
+diverge. The user-visible history is in [CHANGELOG.md](../CHANGELOG.md).
 
-## Reglas mientras la versión es 0.x
+## Rules while the version is 0.x
 
-- Incrementar el **minor** (`0.2.0`) puede romper la API pública; el
-  changelog lo indica en una sección "Cambiado" o "Eliminado".
-- Incrementar el **patch** (`0.1.1`) solo corrige errores y no rompe la API pública.
-- `1.0.0` se publicará cuando la API pública de abajo se considere estable; desde
-  entonces se aplica SemVer estricto (romper compatibilidad exige un major).
+- Incrementing the **minor** (`0.2.0`) may break the public API; the changelog
+  says so in a "Changed" or "Removed" section.
+- Incrementing the **patch** (`0.1.1`) only fixes bugs and does not break the
+  public API.
+- `1.0.0` will be published when the public API below is considered stable; from
+  then on strict SemVer applies (breaking compatibility requires a major).
 
-## Qué cuenta como API pública
+## What counts as the public API
 
-1. **CLI**: el comando `voz`, sus subcomandos (`serve`, `doctor`), sus opciones
-   (`--host`, `--port`, `--no-browser`, `--json`, `--redact`) y sus códigos de salida.
-2. **HTTP `/api`**: rutas, métodos, cuerpos, códigos de estado y códigos de error
-   estables (`{"detail": {"code", "message"}}`) documentados en `docs/api/`.
-3. **Formato JSON `voz.transcript` v1**: el documento exportado
-   (`"format": "voz.transcript"`, `"version": 1`). Los cambios compatibles (campos
-   nuevos opcionales) no suben su `version`; un cambio incompatible crea `version: 2`
-   y el exportador sigue leyendo/emitiendo la anterior durante al menos un minor.
-4. **Esquema de datos migrado**: la base SQLite bajo XDG y la disposición de
-   directorios de proyecto. Toda modificación llega con una migración Alembic
-   automática y sin pérdida de datos; una migración que no pueda conservar datos
-   es un cambio incompatible.
+1. **CLI**: the `voz` command, its subcommands (`serve`, `doctor`, `bench`), its
+   options (`--host`, `--port`, `--allow-host`, `--no-browser`, `--json`,
+   `--redact`) and its exit codes.
+2. **HTTP `/api`**: routes, methods, bodies, status codes and the stable error
+   codes (`{"detail": {"code", "message"}}`) documented in [api/](api/README.md).
+   This includes the `Host` header rule (`host_not_allowed`).
+3. **`voz.transcript` v1 JSON format**: the exported document
+   (`"format": "voz.transcript"`, `"version": 1`). Compatible changes (new
+   optional fields) do not bump its `version`; an incompatible change creates
+   `version: 2` and the exporter keeps reading/emitting the previous one for at
+   least one minor. The identifier is unchanged by the rename to V
+   ([ADR-0009](adr/0009-rename-to-v.md)).
+4. **Migrated data schema**: the SQLite database under XDG and the project
+   directory layout. Every change arrives with an automatic Alembic migration and
+   no data loss; a migration that cannot preserve data is an incompatible change.
 
-No forman parte de la API pública: el código Python importable (`voz.*`), el
-contenido del bundle web, los mensajes de log, el texto de `voz doctor` sin
-`--json`, ni las funciones marcadas como experimentales (por ejemplo, la
-transcripción con Faster Whisper real y CUDA hasta que se ejerciten en hardware).
+Not part of the public API: importable Python code (`voz.*`), the contents of the
+web bundle, log messages, the text of `voz doctor` without `--json`, or functions
+marked experimental (for example, transcription with real Faster Whisper and CUDA
+until they are exercised on hardware).
 
-## Construir artefactos (sin publicar)
+## Building artifacts (without publishing)
 
 ```bash
 export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
 uv build --out-dir dist          # wheel + sdist
-scripts/checksums.sh dist        # escribe y verifica dist/SHA256SUMS
-scripts/check-reproducible-build.sh   # 3 builds, mismo SHA-256
-scripts/check-install.sh dist/*.whl   # uv tool install + arranque fuera del checkout
+scripts/checksums.sh dist        # writes and verifies dist/SHA256SUMS
+scripts/check-reproducible-build.sh   # 3 builds, same SHA-256
+scripts/check-install.sh dist/*.whl   # uv tool install + start outside the checkout
 ```
 
-Publicar una release (etiqueta, GitHub Release, PyPI) solo se hace con
-autorización explícita del mantenedor y no forma parte de estos scripts.
+Publishing a release (tag, GitHub Release, PyPI) is only done with the
+maintainer's explicit authorization and is not part of these scripts.
 
-## Ensayo de release en CI (sin publicar)
+## Release dry run in CI (without publishing)
 
-`.github/workflows/release-dry-run.yml` (S15.06) se lanza a mano (`workflow_dispatch`)
-y al empujar una etiqueta `v*`. Ejecuta el build reproducible de tres pasadas,
-construye wheel + sdist con `SOURCE_DATE_EPOCH` del último commit, genera
-`SHA256SUMS`, instala el wheel con `uv tool` fuera del checkout
-(`scripts/check-install.sh`) y sube `dist/*.whl`, `dist/*.tar.gz` y `SHA256SUMS` como
-*workflow artifacts* con retención de 7 días. Su único permiso es `contents: read` y
-no contiene ningún paso que cree una GitHub Release ni publique en PyPI: la
-publicación sigue siendo una decisión manual del mantenedor. El archivo se validó
-localmente (sintaxis YAML y claves de Actions) pero **no se ha ejecutado** porque
-necesita un push.
+`.github/workflows/release-dry-run.yml` (S15.06) runs by hand
+(`workflow_dispatch`) and when a `v*` tag is pushed. It runs the three-pass
+reproducible build, builds the wheel + sdist with `SOURCE_DATE_EPOCH` from the
+latest commit, generates `SHA256SUMS`, installs the wheel with `uv tool` outside
+the checkout (`scripts/check-install.sh`) and uploads `dist/*.whl`,
+`dist/*.tar.gz` and `SHA256SUMS` as *workflow artifacts* with 7-day retention. Its
+only permission is `contents: read` and it contains no step that creates a GitHub
+Release or publishes to PyPI: publishing remains a manual decision of the
+maintainer. The file was validated locally (YAML syntax and Actions keys) but
+**has not been run** because it needs a push.
 
-Los prototipos de AppImage y Flatpak (S15.12, S15.13) y sus medidas están en
-[packaging/appimage-flatpak.md](packaging/appimage-flatpak.md); no forman parte del
-workflow.
+The AppImage and Flatpak prototypes (S15.12, S15.13) and their measurements are in
+[packaging/appimage-flatpak.md](packaging/appimage-flatpak.md); they are not part
+of the workflow.

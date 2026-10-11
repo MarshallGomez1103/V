@@ -1,140 +1,137 @@
-# Plan: VOZ como aplicación de escritorio con Tauri
+# Plan: V as a desktop application with Tauri
 
-Estado: **plan, nada implementado**. Hoy VOZ se abre con un lanzador de doble
-clic (`Iniciar-*`) que arranca el servidor local y abre el navegador. Este
-documento describe cómo empaquetarlo como aplicación instalable (ventana propia,
-icono, instalador por sistema) con [Tauri 2](https://v2.tauri.app), qué cuesta y
-qué riesgos tiene.
+Status: **plan, nothing implemented**. Today V is opened with a double-click
+launcher (`Iniciar-*`) that starts the local server and opens the browser. This
+document describes how to package it as an installable application (own window,
+icon, per-system installer) with [Tauri 2](https://v2.tauri.app), what it costs
+and what risks it has.
 
-## Qué gana el usuario
+## What the user gains
 
-- Un instalador por sistema (`.msi`/`.exe` en Windows, `.dmg` en macOS,
-  `.AppImage`/`.deb`/`.rpm` en Linux) en vez de clonar el repo.
-- Ventana propia sin barra del navegador, icono en el dock/barra de tareas y
-  en el menú de aplicaciones.
-- Cerrar la ventana cierra VOZ: no queda un servidor huérfano ni una terminal
-  abierta.
-- Actualizaciones desde la propia app (plugin `updater`).
+- An installer per system (`.msi`/`.exe` on Windows, `.dmg` on macOS,
+  `.AppImage`/`.deb`/`.rpm` on Linux) instead of cloning the repo.
+- A window of its own without the browser bar, an icon in the dock/taskbar and in
+  the applications menu.
+- Closing the window closes V: no orphaned server or open terminal remains.
+- Updates from within the app (`updater` plugin).
 
-## Arquitectura propuesta
+## Proposed architecture
 
 ```text
 ┌──────────── Tauri (Rust, ~10 MB) ─────────────┐
-│  ventana WebView ── carga http://127.0.0.1:P  │
-│  ciclo de vida: arranca / vigila / cierra     │
+│  WebView window ── loads http://127.0.0.1:P   │
+│  lifecycle: start / watch / close             │
 └───────────────┬───────────────────────────────┘
-                │ sidecar (proceso hijo)
+                │ sidecar (child process)
 ┌───────────────▼───────────────────────────────┐
-│  servidor VOZ (Python: FastAPI + jobs + ASR)  │
-│  el mismo de hoy, sin cambios de dominio      │
+│  V server (Python: FastAPI + jobs + ASR)      │
+│  the same as today, no domain changes         │
 └───────────────────────────────────────────────┘
 ```
 
-El backend sigue siendo Python: Faster Whisper, CTranslate2 y sherpa-onnx no
-tienen equivalente razonable en Rust, y reescribirlos no aporta nada. Tauri solo
-es la carcasa. La UI React/Carbon se reutiliza tal cual.
+The backend stays Python: Faster Whisper, CTranslate2 and sherpa-onnx have no
+reasonable Rust equivalent, and rewriting them gains nothing. Tauri is only the
+shell. The React/Carbon UI is reused as is.
 
-### Ciclo de vida
+### Lifecycle
 
-1. Tauri elige un puerto libre y un token aleatorio y arranca el sidecar:
-   `voz serve --no-browser --port P` con `VOZ_DESKTOP_TOKEN=<token>`.
-2. Muestra una pantalla de carga propia mientras sondea `/api/health`
-   (hoy tarda ~1 s; la primera vez incluye la migración de la base).
-3. Navega la ventana a `http://127.0.0.1:P`.
-4. Al cerrar la ventana: `POST /api/shutdown` (ya existe para el botón Cerrar
-   servidor); si en 5 s no terminó, mata el proceso. Un job en curso queda
-   recuperable, como hoy con Ctrl+C.
-5. Plugin `single-instance`: un segundo doble clic enfoca la ventana existente
-   (hoy el CLI ya reutiliza el servidor abierto).
-6. Si el sidecar muere, la ventana muestra "VOZ se detuvo" con botón
-   Reiniciar y el final del log.
+1. Tauri picks a free port and a random token and starts the sidecar:
+   `voz serve --no-browser --port P` with `VOZ_DESKTOP_TOKEN=<token>`.
+2. It shows a loading screen of its own while polling `/api/health` (today it
+   takes ~1 s; the first time it includes the database migration).
+3. It navigates the window to `http://127.0.0.1:P`.
+4. When the window closes: `POST /api/shutdown` (it already exists for the Close
+   server button); if it has not finished within 5 s, it kills the process. A job
+   in progress stays recoverable, as today with Ctrl+C.
+5. `single-instance` plugin: a second double-click focuses the existing window
+   (today the CLI already reuses the open server).
+6. If the sidecar dies, the window shows "V stopped" with a Restart button and the
+   end of the log.
 
-### Seguridad
+### Security
 
-- El servidor solo escucha en `127.0.0.1`, como hoy.
-- El token del paso 1 se exige en las rutas peligrosas (`/api/shutdown`,
-  claves cloud), además de la cabecera anti-CSRF actual; así otra web abierta
-  en el navegador del usuario no puede apagar VOZ ni leer claves.
-- CSP de Tauri limitada a `127.0.0.1:P`; sin `shell` abierto a la web.
+- The server only listens on `127.0.0.1`, as today.
+- The token from step 1 is required on the dangerous routes (`/api/shutdown`,
+  cloud keys), in addition to the current anti-CSRF header; this way another web
+  page open in the user's browser cannot shut V down or read keys.
+- Tauri CSP limited to `127.0.0.1:P`; no `shell` open to the web.
 
-## El problema grande: Python y las dependencias pesadas
+## The big problem: Python and heavy dependencies
 
-| Pieza | Tamaño aproximado |
+| Piece | Approximate size |
 | --- | --- |
-| Carcasa Tauri | ~10 MB |
-| CPython standalone + VOZ + FastAPI | ~50 MB (medido en el AppImage base: 46 MiB) |
+| Tauri shell | ~10 MB |
+| Standalone CPython + V + FastAPI | ~50 MB (measured in the base AppImage: 46 MiB) |
 | faster-whisper + CTranslate2 + onnxruntime + sherpa-onnx | ~250 MB |
-| Wheels CUDA (cuBLAS + cuDNN, solo Windows/Linux con NVIDIA) | ~1,3 GB comprimidos, 2,2 GB instalados |
-| FFmpeg estático | ~50-70 MB |
-| Modelos Whisper (turbo ~1,6 GB, large-v3 ~3 GB) | se descargan dentro de la app |
+| CUDA wheels (cuBLAS + cuDNN, Windows/Linux with NVIDIA only) | ~1.3 GB compressed, 2.2 GB installed |
+| Static FFmpeg | ~50–70 MB |
+| Whisper models (turbo ~1.6 GB, large-v3 ~3 GB) | downloaded inside the app |
 
-Tres formas de llevar Python, de menos a más trabajo:
+Three ways to carry Python, from least to most work:
 
-1. **Sidecar "uv" (recomendada para empezar)**: el instalador lleva `uv` (un
-   binario de ~30 MB) y el código de VOZ con su `uv.lock`. En el primer
-   arranque, `uv sync` baja Python y las dependencias a la carpeta de datos de la
-   app, con una pantalla de progreso. Es exactamente lo que hacen hoy los
-   lanzadores, así que está probado en los tres sistemas por el CI. Instalador
-   pequeño (~50 MB); la primera apertura necesita Internet.
-2. **Python congelado (PyInstaller/Nuitka) como sidecar**: un ejecutable por
-   sistema con todo dentro salvo CUDA y modelos. Instalador de ~300-400 MB,
-   funciona sin Internet salvo para los modelos. Cuesta mantener los hooks de
-   CTranslate2/onnxruntime y firmar muchos binarios.
-3. **Todo dentro, incluido CUDA**: instalador de ~1,5 GB. No vale la pena: la
-   mayoría de equipos no tienen NVIDIA, y los que sí pueden bajarlo después.
+1. **"uv" sidecar (recommended to start)**: the installer carries `uv` (a ~30 MB
+   binary) and V's code with its `uv.lock`. On first launch, `uv sync` downloads
+   Python and the dependencies into the app's data folder, with a progress
+   screen. This is exactly what the launchers do today, so it is proven on the
+   three systems by CI. Small installer (~50 MB); the first launch needs Internet.
+2. **Frozen Python (PyInstaller/Nuitka) as a sidecar**: one executable per system
+   with everything inside except CUDA and models. A ~300–400 MB installer; it
+   works offline except for the models. Maintaining the CTranslate2/onnxruntime
+   hooks and signing many binaries is costly.
+3. **Everything inside, including CUDA**: a ~1.5 GB installer. Not worth it: most
+   machines have no NVIDIA, and those that do can download it later.
 
-En las tres, CUDA se descarga aparte y solo si hay GPU NVIDIA (`nvidia-smi`
-presente), y los modelos se siguen bajando desde el gestor de modelos.
+In all three, CUDA is downloaded separately and only if there is an NVIDIA GPU
+(`nvidia-smi` present), and models are still downloaded from the model manager.
 
-## Firmas y avisos del sistema
+## Signatures and system warnings
 
-- **Windows**: sin firma, SmartScreen avisa "Windows protegió su PC". Un
-  certificado de firma de código cuesta ~100-400 USD/año (o Azure Trusted
-  Signing, más barato). Defender puede marcar el FFmpeg descargado o el sidecar;
-  firmar reduce eso.
-- **macOS**: sin firmar y notarizar, Gatekeeper bloquea la app. Requiere cuenta
-  de Apple Developer (99 USD/año). Cada binario dentro (sidecar, `.so`/`.dylib`
-  de Python, FFmpeg) debe ir firmado; con la opción 1, lo que baja `uv` en el
-  primer arranque no está firmado por nosotros: hay que comprobar que Gatekeeper
-  lo permite (los wheels de PyPI suelen estar bien; el FFmpeg descargado hay que
-  probarlo).
-- **Linux**: AppImage, `.deb` y `.rpm` sin firma obligatoria. En Bazzite/Fedora
-  Atomic lo natural es AppImage o Flatpak (ya hay prototipos medidos en
-  [appimage-flatpak.md](appimage-flatpak.md)).
+- **Windows**: unsigned, SmartScreen warns "Windows protected your PC". A
+  code-signing certificate costs ~100–400 USD/year (or Azure Trusted Signing,
+  cheaper). Defender may flag the downloaded FFmpeg or the sidecar; signing
+  reduces that.
+- **macOS**: without signing and notarizing, Gatekeeper blocks the app. It needs
+  an Apple Developer account (99 USD/year). Every binary inside (sidecar, Python's
+  `.so`/`.dylib`, FFmpeg) must be signed; with option 1, what `uv` downloads on
+  first launch is not signed by us: it must be checked that Gatekeeper allows it
+  (PyPI wheels are usually fine; the downloaded FFmpeg must be tested).
+- **Linux**: AppImage, `.deb` and `.rpm` need no mandatory signature. On
+  Bazzite/Fedora Atomic the natural fit is AppImage or Flatpak (measured
+  prototypes already exist in [appimage-flatpak.md](appimage-flatpak.md)).
 
-## Riesgos concretos
+## Concrete risks
 
-- **WebView distinto por sistema**: Tauri usa WebView2 (Windows, Chromium),
-  WKWebView (macOS, Safari) y WebKitGTK (Linux). La UI hoy solo se prueba en
-  Chrome. Riesgo principal: **reproducir audio AAC/M4A en WebKitGTK** depende de
-  los plugins de GStreamer del sistema. Mitigación: que el reproductor use el
-  WAV/derivado normalizado que VOZ ya genera, o servir audio transcodificado.
-- **Arranque en frío** de la opción 1: la primera vez tarda minutos. Necesita
-  una pantalla de progreso honesta (qué baja, cuánto falta).
-- **Antivirus y rutas largas en Windows**: `.venv` profundo dentro de
-  `%LOCALAPPDATA%`; vigilar el límite de 260 caracteres.
-- **Dos copias de la verdad**: los lanzadores `Iniciar-*` y la app deben
-  compartir la misma carpeta de datos (ya resuelta por `paths.py`) para que un
-  usuario pueda pasar de uno a otro sin perder proyectos.
+- **Different WebView per system**: Tauri uses WebView2 (Windows, Chromium),
+  WKWebView (macOS, Safari) and WebKitGTK (Linux). The UI is only tested in
+  Chrome today. Main risk: **playing AAC/M4A audio in WebKitGTK** depends on the
+  system's GStreamer plugins. Mitigation: have the player use the normalized
+  WAV/derivative that V already generates, or serve transcoded audio.
+- **Cold start** of option 1: the first time it takes minutes. It needs an honest
+  progress screen (what is downloading, how much is left).
+- **Antivirus and long paths on Windows**: a deep `.venv` inside
+  `%LOCALAPPDATA%`; watch the 260-character limit.
+- **Two copies of the truth**: the `Iniciar-*` launchers and the app must share
+  the same data folder (already solved by `paths.py`) so a user can switch from
+  one to the other without losing projects.
 
-## Fases y esfuerzo estimado
+## Phases and estimated effort
 
-| Fase | Qué | Esfuerzo |
+| Phase | What | Effort |
 | --- | --- | --- |
-| 0 | **App instalable sin Tauri**: manifest PWA para que Chrome/Edge ofrezcan "Instalar VOZ" (ventana propia e icono) sobre el servidor local actual | 1 tarde |
-| 1 | Carcasa Tauri en `apps/desktop/`: ventana, sidecar con `uv` (opción 1), pantalla de carga, cierre limpio, single-instance, token | 3-5 días |
-| 2 | Primer arranque guiado: progreso de `uv sync`, detección NVIDIA y CUDA opcional, errores claros sin Internet | 2-3 días |
-| 3 | CI con `tauri-action` en Windows, macOS y Linux que construye instaladores sin firmar y ejecuta un humo (abrir, `/api/health`, cerrar) | 2 días |
-| 4 | Firma y notarización (requiere comprar certificados), updater con releases de GitHub | 2-3 días + trámites |
-| 5 | Opcional: Python congelado (opción 2) para instalar sin Internet | 1-2 semanas |
+| 0 | **Installable app without Tauri**: a PWA manifest so Chrome/Edge offer "Install V" (own window and icon) on top of the current local server | 1 afternoon |
+| 1 | Tauri shell in `apps/desktop/`: window, `uv` sidecar (option 1), loading screen, clean shutdown, single-instance, token | 3–5 days |
+| 2 | Guided first launch: `uv sync` progress, NVIDIA detection and optional CUDA, clear errors without Internet | 2–3 days |
+| 3 | CI with `tauri-action` on Windows, macOS and Linux that builds unsigned installers and runs a smoke test (open, `/api/health`, close) | 2 days |
+| 4 | Signing and notarization (requires buying certificates), updater with GitHub releases | 2–3 days + paperwork |
+| 5 | Optional: frozen Python (option 2) to install without Internet | 1–2 weeks |
 
-Recomendación: hacer la fase 0 ya (casi gratis, da el efecto "aplicación" en
-Windows, macOS y Linux) y la 1-3 cuando se quiera publicar. La firma (fase 4)
-solo tiene sentido con la release pública.
+Recommendation: do phase 0 now (almost free, gives the "application" effect on
+Windows, macOS and Linux) and phases 1–3 when publishing is wanted. Signing
+(phase 4) only makes sense with the public release.
 
-## Qué no cambia
+## What does not change
 
-- El dominio, la API y la UI. Tauri no exige tocar el backend salvo el token
-  opcional de la sección de seguridad.
-- Los lanzadores `Iniciar-*` siguen siendo la forma de usar VOZ desde el código
-  fuente y la de desarrollo.
+- The domain, the API and the UI. Tauri does not require touching the backend
+  except for the optional token in the security section.
+- The `Iniciar-*` launchers remain the way to use V from source and the
+  development path.

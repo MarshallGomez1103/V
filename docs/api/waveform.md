@@ -1,13 +1,13 @@
-# Waveform — S5.09 y S5.14
+# Waveform — S5.09 and S5.14
 
-Peaks precalculados para dibujar la forma de onda en el navegador. Local
-(`127.0.0.1`), sin red ni proveedores cloud. Los errores usan
-`{"detail": {"code", "message"}}`; nunca se devuelven rutas del host.
+Precomputed peaks to draw the waveform in the browser. Local (`127.0.0.1`), no
+network or cloud providers. Errors use `{"detail": {"code", "message"}}`; host
+paths are never returned. Common rules: [README.md](README.md).
 
 ## `GET /api/media/{media_asset_id}/peaks?buckets=2000`
 
-- `buckets`: entero entre **100 y 20000** (por defecto 2000).
-- Respuesta 200:
+- `buckets`: integer between **100 and 20000** (default 2000).
+- 200 response:
 
 ```json
 {
@@ -18,41 +18,41 @@ Peaks precalculados para dibujar la forma de onda en el navegador. Local
 }
 ```
 
-`peaks` tiene exactamente `buckets` pares `[min, max]` en orden temporal,
-normalizados para que la muestra más fuerte valga ±1 y redondeados a 3
-decimales. El audio en silencio devuelve todo `[0.0, 0.0]`. `duration_ms` es la
-duración sondeada del asset (o la decodificada si faltara).
+`peaks` has exactly `buckets` `[min, max]` pairs in time order, normalized so the
+loudest sample is ±1 and rounded to 3 decimals. Silent audio returns all
+`[0.0, 0.0]`. `duration_ms` is the asset's probed duration (or the decoded one if
+it were missing).
 
-| Estado | `code` | Cuándo |
+| Status | `code` | When |
 | --- | --- | --- |
-| 404 | `media_asset_not_found` | El asset no existe |
-| 422 | `peaks_buckets_invalid` | `buckets` no es entero o está fuera de 100–20000 |
-| 500 | `waveform_unavailable` | FFmpeg ausente, medio ilegible o sin audio decodificable |
+| 404 | `media_asset_not_found` | The asset does not exist |
+| 422 | `peaks_buckets_invalid` | `buckets` is not an integer or is outside 100–20000 |
+| 500 | `waveform_unavailable` | FFmpeg missing, unreadable media, or no decodable audio |
 
-## Cálculo
+## Computation
 
-- Fuente: el derivado normalizado (`*.inference.wav`) si existe; si no, el
-  original inmutable. Se abre por descriptor, sin exponer rutas.
-- FFmpeg decodifica por pipe a PCM s16le mono a 8 kHz y el adaptador lo consume
-  en streaming (bloques de 64 KiB). La memoria es O(`buckets`): los bloques de
-  min/max se fusionan por pares al superar `2 * buckets` y se remuestrean a
-  exactamente `buckets` al terminar. Una hora de audio tarda ~1 s y ~70 MB de
-  RSS en total (proceso Python incluido).
-- La ruta es síncrona (`def`), así que FastAPI la ejecuta en su threadpool.
-  Un vigilante mata FFmpeg si supera 600 s.
+- Source: the normalized derivative (`*.inference.wav`) if it exists; otherwise
+  the immutable original. It is opened by descriptor, without exposing paths.
+- FFmpeg decodes through a pipe to mono 8 kHz s16le PCM and the adapter consumes
+  it as a stream (64 KiB blocks). Memory is O(`buckets`): min/max blocks are
+  merged in pairs when they exceed `2 * buckets` and resampled to exactly
+  `buckets` at the end. One hour of audio takes ~1 s and ~70 MB of RSS in total
+  (Python process included).
+- The route is synchronous (`def`), so FastAPI runs it in its threadpool. A
+  watchdog kills FFmpeg if it exceeds 600 s.
 
-## Caché
+## Cache
 
-`<XDG_CACHE_HOME>/voz/waveforms/v1-<sha256 del medio>-<buckets>.json`, con
-`{"duration_ms", "peaks"}`. Escritura atómica (temporal + `os.replace`); un
-archivo corrupto o con otra forma se ignora y se reescribe. Un fallo al escribir
-la caché no rompe la petición. Al ser una clave por contenido, el mismo audio
-reimportado reutiliza los peaks.
+`<XDG_CACHE_HOME>/voz/waveforms/v1-<sha256 of the media>-<buckets>.json`, with
+`{"duration_ms", "peaks"}`. Atomic write (temporary file + `os.replace`); a
+corrupt file or one with another shape is ignored and rewritten. A failure to
+write the cache does not break the request. Because the key is content-based, the
+same audio re-imported reuses the peaks.
 
 ## Frontend
 
-`Waveform` (`apps/web/src/components/Waveform.tsx`) pide `?buckets=4000` con un
-`AbortController`, dibuja solo la porción visible en un `<canvas>` (dimensionado
-con `devicePixelRatio`) y ofrece zoom 1x–32x (botones Acercar/Alejar y control
-deslizante), scroll horizontal, clic para buscar y flechas izquierda/derecha
-(±5 s) con el foco en el waveform.
+`Waveform` (`apps/web/src/components/Waveform.tsx`) requests `?buckets=4000` with
+an `AbortController`, draws only the visible portion on a `<canvas>` (sized with
+`devicePixelRatio`) and offers 1x–32x zoom (zoom in/out buttons and a slider),
+horizontal scroll, click to seek, and left/right arrows (±5 s) while the waveform
+has focus.

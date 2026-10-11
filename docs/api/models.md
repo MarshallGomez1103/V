@@ -1,33 +1,33 @@
-# Gestor de modelos — consulta y borrado (S8.02, S8.03, S8.07, S8.08)
+# Model manager — query and delete (S8.02, S8.03, S8.07, S8.08)
 
-Sección 8 del roadmap. El catálogo canónico (`faster_whisper_catalog()`, S8.01)
-define seis modelos Faster Whisper con fuente y revisión fijadas. Este contrato
-consulta y borra; la descarga va como tarea en segundo plano (sección final).
-Ninguna respuesta contiene rutas del host.
+Section 8 of the roadmap. The canonical catalog (`faster_whisper_catalog()`,
+S8.01) defines six Faster Whisper models with pinned source and revision. This
+contract queries and deletes; downloading runs as a background task (final
+section). No response contains host paths. Common rules: [README.md](README.md).
 
-## Claves con espacio de nombres (MODELS-UI-002)
+## Namespaced keys (MODELS-UI-002)
 
-El gestor reúne en un solo catálogo (`ManagedModelCatalog`) los modelos de
-faster-whisper, los de whisper.cpp (solo si existe `whisper-cli`) y la
-separación de hablantes (sherpa-onnx). Un `model_id` suelto puede repetirse entre
-proveedores (`small` existe en faster-whisper y en whisper.cpp), así que la API
-direcciona cada modelo por su **clave** `"<provider_id>:<model_id>"`:
+The manager gathers into a single catalog (`ManagedModelCatalog`) the
+faster-whisper models, the whisper.cpp models (only if `whisper-cli` exists) and
+speaker separation (sherpa-onnx). A bare `model_id` can repeat across providers
+(`small` exists in faster-whisper and in whisper.cpp), so the API addresses every
+model by its **key** `"<provider_id>:<model_id>"`:
 
-| Clave | Familia |
+| Key | Family |
 | --- | --- |
-| `faster-whisper:turbo` | ASR faster-whisper |
-| `whisper-cpp:small` | ASR whisper.cpp (requiere `whisper-cli`) |
-| `diarization:sherpa-default` | Segmentación + embeddings de hablantes |
+| `faster-whisper:turbo` | faster-whisper ASR |
+| `whisper-cpp:small` | whisper.cpp ASR (requires `whisper-cli`) |
+| `diarization:sherpa-default` | Speaker segmentation + embeddings |
 
-Todos los endpoints de esta página (`DELETE /api/models/{clave}`,
-`POST /api/models/{clave}/install`) aceptan la clave en la ruta (los `:` son
-válidos; el cliente la codifica con `encodeURIComponent`). Por compatibilidad,
-un id **sin** `:` se interpreta como faster-whisper. En `DELETE`, `confirm` debe
-repetir exactamente lo enviado en la ruta.
+All the endpoints on this page (`DELETE /api/models/{key}`,
+`POST /api/models/{key}/install`) accept the key in the path (`:` is valid; the
+client encodes it with `encodeURIComponent`). For compatibility, an id **without**
+`:` is interpreted as faster-whisper. On `DELETE`, `confirm` must repeat exactly
+what was sent in the path.
 
 ## `GET /api/models`
 
-HTTP 200. Una entrada por cada modelo del catálogo, instalado o no.
+HTTP 200. One entry for every catalog model, installed or not.
 
 ```json
 {
@@ -61,109 +61,110 @@ HTTP 200. Una entrada por cada modelo del catálogo, instalado o no.
 }
 ```
 
-| Campo | Significado |
+| Field | Meaning |
 | --- | --- |
-| `key`, `provider_id` | Clave de la API (ver arriba) y proveedor. |
-| `kind` | `asr` o `diarization`. La UI agrupa "Hablantes" aparte. |
-| `requires` | Runtime que el modelo necesita para usarse: `whisper-cli` (whisper.cpp), `diarization` (extra opcional con sherpa-onnx) o `null`. |
-| `runtime_available` | `false` si falta ese runtime: el modelo se lista pero la UI no ofrece instalarlo ("requiere el extra diarization"). whisper.cpp ni se lista sin `whisper-cli`. |
-| `model_id` | Identificador dentro del proveedor; en faster-whisper, el mismo que en `/api/transcription-options`. |
-| `source`, `revision` | Procedencia fijada (SHA de commit de 40 caracteres). `null` en diarización: sus artefactos son assets de release verificados por SHA-256. |
-| `profile` | `fast` o `quality`; `null` en diarización. |
-| `size_bytes` | Suma de los archivos esperados del catálogo (lo que se descargaría). |
-| `installed` | `true` si hay un manifest VOZ válido para exactamente esa fuente y revisión. Una revisión distinta instalada antes no cuenta. |
-| `disk_bytes` | **Tamaño real** de los archivos del modelo instalado (suma de `lstat`), también si son hardlinks a la caché de Buzz; `null` si no está instalado. Nunca es 0 para un modelo instalado. |
-| `reclaimable_bytes` | Lo que borrar el modelo liberaría de verdad: excluye los archivos con otro enlace duro (la copia importada de Buzz). `null` si no está instalado. Es el valor que coincide con `freed_bytes` del `DELETE`. |
-| `shared_bytes` | `disk_bytes − reclaimable_bytes`: lo que sigue en disco porque otra herramienta (Buzz) tiene el mismo archivo. `null` si no está instalado. |
-| `external` | Orígenes de otras herramientas que tienen exactamente esa fuente y revisión y podrían importarse (`buzz`). Vacío sin fuente externa. Sin duplicados, sin rutas. |
-| `disk.models_bytes` | Suma de `disk_bytes` de los modelos instalados. |
-| `disk.reclaimable_bytes` | Suma de `reclaimable_bytes` de los modelos instalados. |
-| `disk.free_bytes` | Bytes libres del volumen de datos; `null` si no se puede consultar. |
+| `key`, `provider_id` | The API key (see above) and the provider. |
+| `kind` | `asr` or `diarization`. The UI groups "Speakers" separately. |
+| `requires` | Runtime the model needs in order to be used: `whisper-cli` (whisper.cpp), `diarization` (optional extra with sherpa-onnx) or `null`. |
+| `runtime_available` | `false` if that runtime is missing: the model is listed but the UI does not offer to install it ("requires the diarization extra"). whisper.cpp is not even listed without `whisper-cli`. |
+| `model_id` | Identifier within the provider; for faster-whisper, the same as in `/api/transcription-options`. |
+| `source`, `revision` | Pinned provenance (40-character commit SHA). `null` for diarization: its artifacts are release assets verified by SHA-256. |
+| `profile` | `fast` or `quality`; `null` for diarization. |
+| `size_bytes` | Sum of the catalog's expected files (what would be downloaded). |
+| `installed` | `true` if there is a valid V manifest for exactly that source and revision. A different revision installed earlier does not count. |
+| `disk_bytes` | **Real size** of the installed model's files (sum of `lstat`), also if they are hardlinks to the Buzz cache; `null` if not installed. Never 0 for an installed model. |
+| `reclaimable_bytes` | What deleting the model would really free: it excludes files that have another hard link (the copy imported from Buzz). `null` if not installed. This is the value that matches `freed_bytes` of the `DELETE`. |
+| `shared_bytes` | `disk_bytes − reclaimable_bytes`: what stays on disk because another tool (Buzz) holds the same file. `null` if not installed. |
+| `external` | Origins from other tools that hold exactly that source and revision and could be imported (`buzz`). Empty without an external source. No duplicates, no paths. |
+| `disk.models_bytes` | Sum of `disk_bytes` of the installed models. |
+| `disk.reclaimable_bytes` | Sum of `reclaimable_bytes` of the installed models. |
+| `disk.free_bytes` | Free bytes of the data volume; `null` if it cannot be queried. |
 
-### Modelos importados desde Buzz: «0 bytes»
+### Models imported from Buzz: "0 bytes"
 
-Un modelo importado como copia local se enlaza con *hardlinks* a la caché de Buzz:
-no ocupa un segundo espacio en disco. `disk_bytes` informa su tamaño real
-(`lstat`), y `DELETE` devuelve `freed_bytes` ≈ 0 (solo el manifest) porque los
-pesos siguen en la caché de Buzz. Una UI que quiera decir «se liberarán X» debe
-usar `reclaimable_bytes`, y puede mostrar `shared_bytes` como «compartido con
-Buzz»; mostrar `freed_bytes` o `reclaimable_bytes` como «tamaño» da 0.
+A model imported as a local copy is linked with *hardlinks* to the Buzz cache: it
+does not take a second amount of disk space. `disk_bytes` reports its real size
+(`lstat`), and `DELETE` returns `freed_bytes` ≈ 0 (only the manifest) because the
+weights remain in the Buzz cache. A UI that wants to say "X will be freed" must
+use `reclaimable_bytes`, and can show `shared_bytes` as "shared with Buzz";
+showing `freed_bytes` or `reclaimable_bytes` as the "size" gives 0.
 
-### Antes de pedir hablantes
+### Before asking for speakers
 
-Los modelos de hablantes son la entrada `diarization:sherpa-default`
-(`kind: "diarization"`). Para saber si se puede crear un job con diarización:
-`installed` (modelos) y `runtime_available` (extra `diarization`). Si falta
-`installed`, ofrecer la descarga (`POST /api/models/diarization:sherpa-default/install`);
-si no, `POST /api/jobs` responde 409 `diarization_models_missing`.
+The speaker models are the `diarization:sherpa-default` entry
+(`kind: "diarization"`). To know whether a job with diarization can be created:
+`installed` (models) and `runtime_available` (the `diarization` extra). If
+`installed` is false, offer the download
+(`POST /api/models/diarization:sherpa-default/install`); otherwise
+`POST /api/jobs` answers 409 `diarization_models_missing`.
 
-## `DELETE /api/models/{model_id}?confirm=<model_id>`
+## `DELETE /api/models/{key}?confirm=<key>`
 
-Borra la instalación fijada del catálogo. `confirm` debe repetir el id exacto
-(distingue mayúsculas); es una protección contra borrados accidentales, no
-autenticación.
+Deletes the catalog's pinned installation. `confirm` must repeat the exact id
+(case-sensitive); it is a protection against accidental deletion, not
+authentication.
 
-| HTTP | `detail.code` | Cuándo |
+| HTTP | `detail.code` | When |
 | --- | --- | --- |
-| 200 | (cuerpo) | `{ "key": "faster-whisper:tiny", "model_id": "tiny", "freed_bytes": 77010000 }` |
-| 400 | `model_delete_unconfirmed` | Falta `confirm` o no coincide con `model_id`. Se evalúa primero, sin tocar el disco. |
-| 404 | `model_not_installed` | El id no está en el catálogo o no está instalado. |
-| 409 | `model_in_use` | Un job no terminal (en cola, en proceso o cancelándose) tiene una selección con ese modelo y esa revisión. Termina o cancela el job y reintenta. |
-| 500 | `model_remove_failed` | Error de E/S al borrar; mensaje sin rutas. |
+| 200 | (body) | `{ "key": "faster-whisper:tiny", "model_id": "tiny", "freed_bytes": 77010000 }` |
+| 400 | `model_delete_unconfirmed` | `confirm` is missing or does not match the id in the path. Evaluated first, without touching the disk. |
+| 404 | `model_not_installed` | The id is not in the catalog or is not installed. |
+| 409 | `model_in_use` | A non-terminal job (queued, in progress or cancelling) has a selection with that model and revision, or, for a diarization model, asked for speakers. Finish or cancel the job and retry. |
+| 500 | `model_remove_failed` | I/O error while deleting; message without paths. |
 
-Errores con forma `{"detail": {"code", "message"}}`. Los jobs completados,
-fallidos o cancelados no bloquean el borrado; conservan su snapshot de selección
-y su transcripción, pero no podrán reejecutarse con el modelo hasta reinstalarlo.
+Errors have the shape `{"detail": {"code", "message"}}`. Completed, failed or
+cancelled jobs do not block deletion; they keep their selection snapshot and
+their transcript, but cannot be rerun with the model until it is reinstalled.
 
-Límite conocido: un job creado entre la comprobación de uso y el borrado no queda
-protegido (ventana muy corta, app local monousuario).
+Known limit: a job created between the in-use check and the deletion is not
+protected (a very short window, local single-user app).
 
-## Instalación en segundo plano (MODELS-TASKS-001)
+## Background installation (MODELS-TASKS-001)
 
-Descargar (1-3 GB desde Hugging Face) o importar (desde la caché de Buzz) no
-cabe en un request: el POST encola una tarea y el cliente consulta su estado.
-Las tareas viven **solo en memoria** (`ModelTaskRunner`, un hilo worker y cola
-FIFO: una tarea pesada a la vez). No son durables a propósito: si la app se
-cierra a mitad, la descarga se reanuda sola desde los `.part` cuando el usuario
-vuelve a pulsar instalar. Al apagar el servidor las tareas en cola o en curso se
-cancelan. Ninguna respuesta contiene rutas ni URLs.
+Downloading (1–3 GB from Hugging Face) or importing (from the Buzz cache) does not
+fit in one request: the POST enqueues a task and the client polls its state. Tasks
+live **only in memory** (`ModelTaskRunner`, one worker thread and a FIFO queue:
+one heavy task at a time). They are deliberately not durable: if the app closes
+midway, the download resumes by itself from the `.part` files when the user clicks
+install again. When the server shuts down, queued or running tasks are cancelled.
+No response contains paths or URLs.
 
-### `POST /api/models/{model_id}/install`
+### `POST /api/models/{key}/install`
 
 ```json
 { "method": "download", "confirm": true }
 { "method": "import", "origin": "buzz", "confirm": true }
 ```
 
-`method` es `download` o `import` (otro valor: 422 de validación); `origin` solo
-aplica a `import` (por ahora `buzz`, valor por defecto). `confirm` debe ser
-`true`: la descarga es siempre explícita.
+`method` is `download` or `import` (any other value: 422 validation); `origin`
+only applies to `import` (for now `buzz`, the default). `confirm` must be `true`:
+downloading is always explicit.
 
-| HTTP | `detail.code` | Cuándo |
+| HTTP | `detail.code` | When |
 | --- | --- | --- |
-| 202 | (cuerpo `TaskView`) | Tarea encolada. Si ya hay una tarea activa (`queued`/`running`) para ese modelo, se devuelve esa misma sin crear otra. |
-| 400 | `model_install_unconfirmed` | `confirm` ausente o distinto de `true`. Se evalúa primero; no encola nada. |
-| 404 | `model_unknown` | El id no está en el catálogo. |
-| 409 | `model_already_installed` | Ya hay una instalación válida de esa fuente y revisión. |
-| 404 | `external_model_not_found` | `method=import` y no hay copia compatible en el origen. |
+| 202 | (`TaskView` body) | Task enqueued. If there is already an active task (`queued`/`running`) for that model, that same one is returned without creating another. |
+| 400 | `model_install_unconfirmed` | `confirm` is absent or not `true`. Evaluated first; nothing is enqueued. |
+| 404 | `model_unknown` | The id is not in the catalog. |
+| 404 | `external_model_not_found` | `method=import` and there is no compatible copy at the origin. |
+| 409 | `model_already_installed` | There is already a valid installation of that source and revision. |
 
 ### `GET /api/model-tasks`
 
-`{ "tasks": [TaskView, ...] }`: las activas y las últimas 20 terminadas, de más
-antigua a más reciente.
+`{ "tasks": [TaskView, ...] }`: the active ones and the last 20 finished, from
+oldest to newest.
 
 ### `GET /api/model-tasks/{task_id}`
 
-`TaskView`, o 404 `model_task_not_found` (id desconocido o ya descartado del
-historial).
+`TaskView`, or 404 `model_task_not_found` (unknown id or already dropped from the
+history).
 
 ### `POST /api/model-tasks/{task_id}/cancel`
 
-202 con el `TaskView`. Una tarea en cola pasa a `cancelled` al instante; una en
-curso sigue `running` hasta que el store atiende la cancelación (entre bloques
-de 1 MiB) y entonces pasa a `cancelled`, conservando los `.part`. Repetir el
-cancel sobre una tarea en curso es idempotente. 409 `model_task_terminal` si ya
-terminó; 404 `model_task_not_found` si no existe.
+202 with the `TaskView`. A queued task becomes `cancelled` immediately; a running
+one stays `running` until the store honors the cancellation (between 1 MiB blocks)
+and then becomes `cancelled`, keeping the `.part` files. Repeating the cancel on a
+running task is idempotent. 409 `model_task_terminal` if it already finished; 404
+`model_task_not_found` if it does not exist.
 
 ### `TaskView`
 
@@ -183,27 +184,29 @@ terminó; 404 `model_task_not_found` si no existe.
 }
 ```
 
-| Campo | Significado |
+| Field | Meaning |
 | --- | --- |
-| `key` | Clave del modelo (`provider:model`). |
-| `state` | `queued`, `running`, `completed`, `failed` o `cancelled`. |
-| `done_bytes`, `total_bytes` | Progreso acumulado de todos los archivos. En cola valen 0 y la suma del catálogo; al completar, `done == total`. |
-| `origin` | `buzz` para `import`; `null` para `download`. |
-| `error_code` | Solo con `failed`; `null` en el resto. Códigos estables: los de `ModelInstallationFailureCode` (`model_installation_network_error`, `model_installation_http_error`, `model_installation_checksum_mismatch`, `disk_space_insufficient`, `model_installation_io_error`, `model_installation_invalid_snapshot`, ...), `external_model_not_found` si la copia desapareció antes de importar, y `model_task_failed` para cualquier error inesperado (el detalle va al log, nunca a la respuesta). |
+| `key` | The model's key (`provider:model`). |
+| `state` | `queued`, `running`, `completed`, `failed` or `cancelled`. |
+| `done_bytes`, `total_bytes` | Accumulated progress across all files. While queued they are 0 and the catalog sum; on completion, `done == total`. |
+| `origin` | `buzz` for `import`; `null` for `download`. |
+| `error_code` | Only with `failed`; `null` otherwise. Stable codes: those of `ModelInstallationFailureCode` (`model_installation_network_error`, `model_installation_http_error`, `model_installation_checksum_mismatch`, `disk_space_insufficient`, `model_installation_io_error`, `model_installation_invalid_snapshot`, ...), `external_model_not_found` if the copy disappeared before importing, and `model_task_failed` for any unexpected error (the detail goes to the log, never to the response). |
 
-Flujo típico del cliente: `POST install` -> sondear `GET /api/model-tasks/{id}`
-mientras `state` sea `queued`/`running` -> al terminar refrescar `GET /api/models`
+Typical client flow: `POST install` -> poll `GET /api/model-tasks/{id}` while
+`state` is `queued`/`running` -> when it finishes, refresh `GET /api/models`
 (`installed: true`).
 
-### Separación de hablantes (`diarization:sherpa-default`)
+### Speaker separation (`diarization:sherpa-default`)
 
-Se instala y borra como cualquier otro modelo: `POST install` con
-`method=download` encola una tarea que descarga los dos artefactos fijados
-(segmentación pyannote 3.0, 6 958 444 bytes, MIT; embeddings WeSpeaker, 26 530 550
-bytes, Apache-2.0), con progreso agregado, cancelación y reanudación desde
-`.part`. `DELETE` con `confirm=diarization:sherpa-default` los borra. No admite
-`method=import`. El runtime (`sherpa-onnx`, extra `diarization`) es independiente:
-sin él, `runtime_available` es `false` y la UI no ofrece instalar.
+It is installed and deleted like any other model: `POST install` with
+`method=download` enqueues a task that downloads the two pinned artifacts
+(pyannote 3.0 segmentation, 6 958 444 bytes, MIT; WeSpeaker embeddings,
+26 530 550 bytes, Apache-2.0), with aggregated progress, cancellation and resume
+from `.part`. `DELETE` with `confirm=diarization:sherpa-default` removes them. It
+does not support `method=import`. The runtime (`sherpa-onnx`, the `diarization`
+extra) is independent: without it, `runtime_available` is `false` and the UI does
+not offer to install.
 
-Límite conocido: el borrado no comprueba jobs de diarización en curso (la
-selección de job solo registra el modelo ASR).
+Deleting a diarization model also answers 409 `model_in_use` while a
+non-terminal job asked for speakers and has not already failed in diarization
+(V0-09b). After a successful deletion the cached diarization engines are closed.

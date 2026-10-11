@@ -1,102 +1,101 @@
-# Perfiles de calidad, glosario y VAD (S13.01-S13.03, S13.11)
+# Quality profiles, glossary and VAD (S13.01–S13.03, S13.11)
 
-Un **perfil** es una receta de decodificación con nombre, versión y parámetros
-fijos. El job guarda el perfil completo en su selección, así que repetirlo
-usa exactamente lo mismo aunque las recetas incluidas cambien después.
+A **profile** is a decoding recipe with a name, a version and fixed parameters.
+The job stores the full profile in its selection, so repeating it uses exactly the
+same thing even if the bundled recipes change later.
 
-## Perfiles incluidos
+## Bundled profiles
 
-Definidos como datos inmutables en `application/quality_profiles.py`
-(`QualityProfile`, `domain/entities/quality_profile.py`). Cambiar un valor exige
-subir `version`.
+Defined as immutable data in `application/quality_profiles.py` (`QualityProfile`,
+`domain/entities/quality_profile.py`). Changing a value requires bumping
+`version`.
 
-| Parámetro | `default` v1 | `academic` v1 |
+| Parameter | `default` v1 | `academic` v1 |
 | --- | --- | --- |
 | `beam_size` | 5 | 5 |
-| `temperature` (reintentos) | 0,0 0,2 0,4 0,6 0,8 1,0 | 0,0 0,2 0,4 |
-| `condition_on_previous_text` | sí | **no** |
-| `no_speech_threshold` | 0,6 | 0,6 |
-| VAD | apagado | **encendido** (umbral 0,5; voz mínima 250 ms; silencio mínimo 1000 ms; margen 400 ms) |
+| `temperature` (retries) | 0.0 0.2 0.4 0.6 0.8 1.0 | 0.0 0.2 0.4 |
+| `condition_on_previous_text` | yes | **no** |
+| `no_speech_threshold` | 0.6 | 0.6 |
+| VAD | off | **on** (threshold 0.5; minimum speech 250 ms; minimum silence 1000 ms; padding 400 ms) |
 
-- `default` son los valores por defecto de Faster Whisper 1.2.1: un job con este
-  perfil se comporta como antes de que existieran los perfiles (y como
-  `voz bench`).
-- `academic` apunta a clases y charlas largas: no arrastrar el texto previo evita
-  que una frase alucinada o en bucle contamine la ventana siguiente; menos
-  reintentos aleatorios reducen palabras inventadas; el VAD omite silencios y
-  ruido. **Estas elecciones salen de lo que documenta la librería, no de una
-  medición propia de VOZ**: `academic` figura como "sin medición" hasta que se
-  corra `voz bench` con él. No lo vendas como más preciso.
+- `default` is Faster Whisper 1.2.1's own defaults: a job with this profile
+  behaves as it did before profiles existed (and like `voz bench`).
+- `academic` targets long classes and talks: not carrying over the previous text
+  keeps a hallucinated or looping sentence from contaminating the next window;
+  fewer random retries reduce invented words; VAD skips silence and noise.
+  **These choices come from what the library documents, not from a V measurement
+  of its own**: `academic` is listed as "unmeasured" until `voz bench` is run with
+  it. Do not market it as more accurate.
 
-Sin `profile` en la petición se usa `default`. Los jobs previos (columna `NULL`)
-siguen con los valores del motor.
+Without `profile` in the request, `default` is used. Earlier jobs (`NULL` column)
+keep the engine's values.
 
-## Quién respeta qué
+## Who honors what
 
-| Motor | Perfil | VAD | Glosario |
+| Engine | Profile | VAD | Glossary |
 | --- | --- | --- | --- |
-| Faster Whisper | sí (`beam_size`, `temperature`, `condition_on_previous_text`, `no_speech_threshold`) | sí (`vad_filter` + `vad_parameters`) | sí, vía `hotwords` |
-| whisper.cpp | ignorado | ignorado | ignorado |
-| Cloud (OpenAI) | ignorado | ignorado | ignorado |
-| Cloud con *keyterms* (el proveedor que los admite) | ignorado | ignorado | sí, como `keyterms` |
+| Faster Whisper | yes (`beam_size`, `temperature`, `condition_on_previous_text`, `no_speech_threshold`) | yes (`vad_filter` + `vad_parameters`) | yes, via `hotwords` |
+| whisper.cpp | ignored | ignored | ignored |
+| Cloud (OpenAI) | ignored | ignored | ignored |
+| Cloud with *keyterms* (the provider that supports them) | ignored | ignored | yes, as `keyterms` |
 
-La UI lo dice junto al selector y al editor. Las excepciones se registran en
+The UI says so next to the selector and the editor. The exceptions are recorded in
 `applies_to` (`GET .../glossary`).
 
-### Glosario: `hotwords` y no `initial_prompt`
+### Glossary: `hotwords` and not `initial_prompt`
 
-Faster Whisper ofrece las dos vías. Se usa `hotwords` porque la librería lo
-antepone al prompt de **cada** ventana de decodificación, mientras que
-`initial_prompt` solo siembra la primera, y además deja libre `initial_prompt`
-para otros usos. Los términos se unen con `", "`. La librería trunca por su
-cuenta si exceden la mitad del contexto, así que listas muy largas pierden los
-últimos términos: pon primero los más importantes. `hotwords` no tiene efecto si
-se usa `prefix` (VOZ no lo usa). Para proveedores cloud con *keyterms* se envía
-cada término como campo aparte (se suma a los que el proveedor ya tuviera,
-respetando su límite de 100 × 50 caracteres; si se supera, el job falla con un
-error tipado, nunca se recorta en silencio). **El texto transcrito nunca se
-reescribe con el glosario**: solo se sesga al motor y el resultado se guarda
-literal.
+Faster Whisper offers both routes. `hotwords` is used because the library
+prepends it to the prompt of **every** decoding window, whereas `initial_prompt`
+only seeds the first one, and it also leaves `initial_prompt` free for other uses.
+Terms are joined with `", "`. The library truncates on its own if they exceed half
+of the context, so very long lists lose the last terms: put the most important
+ones first. `hotwords` has no effect when `prefix` is used (V does not use it).
+For cloud providers with *keyterms*, each term is sent as a separate field (added
+to those the provider already had, respecting its limit of 100 × 50 characters; if
+exceeded, the job fails with a typed error, never silently trimmed). **The
+transcribed text is never rewritten with the glossary**: it only biases the engine
+and the result is stored literally.
 
-Privacidad: el glosario viaja a un proveedor cloud solo si el usuario eligió
-explícitamente ese proveedor (mismo consentimiento que el audio).
+Privacy: the glossary travels to a cloud provider only if the user explicitly
+chose that provider (the same consent as the audio).
 
 ### VAD
 
-`vad_filter`/`vad_parameters` salen del perfil (`vad = null` lo apaga). Faster
-Whisper **ignora el VAD cuando se pasan `clip_timestamps` explícitos**; VOZ
-transcribe cada chunk ya recortado con `clip_timestamps="0"`, así que el VAD sí
-se aplica. El modelo Silero VAD viene dentro del paquete `faster-whisper`: no
-descarga nada.
+`vad_filter`/`vad_parameters` come from the profile (`vad = null` turns it off).
+Faster Whisper **ignores VAD when explicit `clip_timestamps` are passed**; V
+transcribes each already-trimmed chunk with `clip_timestamps="0"`, so VAD is
+applied. The Silero VAD model ships inside the `faster-whisper` package: nothing
+is downloaded.
 
-## Reproducibilidad
+## Reproducibility
 
-`transcription_job_selections.profile_json` guarda el perfil completo (nombre,
-versión, parámetros y VAD) y `glossary_json` los términos congelados al crear el
-job (migración `0007_project_glossary`). La selección es inmutable, y la
-reanudación tras un reinicio reconstruye la petición desde ella.
-`GET /api/jobs/{id}` expone `selection.quality_profile` y `selection.glossary`.
+`transcription_job_selections.profile_json` stores the full profile (name,
+version, parameters and VAD) and `glossary_json` the terms frozen when the job was
+created (migration `0007_project_glossary`). The selection is immutable, and
+resuming after a restart rebuilds the request from it. `GET /api/jobs/{id}`
+exposes `selection.quality_profile` and `selection.glossary`.
 
-## Recomendación por idioma (S13.11)
+## Recommendation by language (S13.11)
 
-`recommend_profile(language)` es una función pura. Solo usa la tabla
-`MEASUREMENTS` de `application/quality_profiles.py`, cuyas filas son números que
-existen en `docs/benchmarks.md`. Regla: entre los perfiles **medidos** para el
-idioma (etiqueta regional reducida a la primaria: `es-CO` → `es`) elige el de
-menor WER; si no hay ninguna fila, responde `measured: false` y
-"sin medición para el idioma «xx»" (o "sin medición: elige un idioma" si no hay
-idioma), sin recomendar nada. `unmeasured_profiles` lista los perfiles sin
-medición para ese idioma.
+`recommend_profile(language)` is a pure function. It only uses the `MEASUREMENTS`
+table in `application/quality_profiles.py`, whose rows are numbers that exist in
+[benchmarks.md](benchmarks.md). Rule: among the profiles **measured** for the
+language (a regional tag reduced to its primary subtag: `es-CO` → `es`) it picks
+the one with the lowest WER; if there is no row, it answers `measured: false` and
+a "no measurement" message (currently a Spanish string from the API: `sin
+medición para el idioma «xx»`, or `sin medición: elige un idioma` when no
+language was given), recommending nothing. `unmeasured_profiles` lists the
+profiles without a measurement for that language.
 
-Estado actual de las mediciones:
+Current state of the measurements:
 
-| Idioma | Perfil | WER | Origen |
+| Language | Profile | WER | Source |
 | --- | --- | --- | --- |
-| `es` | `default` | 1,66 % | `docs/benchmarks.md`, 2026-09-30, Faster Whisper turbo CUDA float16, 6 clips de ~36 s |
+| `es` | `default` | 1.66 % | [benchmarks.md](benchmarks.md), 2026-09-30, Faster Whisper turbo CUDA float16, 6 clips of ~36 s |
 
-Limitaciones que la API repite en `evidence`/`synthetic`: el audio fue
-**sintético** (espeak-ng), así que el WER es optimista y orientativo; solo se
-midió el perfil `default` (la decodificación por defecto) y solo español.
-`academic` no tiene medición en ningún idioma. Para añadir una fila: correr
-`voz bench` con el perfil y el idioma, copiar el WER a `MEASUREMENTS` con su
-procedencia y actualizar esta tabla; nunca estimar.
+Limitations that the API repeats in `evidence`/`synthetic`: the audio was
+**synthetic** (espeak-ng), so the WER is optimistic and indicative only; only the
+`default` profile (the default decoding) was measured, and only Spanish.
+`academic` has no measurement in any language. To add a row: run `voz bench` with
+the profile and the language, copy the WER into `MEASUREMENTS` with its
+provenance and update this table; never estimate.

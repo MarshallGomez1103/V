@@ -1,90 +1,92 @@
-# Hablantes — S6.09, S6.10, S6.11, S6.12 (oleada 5b, 2026-09-30)
+# Speakers — S6.09, S6.10, S6.11, S6.12 (wave 5b, 2026-09-30)
 
-Local (`127.0.0.1`), sin red ni modelos: todas estas operaciones editan filas
-existentes, nunca reejecutan la diarización. Los errores usan
-`{"detail": {"code", "message"}}`; nunca rutas del host ni tracebacks.
+Local (`127.0.0.1`), no network or models: all these operations edit existing
+rows and never rerun diarization. Errors use `{"detail": {"code", "message"}}`;
+host paths and tracebacks are never returned. Common rules: [README.md](README.md).
 
-## Item de hablante
+## Speaker item
 
 ```json
 {"id": "uuid", "name": "Ana", "color": "#4e79a7", "segment_count": 12,
  "talk_ms": 184200, "first_ms": 750}
 ```
 
-`color` es `#rrggbb` en minúsculas. `segment_count` cuenta los segmentos que hoy
-apuntan al hablante. `talk_ms` es la suma de la duración de esos segmentos
-(tiempo de habla; el porcentaje lo calcula la UI sobre la suma de todos) y
-`first_ms` el inicio de su primer segmento (`null` y `0` sin segmentos), para
-saltar a su primera intervención. Siguen a las ediciones manuales de segmentos. Un hablante "pertenece" a una transcripción si alguno de
-sus segmentos o turnos (`speaker_turns`) pertenece a ella.
+`color` is lowercase `#rrggbb`. `segment_count` counts the segments that
+currently point to the speaker. `talk_ms` is the sum of the duration of those
+segments (talk time; the percentage is computed by the UI over the sum of all)
+and `first_ms` is the start of their first segment (`null` and `0` without
+segments), to jump to their first turn. Both follow manual segment edits. A
+speaker "belongs" to a transcript if any of its segments or turns
+(`speaker_turns`) belongs to it.
 
 ## `GET /api/transcripts/{transcript_id}/speakers`
 
-→ `200 {"speakers": [item]}` en orden de creación (el orden de primera aparición
-del audio). `404 transcript_not_found`.
+→ `200 {"speakers": [item]}` in creation order (the order of first appearance in
+the audio). `404 transcript_not_found`.
 
 ## `PATCH /api/speakers/{speaker_id}` (S6.09, S6.10)
 
-Body: `{"name"?: str, "color"?: "#rrggbb"}`. El nombre se guarda sin espacios
-extremos (1–80 caracteres). Al menos un campo es obligatorio. Nombre y color se
-guardan en el hablante, así que sobreviven a nuevas ejecuciones de diarización
-sobre la misma transcripción (`AssignSpeakers` reutiliza el hablante).
+Body: `{"name"?: str, "color"?: "#rrggbb"}`. The name is stored without leading or
+trailing spaces (1–80 characters). At least one field is required. Name and color
+are stored on the speaker, so they survive new diarization runs on the same
+transcript (`AssignSpeakers` reuses the speaker).
 
-| Estado | Código | Significado |
+| Status | Code | Meaning |
 | --- | --- | --- |
-| 200 | — | item actualizado |
-| 404 | `speaker_not_found` | el hablante no existe |
-| 422 | `speaker_update_invalid` | nombre vacío o de más de 80 caracteres, color que no es `#rrggbb`, o body sin campos (un body mal formado da el 422 estándar de FastAPI) |
+| 200 | — | updated item |
+| 404 | `speaker_not_found` | the speaker does not exist |
+| 422 | `speaker_update_invalid` | empty name or one longer than 80 characters, a color that is not `#rrggbb`, or a body with no fields (a malformed body gives FastAPI's standard 422) |
 
 ## `POST /api/speakers/{speaker_id}/merge` (S6.11)
 
-Body: `{"into": "<speaker_id destino>"}` → `200 {"speaker": item_destino}`.
+Body: `{"into": "<target speaker_id>"}` → `200 {"speaker": target_item}`.
 
-En **una transacción** SQLite reasigna al destino todos los segmentos y turnos
-del origen y borra el origen. Textos, revisiones y timings no cambian. El
-destino conserva su nombre y color.
+In **one** SQLite transaction it reassigns all of the source's segments and turns
+to the target and deletes the source. Texts, revisions and timings do not change.
+The target keeps its name and color.
 
-| Estado | Código | Significado |
+| Status | Code | Meaning |
 | --- | --- | --- |
-| 404 | `speaker_not_found` | el origen no existe |
-| 409 | `speaker_merge_invalid` | destino igual al origen, inexistente, o sin ninguna transcripción en común con el origen |
+| 404 | `speaker_not_found` | the source does not exist |
+| 409 | `speaker_merge_invalid` | target equal to the source, nonexistent, or sharing no transcript with the source |
 
 ## `PUT /api/segments/{segment_id}/speaker` (S6.12)
 
-Body: `{"speaker_id": "uuid" | null}` → `200` item de segmento (mismo shape que
-`docs/api/segments.md`). Solo cambia `speaker_id`: no toca texto, `edited` ni
-`revision`. `null` deja el segmento sin hablante.
+Body: `{"speaker_id": "uuid" | null}` → `200` segment item (same shape as in
+[segments.md](segments.md)). It only changes `speaker_id`: it does not touch the
+text, `edited` or `revision`. `null` leaves the segment without a speaker.
 
-| Estado | Código | Significado |
+| Status | Code | Meaning |
 | --- | --- | --- |
-| 404 | `segment_not_found` | el segmento no existe |
-| 409 | `segment_speaker_invalid` | el hablante no existe o no pertenece a la transcripción del segmento |
+| 404 | `segment_not_found` | the segment does not exist |
+| 409 | `segment_speaker_invalid` | the speaker does not exist or does not belong to the segment's transcript |
 
-## Hablantes de proveedores cloud (INTEGRITY-001)
+## Speakers from cloud providers (INTEGRITY-001)
 
-Cuando el proveedor ASR ya etiqueta cada segmento (`speaker`: ElevenLabs con
-diarización, OpenAI diarizado) y el trabajo **no** pidió diarización local, el
-pipeline crea los hablantes al persistir la transcripción:
+When the ASR provider already labels each segment (`speaker`: ElevenLabs with
+diarization, diarized OpenAI) and the job did **not** request local diarization,
+the pipeline creates the speakers when persisting the transcript:
 
-- Un `Speaker` por etiqueta, llamado `Hablante 1..N` en orden de primera
-  aparición, con el color de la paleta fija. Aparecen en
-  `GET .../speakers` y en `segment_count` como cualquier otro hablante.
-- El id del hablante deriva de la transcripción y la etiqueta
-  (`uuid5(transcript_id, "speaker:<etiqueta>")`): reanudar el trabajo reutiliza
-  las mismas filas y conserva nombre/color editados. No se crean turnos
-  (`speaker_turns`): el proveedor no los entrega.
-- Si hay diarización local pedida, gana la local y las etiquetas cloud se
-  ignoran. Segmentos sin etiqueta quedan sin hablante.
-- Si crear los hablantes falla, la transcripción se conserva y el código queda
-  en `diarization_error_code` de la selección del trabajo.
-- Limitación: ElevenLabs reutiliza etiquetas (`speaker_0`) por fragmento de
-  audio largo, así que una misma etiqueta en fragmentos distintos se fusiona en
-  un hablante. OpenAI prefija la etiqueta con el fragmento (no se fusionan).
+- One `Speaker` per label, named `Hablante 1..N` (a literal stored name, in
+  Spanish) in order of first appearance, with the color from the fixed palette.
+  They appear in `GET .../speakers` and in `segment_count` like any other
+  speaker.
+- The speaker id derives from the transcript and the label
+  (`uuid5(transcript_id, "speaker:<label>")`): resuming the job reuses the same
+  rows and keeps edited names and colors. No turns (`speaker_turns`) are created:
+  the provider does not deliver them.
+- If local diarization was requested, the local one wins and the cloud labels are
+  ignored. Segments without a label stay without a speaker.
+- If creating the speakers fails, the transcript is kept and the code is stored
+  in the job selection's `diarization_error_code`.
+- Limitation: ElevenLabs reuses labels (`speaker_0`) per long-audio chunk, so the
+  same label in different chunks is merged into one speaker. OpenAI prefixes the
+  label with the chunk (they are not merged).
 
-## Notas
+## Notes
 
-- Sin transacción común con `AssignSpeakers` (ver su nota `ponytail:`): editar
-  hablantes mientras corre una diarización sobre la misma transcripción no está
-  soportado.
-- Reasignar a mano no crea hablantes nuevos; solo se elige entre los de la
-  transcripción (`GET .../speakers`).
+- There is no transaction shared with `AssignSpeakers` (see its `ponytail:`
+  note): editing speakers while a diarization runs on the same transcript is not
+  supported.
+- Reassigning by hand does not create new speakers; you only choose among those
+  of the transcript (`GET .../speakers`).

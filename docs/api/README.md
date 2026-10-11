@@ -1,0 +1,58 @@
+# HTTP API
+
+V (formerly VOZ) serves a local JSON API under `/api`. The browser UI is its
+only first-party client. The exact, generated schema is published at
+`/openapi.json` (interactive view at `/docs`); the pages below document the
+contracts that go beyond the schema: error codes, side effects, limits and
+semantics.
+
+## Common rules
+
+- **Loopback by default.** The server binds to `127.0.0.1`. Exposing it on a
+  network requires an explicit option (`--host`); see
+  [ADR-0006](../adr/0006-local-first-privacy.md).
+- **Host header check.** Every request must arrive with a `Host` header that is
+  a loopback name (`127.0.0.1`, `localhost`, `::1`) or the host given explicitly
+  with `--host` / `--allow-host`. The port is ignored; only the host name
+  matters. Any other `Host` is rejected before routing with HTTP 400:
+
+  ```json
+  {"detail": {"code": "host_not_allowed", "message": "This server only answers requests addressed to its own host."}}
+  ```
+
+  This closes DNS-rebinding attacks, in which a page on `evil.example`
+  re-resolves its own name to `127.0.0.1`. WebSocket upgrades with a disallowed
+  `Host` are closed with code 1008. Implementation:
+  `src/voz/interfaces/api/host_guard.py`.
+- **Errors** always have the shape
+  `{"detail": {"code": "<snake_case_code>", "message": "<safe text>"}}`, with
+  optional extra fields documented per endpoint. Codes are stable; messages are
+  for humans and may change. Responses never contain absolute host paths,
+  tracebacks or secrets. Request-body validation failures that FastAPI detects
+  itself return the standard HTTP 422 validation payload.
+- **Dates** are ISO 8601 with a time zone. Identifiers are canonical UUID
+  strings.
+- **Destructive or side-effecting actions** (`POST /api/shutdown`,
+  `POST /api/desktop-shortcut`, `DELETE /api/projects/{id}`) require the custom
+  header `X-VOZ-Action: <action>`. A custom header forces a cross-origin page
+  through a CORS preflight, which the server never grants.
+- **No cloud calls** unless the user explicitly selects a cloud provider for a
+  job (see [providers.md](providers.md) and [privacy/](../privacy/openai.md)).
+
+## Endpoints
+
+| Area | Page |
+| --- | --- |
+| Projects, media import, jobs, SSE events, diarization, shutdown, desktop shortcut | [jobs.md](jobs.md) |
+| Project glossary, quality profile catalog | [projects.md](projects.md) |
+| Library, media info and playback, rename and delete projects | [library.md](library.md) |
+| Transcription options (what can run on this machine) | [transcription-options.md](transcription-options.md) |
+| Segment text editing, segment quality flags | [segments.md](segments.md) |
+| Speakers: list, rename, merge, assign | [speakers.md](speakers.md) |
+| Export (TXT, Markdown, SRT, VTT, JSON) | [export.md](export.md) |
+| Waveform peaks | [waveform.md](waveform.md) |
+| Model manager and background install tasks | [models.md](models.md) |
+| Cloud provider keys and cost estimates | [providers.md](providers.md) |
+
+`GET /api/health` returns `{"status": "ok", "version": "<version>"}` and works as a
+readiness probe (`scripts/check-install.sh` uses it).

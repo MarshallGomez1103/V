@@ -1,53 +1,54 @@
-# whisper.cpp como provider local alternativo
+# whisper.cpp as an alternative local provider
 
 Adapter: `src/voz/infrastructure/asr/whisper_cpp.py` (`provider_id = "whisper-cpp"`),
-catálogo: `whisper_cpp_catalog.py`, política de sugerencia:
-`src/voz/application/whisper_cpp_fallback.py`. Sección 9 del roadmap (S9.01-S9.09).
+catalog: `whisper_cpp_catalog.py`, suggestion policy:
+`src/voz/application/whisper_cpp_fallback.py`. Roadmap section 9 (S9.01–S9.09).
 
-> **Estado de verificación.** El adapter, la detección y el catálogo están
-> probados con un ejecutable **falso** (`tests/fixtures/whisper_cpp/fake_whisper_cli.py`)
-> que imita la CLI y escribe el JSON. 2026-09-30: compilación **solo CPU**
-> verificada con whisper.cpp v1.9.4 (`uvx cmake`, GCC 16.2.1); el JSON real de
-> `-ojf` coincide con el adapter (fixture `tests/fixtures/whisper_cpp/real_ojf_v1.9.4.json`).
-> Benchmark CPU/GPU (S9.10) en `docs/benchmarks.md`. CUDA/Vulkan sin verificar.
+> **Verification status.** The adapter, the detection and the catalog are tested
+> with a **fake** executable (`tests/fixtures/whisper_cpp/fake_whisper_cli.py`)
+> that imitates the CLI and writes the JSON. 2026-09-30: a **CPU-only** build was
+> verified with whisper.cpp v1.9.4 (`uvx cmake`, GCC 16.2.1); the real `-ojf` JSON
+> matches the adapter (fixture `tests/fixtures/whisper_cpp/real_ojf_v1.9.4.json`).
+> CPU/GPU benchmark (S9.10) in [benchmarks.md](benchmarks.md). CUDA/Vulkan are
+> unverified.
 
-## Cómo encuentra VOZ el ejecutable
+## How V finds the executable
 
-1. Si `VOZ_WHISPER_CPP_BIN` está definida, se usa **solo** esa ruta (debe ser un
-   archivo ejecutable). Una ruta inválida no cae silenciosamente al `PATH`.
-2. Si no, se busca `whisper-cli` en `PATH`.
+1. If `VOZ_WHISPER_CPP_BIN` is defined, **only** that path is used (it must be an
+   executable file). An invalid path does not silently fall back to the `PATH`.
+2. Otherwise, `whisper-cli` is looked up in the `PATH`.
 
-La validación (`probe_whisper_cpp`) ejecuta `whisper-cli --help` sin shell y con
-timeout, y exige los flags `--model --file --language --output-json-full
+Validation (`probe_whisper_cpp`) runs `whisper-cli --help` without a shell and with
+a timeout, and requires the flags `--model --file --language --output-json-full
 --output-file --no-gpu --no-prints --offset-t --duration` (whisper.cpp >= 1.7).
-Resultado tipado `WhisperCppAvailability(available, reason, version)`; las
-razones son códigos estables sin rutas: `whisper_cpp_not_found`,
+The typed result is `WhisperCppAvailability(available, reason, version)`; the
+reasons are stable codes without paths: `whisper_cpp_not_found`,
 `whisper_cpp_not_executable`, `whisper_cpp_probe_timeout`,
-`whisper_cpp_missing_flags`. La versión se informa solo si el `--help` la imprime.
+`whisper_cpp_missing_flags`. The version is reported only if `--help` prints it.
 
-## Compilar con CUDA (NVIDIA)
+## Building with CUDA (NVIDIA)
 
-Requiere CUDA Toolkit y un GCC compatible con él (en Fedora/Bazzite el GCC del
-sistema suele ser demasiado nuevo: compila dentro de un toolbox/distrobox).
+It requires the CUDA Toolkit and a GCC compatible with it (on Fedora/Bazzite the
+system GCC is usually too new: build inside a toolbox/distrobox).
 
 ```bash
-# Bazzite (sistema inmutable): entorno mutable para compilar
+# Bazzite (immutable system): mutable environment for building
 toolbox create whispercpp && toolbox enter whispercpp
 sudo dnf install -y git cmake gcc-c++ make
-# CUDA Toolkit: repositorio oficial de NVIDIA para Fedora, luego
+# CUDA Toolkit: NVIDIA's official repository for Fedora, then
 #   sudo dnf install cuda-toolkit
 git clone https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
-git checkout v1.9.4   # tag verificado (solo CPU); 5359861c… es la revisión del repo de modelos en HF, no de este repo
+git checkout v1.9.4   # verified tag (CPU only); 5359861c… is the revision of the models repo on HF, not of this repo
 cmake -B build -DGGML_CUDA=1
 cmake --build build -j --config Release
-# binario: build/bin/whisper-cli
+# binary: build/bin/whisper-cli
 ```
 
-Solo CPU sin toolbox (verificado): `uvx cmake -B build && uvx cmake --build build -j --config Release`.
-Alternativa: `brew install cmake` (Homebrew en Bazzite) para cmake,
-pero el toolkit de CUDA y el compilador compatible siguen necesitándose.
+CPU-only without a toolbox (verified): `uvx cmake -B build && uvx cmake --build build -j --config Release`.
+Alternative: `brew install cmake` (Homebrew on Bazzite) for cmake, but the CUDA
+toolkit and the compatible compiler are still needed.
 
-## Compilar con Vulkan (AMD/Intel/NVIDIA sin CUDA)
+## Building with Vulkan (AMD/Intel/NVIDIA without CUDA)
 
 ```bash
 toolbox create whispercpp && toolbox enter whispercpp
@@ -58,67 +59,65 @@ cmake -B build -DGGML_VULKAN=1
 cmake --build build -j --config Release
 ```
 
-Comprobar el driver con `vulkaninfo --summary` (paquete `vulkan-tools`) antes de
-culpar al build. Sin ninguno de los dos flags el build es solo CPU.
+Check the driver with `vulkaninfo --summary` (package `vulkan-tools`) before
+blaming the build. Without either flag the build is CPU-only.
 
-## Apuntar VOZ al binario
+## Pointing V at the binary
 
 ```bash
 export VOZ_WHISPER_CPP_BIN="$HOME/src/whisper.cpp/build/bin/whisper-cli"
 ```
 
-Si el binario se ejecuta desde un toolbox, la ruta de `$HOME` es la misma
-dentro y fuera del contenedor; las librerías CUDA/Vulkan del toolbox pueden no
-estar en el host, en ese caso copia el build estático o exporta `LD_LIBRARY_PATH`
-antes de arrancar VOZ.
+If the binary runs from a toolbox, the `$HOME` path is the same inside and outside
+the container; the toolbox's CUDA/Vulkan libraries may not exist on the host, in
+which case copy the static build or export `LD_LIBRARY_PATH` before starting V.
 
-## Modelos cuantizados (S9.05)
+## Quantized models (S9.05)
 
-Repo `ggerganov/whisper.cpp`, revisión `5359861c739e955e79d9a303bcbc70fb988958b1`
-(MIT). Un solo archivo `ggml-<model_id>.bin` por modelo, con tamaño y SHA-256
-fijos; se instalan con `FileSystemModelStore.download` (resumible, verificado,
-publicación atómica) y **nunca** sin petición explícita.
+Repo `ggerganov/whisper.cpp`, revision `5359861c739e955e79d9a303bcbc70fb988958b1`
+(MIT). One `ggml-<model_id>.bin` file per model, with fixed size and SHA-256; they
+are installed with `FileSystemModelStore.download` (resumable, verified, atomic
+publication) and **never** without an explicit request.
 
-| model_id | archivo | tamaño (bytes) |
+| model_id | file | size (bytes) |
 | --- | --- | --- |
-| `large-v3-turbo-q5_0` | `ggml-large-v3-turbo-q5_0.bin` | 574 041 195 |
-| `large-v3-turbo-q8_0` | `ggml-large-v3-turbo-q8_0.bin` | 874 188 075 |
-| `large-v3-turbo` | `ggml-large-v3-turbo.bin` | 1 624 555 275 |
-| `small-q5_1` | `ggml-small-q5_1.bin` | 190 085 487 |
-| `small` | `ggml-small.bin` | 487 601 967 |
-| `base` | `ggml-base.bin` | 147 951 465 |
+| `large-v3-turbo-q5_0` | `ggml-large-v3-turbo-q5_0.bin` | 574,041,195 |
+| `large-v3-turbo-q8_0` | `ggml-large-v3-turbo-q8_0.bin` | 874,188,075 |
+| `large-v3-turbo` | `ggml-large-v3-turbo.bin` | 1,624,555,275 |
+| `small-q5_1` | `ggml-small-q5_1.bin` | 190,085,487 |
+| `small` | `ggml-small.bin` | 487,601,967 |
+| `base` | `ggml-base.bin` | 147,951,465 |
 
-## Contrato del adapter
+## Adapter contract
 
-- Comando (lista de argumentos, sin shell): `whisper-cli --model <ggml> --file
-  <wav> --language <código|auto> --output-json-full --output-file <base>
-  --no-prints [--no-gpu] [--offset-t <ms> --duration <ms>]`. El idioma es el
-  subtag primario (`es-CO` -> `es`); `None` -> `auto`. `--no-gpu` solo con
-  `force_cpu=True`. El clip de una invocación recuperable se pasa con
-  `--offset-t/--duration`; los tiempos del JSON son globales, igual que en
-  Faster Whisper.
-- El audio se copia a un directorio temporal privado (0700) que se elimina
-  siempre; se valida que sea WAV PCM 16 kHz mono 16 bit antes de lanzar el
-  proceso (si no, `transcription_invalid_audio`).
-- Segmentos: `transcription[].offsets.from/to` (ms) y `text`. Se quita el
-  padding pero se conserva el espacio inicial de frontera de palabra (así
-  `TranscriptionResult.text` sigue uniendo con `"".join`); los vacíos se
-  descartan y los solapes de pocos ms se recortan para mantener el orden.
-- Palabras (si `word_timestamps`): los tokens se agrupan en palabras (un espacio
-  inicial abre palabra; se ignoran `[_BEG_]`, `[_TT_..]`); la probabilidad es la
-  media de `p`. Si algún token no trae offsets válidos, el segmento queda sin
-  palabras (el texto no se pierde). `t_dtw` se ignora por ahora.
-- Fallos (todos con mensaje sin rutas): binario ausente o no ejecutable, código
-  de salida != 0 y JSON ilegible/incompleto -> `transcription_provider_failed`;
-  archivo de modelo ausente -> `transcription_model_not_installed`.
-- Cancelación: se consulta el token cada 100 ms; al cancelarse se hace
-  `terminate()` (y `kill()` tras 2 s) y se lanza `transcription_cancelled`.
-  El proceso nunca queda huérfano ni deja temporales.
+- Command (argument list, no shell): `whisper-cli --model <ggml> --file <wav>
+  --language <code|auto> --output-json-full --output-file <base> --no-prints
+  [--no-gpu] [--offset-t <ms> --duration <ms>]`. The language is the primary
+  subtag (`es-CO` -> `es`); `None` -> `auto`. `--no-gpu` only with
+  `force_cpu=True`. The clip of a recoverable invocation is passed with
+  `--offset-t/--duration`; the JSON times are global, as in Faster Whisper.
+- The audio is copied to a private temporary directory (0700) that is always
+  removed; it is validated to be 16 kHz mono 16-bit PCM WAV before launching the
+  process (otherwise `transcription_invalid_audio`).
+- Segments: `transcription[].offsets.from/to` (ms) and `text`. Padding is
+  stripped but the leading word-boundary space is kept (so
+  `TranscriptionResult.text` still joins with `"".join`); empty ones are
+  discarded and overlaps of a few ms are trimmed to keep the order.
+- Words (if `word_timestamps`): tokens are grouped into words (a leading space
+  opens a word; `[_BEG_]`, `[_TT_..]` are ignored); the probability is the mean of
+  `p`. If some token has no valid offsets, the segment ends up with no words (the
+  text is not lost). `t_dtw` is ignored for now.
+- Failures (all with a message free of paths): missing or non-executable binary,
+  exit code != 0 and unreadable/incomplete JSON -> `transcription_provider_failed`;
+  missing model file -> `transcription_model_not_installed`.
+- Cancellation: the token is polled every 100 ms; on cancellation `terminate()` is
+  called (and `kill()` after 2 s) and `transcription_cancelled` is raised. The
+  process is never orphaned and leaves no temporary files.
 
-## Sugerencia de provider (S9.09)
+## Provider suggestion (S9.09)
 
 `suggest_whisper_cpp(faster_whisper=RuntimeAvailability, whisper_cpp_available=bool)`
-es una función pura: devuelve `ProviderSuggestion("whisper-cpp", razón)` con
-`faster_whisper_runtime_missing` o `faster_whisper_no_cuda`, o `None`. Nunca
-cambia de provider por sí sola (la UI la muestra y el usuario elige), nunca
-propone un proveedor cloud y no sugiere nada si el hardware es desconocido.
+is a pure function: it returns `ProviderSuggestion("whisper-cpp", reason)` with
+`faster_whisper_runtime_missing` or `faster_whisper_no_cuda`, or `None`. It never
+switches provider on its own (the UI shows it and the user chooses), never
+proposes a cloud provider and suggests nothing if the hardware is unknown.

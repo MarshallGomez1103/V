@@ -1,47 +1,48 @@
-# Proyectos y glosario — S13.01
+# Projects and glossary — S13.01
 
-El alta y el listado de proyectos están documentados en `docs/api/jobs.md`
-("Proyectos"). Aquí va el glosario por proyecto. Errores con la forma
-`{"detail": {"code", "message"}}`; sin rutas del host.
+Creating and listing projects is documented in [jobs.md](jobs.md) ("Projects");
+renaming and deleting are in [library.md](library.md). This page covers the
+per-project glossary. Errors have the shape `{"detail": {"code", "message"}}`;
+no host paths. Common rules: [README.md](README.md).
 
-## Glosario del proyecto
+## Project glossary
 
-Lista corta de términos (nombres propios, siglas, vocabulario técnico) que
-**sesga** al motor hacia esas palabras. Nunca reescribe el texto transcrito: lo
-que el motor devuelve se guarda literal.
+A short list of terms (proper names, acronyms, technical vocabulary) that
+**biases** the engine toward those words. It never rewrites the transcribed
+text: whatever the engine returns is stored literally.
 
-| Método y ruta | Request | Respuesta |
+| Method and path | Request | Response |
 | --- | --- | --- |
 | `GET /api/projects/{project_id}/glossary` | — | 200 `Glossary`; 404 `project_not_found` |
-| `PUT /api/projects/{project_id}/glossary` | `{"terms": [str]}` | 200 `Glossary` ya normalizado; 404 `project_not_found`; 422 `glossary_invalid` |
+| `PUT /api/projects/{project_id}/glossary` | `{"terms": [str]}` | 200 `Glossary`, already normalized; 404 `project_not_found`; 422 `glossary_invalid` |
 
 ```json
 {
-  "terms": ["Mitocondria", "VOZ"],
+  "terms": ["Mitochondria", "V"],
   "max_terms": 50,
   "max_term_length": 50,
   "applies_to": ["faster-whisper", "…"]
 }
 ```
 
-- `PUT` reemplaza la lista entera. Se recorta cada término, se descartan los
-  vacíos y los duplicados exactos (se conserva el orden); `[]` borra el glosario.
-- Límites: como máximo 50 términos de 50 caracteres, imprimibles (sin saltos de
-  línea ni caracteres de control). Los límites caben en los del proveedor cloud
-  más estricto. Si no se cumplen: 422 `glossary_invalid` y **no** se guarda nada
-  (el glosario anterior se conserva).
-- `applies_to` lista los ids de motor que usan el glosario; cualquier otro motor
-  (p. ej. whisper.cpp) lo ignora. La UI lo dice.
-- Persistencia: tabla `project_glossaries` (migración `0007_project_glossary`),
-  una fila por proyecto, borrada en cascada con el proyecto.
-- Al crear un job se copia el glosario vigente a su selección (`docs/api/jobs.md`),
-  de modo que repetir ese job usa los mismos términos.
+- `PUT` replaces the whole list. Each term is stripped; empty terms and exact
+  duplicates are dropped (order is kept); `[]` clears the glossary.
+- Limits: at most 50 terms of 50 printable characters (no line breaks or control
+  characters). The limits fit within those of the strictest cloud provider. If
+  they are not met: 422 `glossary_invalid` and **nothing** is saved (the previous
+  glossary is kept).
+- `applies_to` lists the engine ids that use the glossary; any other engine (for
+  example whisper.cpp) ignores it. The UI says so.
+- Persistence: table `project_glossaries` (migration `0007_project_glossary`),
+  one row per project, deleted by cascade with the project.
+- When a job is created, the current glossary is copied into its selection
+  ([jobs.md](jobs.md)), so repeating that job uses the same terms.
 
-## Perfiles de calidad
+## Quality profiles
 
-`GET /api/quality-profiles[?language=es]` (solo lectura) devuelve
+`GET /api/quality-profiles[?language=es]` (read-only) returns
 `{"default", "profiles": [{"name","label","description","parameters"}],
 "recommendation": {"language","profile","measured","evidence","synthetic",
-"unmeasured_profiles"}}`. `recommendation.profile` es `null` y `measured` es
-`false` cuando no hay medición para el idioma (o no se indicó idioma): nunca se
-inventa. Ver `docs/quality-profiles.md`.
+"unmeasured_profiles"}}`. `recommendation.profile` is `null` and `measured` is
+`false` when there is no measurement for the language (or no language was given):
+a recommendation is never invented. See [quality-profiles.md](../quality-profiles.md).

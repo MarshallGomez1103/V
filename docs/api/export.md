@@ -1,23 +1,24 @@
-# Exportación de transcripciones — S10.07, S10.08, S10.14
+# Transcript export — S10.07, S10.08, S10.14
 
-Endpoint local (`127.0.0.1`); no invoca proveedores ni red. Los errores usan
-`{"detail": {"code": "<snake_code>", "message": "<texto seguro>"}}`.
+Local endpoint (`127.0.0.1`); it calls no providers and uses no network. Errors
+use `{"detail": {"code": "<snake_code>", "message": "<safe text>"}}`. Common
+rules: [README.md](README.md).
 
 ```
 GET /api/transcripts/{transcript_id}/export?format=txt&timestamps=false&group_by_speaker=false
 ```
 
-| Parámetro | Valores | Por defecto |
+| Parameter | Values | Default |
 | --- | --- | --- |
 | `format` | `txt`, `markdown`, `srt`, `vtt`, `json` | `txt` |
 | `timestamps` | `true`/`false` | `false` |
 | `group_by_speaker` | `true`/`false` | `false` |
 
-## Respuesta 200
+## 200 response
 
-El cuerpo es el documento UTF-8. Cabeceras:
+The body is the UTF-8 document. Headers:
 
-| `format` | `Content-Type` | Extensión |
+| `format` | `Content-Type` | Extension |
 | --- | --- | --- |
 | `txt` | `text/plain; charset=utf-8` | `.txt` |
 | `markdown` | `text/markdown; charset=utf-8` | `.md` |
@@ -25,26 +26,36 @@ El cuerpo es el documento UTF-8. Cabeceras:
 | `vtt` | `text/vtt; charset=utf-8` | `.vtt` |
 | `json` | `application/json` | `.json` |
 
-- `Content-Disposition: attachment; filename="<ascii>"`. Si el nombre contiene
-  caracteres no ASCII se añade `filename*=UTF-8''<percent-encoded>` (RFC 5987) y
-  `filename` queda como equivalente ASCII (sin diacríticos).
-- Nombre base: el nombre del proyecto (o, si faltara, el del archivo importado
-  sin extensión), saneado por `safe_export_filename`: solo el último componente,
-  sin separadores, `..`, caracteres de control ni nombres reservados de Windows,
-  máximo 100 caracteres, fallback `transcript`. Nunca contiene rutas del host.
+- `Content-Disposition: attachment; filename="<ascii>"`. If the name contains
+  non-ASCII characters, `filename*=UTF-8''<percent-encoded>` (RFC 5987) is added
+  and `filename` stays as the ASCII equivalent (without diacritics).
+- Base name: the project name (or, if missing, the imported file's name without
+  extension), sanitized by `safe_export_filename`: last component only, no
+  separators, `..`, control characters or Windows reserved names, at most 100
+  characters, fallback `transcript`. It never contains host paths.
 - `X-Content-Type-Options: nosniff`.
 
-## Opciones (solo `txt` y `markdown`)
+## The `json` format
 
-- `timestamps=true`: prefijo `[HH:MM:SS.mmm]` por segmento (en Markdown en
-  negrita: `**[HH:MM:SS.mmm]**`). SRT y VTT ya incluyen tiempos.
-- `group_by_speaker=true`: los segmentos consecutivos del mismo speaker se
-  agrupan bajo su nombre (`Nombre:` en TXT, `## Nombre` en Markdown). Un speaker
-  que vuelve a hablar tras otro abre un grupo nuevo. Los segmentos sin speaker
-  (o con un speaker que ya no existe) van bajo `Sin speaker`. Los speakers se
-  leen del proyecto dueño de la transcripción.
+`format=json` is the canonical, lossless interchange document: `{"format":
+"voz.transcript", "version": 1, "transcript": …, "speakers": […], "segments":
+[…]}` with sorted keys, ordered segments and a trailing newline, so equal inputs
+produce byte-identical files. The identifier `voz.transcript` v1 is unchanged by
+the rename to V, so existing exports stay valid
+([ADR-0009](../adr/0009-rename-to-v.md)).
 
-Ejemplo TXT agrupado con tiempos:
+## Options (`txt` and `markdown` only)
+
+- `timestamps=true`: a `[HH:MM:SS.mmm]` prefix per segment (in bold in Markdown:
+  `**[HH:MM:SS.mmm]**`). SRT and VTT already include times.
+- `group_by_speaker=true`: consecutive segments by the same speaker are grouped
+  under their name (`Name:` in TXT, `## Name` in Markdown). A speaker who talks
+  again after another one opens a new group. Segments without a speaker (or with
+  a speaker that no longer exists) go under the literal label `Sin speaker`
+  (emitted as-is by the exporter, regardless of UI language). Speakers are read
+  from the project that owns the transcript.
+
+Example of grouped TXT with times:
 
 ```
 Ana:
@@ -54,19 +65,19 @@ Sin speaker:
 [00:00:03.000] sin dueño
 ```
 
-## Errores
+## Errors
 
-| Estado | `code` | Cuándo |
+| Status | `code` | When |
 | --- | --- | --- |
-| 404 | `transcript_not_found` | La transcripción no existe |
-| 422 | `export_format_unknown` | `format` no es uno de los cinco |
-| 422 | `export_option_unsupported` | `timestamps`/`group_by_speaker` en `srt`, `vtt` o `json` |
+| 404 | `transcript_not_found` | The transcript does not exist |
+| 422 | `export_format_unknown` | `format` is not one of the five |
+| 422 | `export_option_unsupported` | `timestamps`/`group_by_speaker` with `srt`, `vtt` or `json` |
 
-Un valor no booleano en las opciones produce el 422 estándar de validación de
-FastAPI. El formato se valida antes de consultar la base de datos.
+A non-boolean value in the options produces FastAPI's standard 422 validation
+response. The format is validated before the database is queried.
 
-## Cableado
+## Wiring
 
 `create_export_router(ExportTranscript(transcripts, segments, speakers, projects,
-media_assets))` en `voz.interfaces.api.export`; caso de uso en
+media_assets))` in `voz.interfaces.api.export`; use case in
 `voz.application.export.service`.

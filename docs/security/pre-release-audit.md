@@ -1,45 +1,42 @@
-# Auditoría previa a abrir el repositorio (S16.19)
+# Pre-publication audit of the repository (S16.19)
 
-- Fecha: 2026-09-30
-- Alcance: árbol de trabajo (archivos versionados y no ignorados) **y** todo el
-  historial git alcanzable (`--all`: 21 commits, una sola persona como autora).
-- Herramienta: [`scripts/audit-secrets.sh`](../../scripts/audit-secrets.sh)
-  (bash + git, sin dependencias nuevas; nunca imprime un secreto, solo
-  `tipo commit ruta`).
-- Este informe no reproduce ningún valor sensible. No se encontró ninguno que
-  reproducir.
+- Date: 2026-09-30
+- Scope: the working tree (versioned, non-ignored files) **and** the entire
+  reachable git history (`--all`: 21 commits, a single person as author).
+- Tool: [`scripts/audit-secrets.sh`](../../scripts/audit-secrets.sh) (bash + git,
+  no new dependencies; it never prints a secret, only `type commit path`).
+- This report reproduces no sensitive value. None was found to reproduce.
 
-## Resultado
+## Result
 
-**0 hallazgos HIGH. Nada bloquea abrir el repositorio por secretos o datos
-privados.** Quedan 19 hallazgos REVIEW (coincidencias dentro de `tests/`),
-triados a mano abajo: todos son datos falsos o rutas genéricas, y una decisión
-pendiente de autoría (ver "Decisión antes de publicar").
+**0 HIGH findings. Nothing blocks opening the repository because of secrets or
+private data.** 19 REVIEW findings remain (matches inside `tests/`), triaged by
+hand below: all are fake data or generic paths, plus one pending authorship
+decision (see "Decision before publishing").
 
-| Comprobación | Método | Resultado |
+| Check | Method | Result |
 | --- | --- | --- |
-| Claves de OpenAI/Anthropic (`sk-`), ElevenLabs (`sk_`, cabecera `xi-api-key` con valor), Hugging Face (`hf_`), AWS (`AKIA`/`ASIA`), GitHub (`ghp_`, `github_pat_`…), Slack, Google (`AIza`), bloques de clave privada, `Bearer …`, asignaciones literales `api_key/secret/token/password = "…"` | `git grep` sobre el árbol y `git log --all -G` sobre todo el historial (incluye líneas borradas) | Solo 3 valores falsos en tests (abajo). Ninguna clave real en el árbol ni en el historial. |
-| Archivos de secretos (`.env*`, `*.key`, `*.pem`, `*.p12`, `credentials*.json`, `id_rsa*`, `id_ed25519*`) | nombres en el árbol y en todos los commits | Ninguno, en ningún momento. `.env.example` estaría permitido y tampoco existe. |
-| `.ai/` nunca versionado | `git ls-files .ai`, `git log --all -- .ai`, `git check-ignore` | 0 archivos rastreados, 0 commits, ignorado por `.gitignore`. |
-| Medios, bases de datos, modelos y archivos comprimidos | extensiones sobre árbol e historial (`wav`, `mp3`, `sqlite*`, `db`, `onnx`, `gguf`, `zip`…) | Solo los 6 fixtures sintéticos de `tests/fixtures/media/` (unos 20 KB en total, procedencia y licencia en [fixtures-licenses.md](../fixtures-licenses.md)). Ninguna base, modelo ni grabación. |
-| Archivos grandes | `git ls-tree -r -l HEAD` y todos los blobs del historial, umbral 1 MiB | Ninguno. El mayor es el bundle web compilado (253 KB); el paquete git completo pesa unos 750 KiB. |
-| Rutas personales del host en archivos versionados (`/home/<usuario>`, `/var/home/<usuario>`, `/Users/<usuario>`) | `git grep` y `git log --all -G` | Ninguna en código ni docs. Solo rutas inventadas en tests (abajo). Ni la del mantenedor ni ninguna real. |
-| Datos personales en archivos | correos, URLs con `token=`/`key=` | Ningún correo en archivos versionados; ninguna URL con credenciales. |
-| Archivos locales presentes pero ignorados (`.idea/`, `.directory`, `dist/`, caches, `.venv/`) | `git ls-files --others --ignored` | Ninguno parece un secreto; ninguno está rastreado ni lo estuvo. |
+| OpenAI/Anthropic keys (`sk-`), ElevenLabs (`sk_`, `xi-api-key` header with a value), Hugging Face (`hf_`), AWS (`AKIA`/`ASIA`), GitHub (`ghp_`, `github_pat_`…), Slack, Google (`AIza`), private key blocks, `Bearer …`, literal `api_key/secret/token/password = "…"` assignments | `git grep` over the tree and `git log --all -G` over the whole history (including deleted lines) | Only 3 fake values in tests (below). No real key in the tree or in the history. |
+| Secret files (`.env*`, `*.key`, `*.pem`, `*.p12`, `credentials*.json`, `id_rsa*`, `id_ed25519*`) | names in the tree and in all commits | None, at any time. `.env.example` would be allowed and does not exist either. |
+| `.ai/` never versioned | `git ls-files .ai`, `git log --all -- .ai`, `git check-ignore` | 0 tracked files, 0 commits, ignored by `.gitignore`. |
+| Media, databases, models and archives | extensions over tree and history (`wav`, `mp3`, `sqlite*`, `db`, `onnx`, `gguf`, `zip`…) | Only the 6 synthetic fixtures in `tests/fixtures/media/` (about 20 KB in total, provenance and license in [fixtures-licenses.md](../fixtures-licenses.md)). No database, model or recording. |
+| Large files | `git ls-tree -r -l HEAD` and all history blobs, 1 MiB threshold | None. The largest is the compiled web bundle (253 KB); the whole git pack weighs about 750 KiB. |
+| Personal host paths in versioned files (`/home/<user>`, `/var/home/<user>`, `/Users/<user>`) | `git grep` and `git log --all -G` | None in code or docs. Only invented paths in tests (below). Neither the maintainer's nor any real one. |
+| Personal data in files | emails, URLs with `token=`/`key=` | No email in versioned files; no URL with credentials. |
+| Local files present but ignored (`.idea/`, `.directory`, `dist/`, caches, `.venv/`) | `git ls-files --others --ignored` | None looks like a secret; none is tracked nor ever was. |
 
-## Triaje de los hallazgos REVIEW
+## Triage of the REVIEW findings
 
-Claves con forma de `sk-` (3 archivos): son
-literales de prueba obviamente falsos (empiezan por palabras como `secret`,
-`super` o `test`, con un alfabeto pequeño) que sirven para comprobar que VOZ
-**no** los filtra a logs ni a diagnósticos.
+`sk-`-shaped keys (3 files): they are obviously fake test literals (they start
+with words such as `secret`, `super` or `test`, with a small alphabet) used to
+check that V does **not** leak them into logs or diagnostics.
 
 - `tests/unit/test_doctor.py`, `tests/unit/infrastructure/test_secrets.py`,
   `tests/integration/test_providers_api.py`.
 
-Rutas con forma de ruta personal (7 archivos): son directorios de usuario
-inventados (`student`, `usuario-real`, `host`, `u`, `x`, `secret` bajo `/home`)
-usados para probar que VOZ rechaza o redacta rutas del host.
+Personal-path-shaped paths (7 files): they are invented user directories
+(`student`, `usuario-real`, `host`, `u`, `x`, `secret` under `/home`) used to test
+that V rejects or redacts host paths.
 
 - `tests/unit/test_xdg_paths.py`, `tests/unit/test_diagnostics_bundle.py`,
   `tests/unit/test_doctor.py`, `tests/unit/application/test_model_tasks.py`,
@@ -47,47 +44,41 @@ usados para probar que VOZ rechaza o redacta rutas del host.
   `tests/unit/infrastructure/cloud/test_elevenlabs_scribe.py`,
   `apps/web/src/components/Waveform.test.tsx`.
 
-El script marca como REVIEW (no HIGH) todo lo que cae bajo `tests/`; si un valor
-de test deja de ser obviamente falso, pasa a revisión humana.
+The script marks as REVIEW (not HIGH) everything under `tests/`; if a test value
+stops being obviously fake, it goes to human review.
 
-## Decisión antes de publicar
+## Decision before publishing
 
-**Metadatos de autoría.** El historial contiene un único autor, con el nombre
-real del mantenedor y un **correo institucional** en los 21 commits (autor y
-committer). Al publicar el historial ese correo queda público y es práctica-
-mente imposible retirarlo después. Opciones, a elegir por el mantenedor:
+**Authorship metadata (resolved 2026-10-02).** At audit time the history had a
+single author with an institutional email. On 2026-10-02 the
+history was rewritten (and force-pushed to the private remote) with the maintainer's GitHub `noreply` address, and the
+repository uses that address from then on. A full-history run of
+`scripts/audit-secrets.sh` on 2026-10-10 lists only the `noreply` author.
 
-1. Aceptarlo (es su identidad pública en `LICENSE`).
-2. Reescribir el historial **antes** del primer push público con un correo
-   `noreply` de GitHub (`git filter-repo --mailmap`, o `git rebase` con
-   `--exec 'git commit --amend --reset-author'`) y configurar
-   `git config user.email` con esa dirección desde ahora. Reescribir cambia
-   todos los hashes citados en la documentación interna; hazlo una sola vez.
+It was the only personal datum the audit found.
 
-Esto no es un secreto, pero es el único dato personal que la auditoría encontró.
+## Limitations
 
-## Limitaciones
+- The expressions are heuristic: they detect known formats and literal
+  assignments, not arbitrary unformatted secrets (a 12-letter password in a YAML).
+  Complement with a dedicated scanner (gitleaks or trufflehog) if available; none
+  was added as a dependency.
+- Only text diffs are scanned (`-I`): the 6 binary fixtures were checked by name,
+  size and provenance, not by content.
+- Reachable references are audited (`--all`: branches, remotes and tags). The
+  reflog and unreachable objects are not audited: they are not published with a
+  `push`.
+- The tree includes the not-yet-committed work of other agents of the wave (new
+  non-ignored files); it is checked again with the script before the release.
 
-- Las expresiones son heurísticas: detectan formatos conocidos y asignaciones
-  literales, no secretos arbitrarios sin formato (una contraseña de 12 letras
-  en un YAML). Complementa con un escáner dedicado (gitleaks o trufflehog) si se
-  dispone de él; no se añadió como dependencia.
-- Solo se escanean diffs de texto (`-I`): los 6 fixtures binarios se comprobaron
-  por nombre, tamaño y procedencia, no por contenido.
-- Se auditan las referencias alcanzables (`--all`: ramas, remotos y tags). No se
-  auditan el reflog ni objetos inalcanzables: no se publican con un `push`.
-- El árbol incluye el trabajo aún sin commit de otros agentes de la oleada
-  (archivos nuevos no ignorados); se vuelve a comprobar con el script antes del
-  release.
-
-## Cómo repetirla
+## How to repeat it
 
 ```bash
-scripts/audit-secrets.sh              # árbol + historial; sale con 1 si hay HIGH
-scripts/audit-secrets.sh --tree-only  # solo el árbol (rápido, para antes de commitear)
+scripts/audit-secrets.sh              # tree + history; exits with 1 if there is a HIGH
+scripts/audit-secrets.sh --tree-only  # tree only (fast, for before committing)
 ```
 
-Antes del primer push público: ejecútala sobre el estado final, revisa cada
-REVIEW nuevo y confirma que la salida termina en `0 HIGH`. `.gitignore` ya cubre
-`.env*`, claves, bases, medios y modelos; el script existe para detectar lo que
-se haya colado igualmente (por ejemplo con `git add -f`).
+Before the first public push: run it on the final state, review each new REVIEW
+and confirm the output ends in `0 HIGH`. `.gitignore` already covers `.env*`,
+keys, databases, media and models; the script exists to catch whatever slipped
+through anyway (for example with `git add -f`).

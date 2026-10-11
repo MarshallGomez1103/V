@@ -1,48 +1,60 @@
-# Proyectos, importación y jobs — Sección 5 (oleada 2026-09-21)
+# Projects, media import and jobs — Section 5 (wave of 2026-09-21)
 
-Todos los endpoints son locales (`127.0.0.1`), no descargan modelos ni invocan
-proveedores cloud. Los errores usan `{"detail": {"code": "<snake_code>",
-"message": "<texto seguro>"}}`; nunca se devuelven rutas del host ni tracebacks.
-Las fechas son ISO 8601 con zona. El schema exacto se publica en `/openapi.json`.
+Common rules (loopback, `Host` check, error shape) are in [README.md](README.md).
+No endpoint on this page downloads models or calls cloud providers unless the
+job explicitly selects one. Errors use `{"detail": {"code": "<snake_code>",
+"message": "<safe text>"}}`; host paths and tracebacks are never returned.
+Dates are ISO 8601 with a time zone. The exact schema is published at
+`/openapi.json`.
 
-## Proyectos
+## Projects
 
-| Método y ruta | Request | Respuesta |
+| Method and path | Request | Response |
 | --- | --- | --- |
-| `POST /api/projects` | `{"name": str}` (1–200 chars tras `strip`) | 201 `{"id","name","created_at"}`; 422 `project_name_invalid` |
-| `GET /api/projects` | — | `{"projects": [...]}` ordenado por `created_at` desc |
+| `POST /api/projects` | `{"name": str}` (1–200 chars after `strip`) | 201 `{"id","name","created_at"}`; 422 `project_name_invalid` |
+| `GET /api/projects` | — | `{"projects": [...]}` ordered by `created_at` descending |
 
-## Importación de medios
+Renaming and deleting projects are documented in [library.md](library.md); the
+per-project glossary is in [projects.md](projects.md).
 
-`POST /api/projects/{project_id}/media` recibe el archivo como **body crudo**
-(`Content-Type: application/octet-stream`) con el header obligatorio
-`X-Voz-Filename` (solo basename; el servidor lo sanea). No se usa multipart
-para evitar una dependencia adicional. El servidor escribe en un temporal bajo
-XDG, ejecuta `ImportMedia` (copia inmutable, SHA-256, ffprobe) y borra el
-temporal siempre. La normalización a PCM mono 16 kHz ocurre dentro del job, no
-en la subida.
+## Media import
 
-Respuesta 201: `{"media_asset_id","project_id","filename","media_type",
+`POST /api/projects/{project_id}/media` receives the file as the **raw request
+body** (`Content-Type: application/octet-stream`) with the required header
+`X-Voz-Filename`: a percent-encoded UTF-8 base name (no path separators, no
+control or bidirectional-override characters, at most 255 characters; the server
+validates it). Multipart is not used, to avoid an extra dependency. The server
+streams the body into a temporary directory under XDG (mode `0700`), runs
+`ImportMedia` (immutable copy, SHA-256, ffprobe) and always deletes the
+temporary file. Normalization to mono 16 kHz PCM happens inside the job, not
+during upload. The default upload limit is 8 GiB.
+
+201 response: `{"media_asset_id","project_id","filename","media_type",
 "duration_ms","sha256"}`.
 
-Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`,
-415 `media_unsupported`, 422 `media_corrupt`, 503 `media_storage_unavailable`,
-500 `media_import_failed` (genérico, sin detalles internos).
+Codes: 400 `filename_invalid` (missing, malformed or unsafe `X-Voz-Filename`),
+400 `media_empty` (zero-byte body), 404 `project_not_found`, 413
+`media_too_large`, 415 `media_unsupported` (no decodable audio), 422
+`media_corrupt`, 503 `media_probe_unavailable` (ffprobe missing, timed out or
+returned something unusable), 503 `media_storage_unavailable`, 507
+`disk_space_insufficient` (see "Insufficient disk space"), 500
+`media_import_failed` (generic, no internal details).
 
-## Jobs de transcripción
+## Transcription jobs
 
-| Método y ruta | Request | Respuesta |
+| Method and path | Request | Response |
 | --- | --- | --- |
-| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str, "prompt"?: str\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; ver "Memoria insuficiente") / `diarization_unavailable` / `diarization_models_missing` (ver "Diarización"); 422 `diarization_options_invalid` (ver "Diarización") / `quality_profile_unknown` (ver "Perfil de calidad") / `job_prompt_invalid` (ver "Instrucciones de estilo") |
+| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str, "prompt"?: str\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; see "Insufficient memory") / `diarization_unavailable` / `diarization_models_missing` (see "Diarization"); 422 `diarization_options_invalid` (see "Diarization") / `quality_profile_unknown` (see "Quality profile and glossary") / `job_prompt_invalid` (see "Style instructions") |
 | `GET /api/jobs/{job_id}` | — | `JobView`; 404 `job_not_found` |
-| `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` |
-| `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 409 `job_terminal` |
-| `GET /api/transcripts/{transcript_id}/segments` | — | `{"segments": [{"id","start_ms","end_ms","text"}]}`; 404 `transcript_not_found` |
-| `GET /api/jobs/{job_id}/events` | — | `text/event-stream` (ver abajo) |
-| `GET /api/jobs/{job_id}/preview?after_ms=` | — | `{"segments": [{"start_ms","end_ms","text"}]}`; 404 `job_not_found` (ver "Vista previa") |
-| `POST /api/shutdown` | cabecera `X-VOZ-Action: shutdown` | 202 `{"status":"stopping"}`; 403 `shutdown_forbidden`; 501 `shutdown_unavailable` (ver "Cerrar el servidor") |
-| `GET /api/desktop-shortcut` | — | `{"supported","exists","path"}` (ver "Icono de escritorio") |
-| `POST /api/desktop-shortcut` | cabecera `X-VOZ-Action: desktop-shortcut` | 201 `{"supported","exists","path"}`; 403 `desktop_shortcut_forbidden`; 409 `desktop_shortcut_unsupported`; 500 `desktop_shortcut_failed` |
+| `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` of that project, newest first. `project_id` is required (a missing or malformed value gives the standard 422 validation payload) |
+| `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 404 `job_not_found`; 409 `job_terminal` |
+| `GET /api/transcripts/{transcript_id}/segments` | — | `{"segments": [SegmentItem]}` (item shape in [segments.md](segments.md)); 404 `transcript_not_found` |
+| `GET /api/jobs/{job_id}/events` | — | `text/event-stream` (see below) |
+| `GET /api/jobs/{job_id}/preview?after_ms=` | — | `{"segments": [{"start_ms","end_ms","text"}]}`; 404 `job_not_found` (see "Live preview") |
+| `POST /api/transcripts/{transcript_id}/rediarize` | `{"speakers"?: {...}}` | 202 `JobView` (see "Recomputing speakers") |
+| `POST /api/shutdown` | header `X-VOZ-Action: shutdown` | 202 `{"status":"stopping"}`; 403 `shutdown_forbidden`; 501 `shutdown_unavailable` (see "Shutting down the server") |
+| `GET /api/desktop-shortcut` | — | `{"supported","exists","path"}` (see "Desktop icon") |
+| `POST /api/desktop-shortcut` | header `X-VOZ-Action: desktop-shortcut` | 201 `{"supported","exists","path"}`; 403 `desktop_shortcut_forbidden`; 409 `desktop_shortcut_unsupported`; 500 `desktop_shortcut_failed` |
 
 `JobView`:
 
@@ -57,7 +69,7 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
   "selection": {
     "option_id": "option-v1-…", "provider_id": "faster-whisper",
     "model_id": "turbo", "source": "…", "revision": "sha40",
-    "profile": { "...": "ProcessingProfile completo" },
+    "profile": { "name": "…", "device_preference": "…", "gpu_precisions": ["…"], "cpu_precision": "…" },
     "execution": { "device": "cuda", "precision": "float16", "fallback_reason": null },
     "language": null,
     "quality_profile": { "name": "default", "version": 1, "beam_size": 5, "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], "condition_on_previous_text": true, "no_speech_threshold": 0.6, "vad": null },
@@ -69,293 +81,299 @@ Códigos: 400 `filename_invalid`, 404 `project_not_found`, 413 `media_too_large`
 }
 ```
 
-`state` toma los valores de `TranscriptionJobState`: `QUEUED, PROBING,
+`selection.profile` is the full processing profile (name, device preference,
+ordered GPU precisions, CPU precision), the same shape as in
+[transcription-options.md](transcription-options.md).
+
+`state` takes the values of `TranscriptionJobState`: `QUEUED, PROBING,
 PREPROCESSING, TRANSCRIBING, ALIGNING, DIARIZING, MERGING, PERSISTING,
-COMPLETED, FAILED, CANCELLING, CANCELLED`. La UI muestra la etapa a partir de
-este campo, nunca de logs.
+COMPLETED, FAILED, CANCELLING, CANCELLED`. The UI shows the stage from this
+field, never from logs.
 
-### Progreso por etapa y tiempos
+### Per-stage progress and timing
 
-Además de `progress` (global, 0..1, monótono) cada `JobView` y cada evento SSE
-llevan:
+Besides `progress` (global, 0..1, monotonic), every `JobView` and every SSE event
+carries:
 
-| Campo | Significado |
+| Field | Meaning |
 | --- | --- |
-| `started_at` | ISO o `null`: cuando el job salió de `QUEUED` por primera vez. |
-| `stage_started_at` | ISO o `null`: cuando empezó el estado actual (se reinicia en cada transición y cuando una etapa se rehace tras reanudar). |
-| `stage_progress` | 0..1 o `null`: avance **dentro** de la etapa actual. `PREPROCESSING` = audio normalizado por ffmpeg (solo si hay que normalizar); `TRANSCRIBING` = chunks completados más la posición dentro del chunk actual; `DIARIZING` = chunks de embeddings que reporta sherpa-onnx. `null` sin medida (p. ej. `ALIGNING`, o los primeros ~20 % de la diarización: carga de modelos y segmentación, que no reportan nada) y en estados terminales. |
-| `eta_seconds` | segundos estimados que faltan de **la etapa actual**, o `null`. Es `transcurrido × (1 − sp) / sp` con `transcurrido = ahora − stage_started_at`; `null` si `stage_progress` es `null` o < 0,02, y `0` si es 1. Se calcula al emitir cada evento: el cliente puede seguir descontando entre eventos. Se sobreestima al comienzo de `DIARIZING` (el tiempo de carga y segmentación cuenta como transcurrido) y tras reanudar un job interrumpido a mitad de `TRANSCRIBING`. |
+| `started_at` | ISO string or `null`: when the job first left `QUEUED`. |
+| `stage_started_at` | ISO string or `null`: when the current state began (reset on every transition and when a stage is redone after a resume). |
+| `stage_progress` | 0..1 or `null`: progress **within** the current stage. `PREPROCESSING` = audio normalized by ffmpeg (only if normalization is needed); `TRANSCRIBING` = completed chunks plus the position inside the current chunk; `DIARIZING` = embedding chunks reported by sherpa-onnx. `null` when there is no measure (for example `ALIGNING`, or the first ~20 % of diarization: model loading and segmentation, which report nothing) and in terminal states. |
+| `eta_seconds` | Estimated seconds left in **the current stage**, or `null`. It is `elapsed × (1 − sp) / sp` with `elapsed = now − stage_started_at`; `null` if `stage_progress` is `null` or below 0.02, and `0` if it is 1. It is computed when each event is emitted: the client may keep counting down between events. It is overestimated at the start of `DIARIZING` (loading and segmentation time counts as elapsed) and after resuming a job interrupted mid-`TRANSCRIBING`. |
 
-`progress` pondera las etapas: `PREPROCESSING` 0–0,02, `TRANSCRIBING` 0,02–0,8
-(0,02–0,98 si no se pidió diarización), `DIARIZING` 0,8–0,98 y la persistencia
-final hasta 1,0. Nunca queda en 1,0 mientras el job trabaja. El runner escribe el
-avance intermedio como máximo ~2 veces por segundo; los cambios de estado y los
-checkpoints se escriben siempre. Migración `0008_job_stage_prompt` (columnas
-`started_at`, `stage_started_at`, `stage_progress` en `transcription_jobs`; los
-jobs previos quedan con `started_at = created_at`, `stage_started_at =
-updated_at` y, si estaban en `ALIGNING`/`DIARIZING`/`MERGING`/`PERSISTING`, su
-`progress` recortado a 0,8/0,98).
+`progress` weights the stages: `PREPROCESSING` 0–0.02, `TRANSCRIBING` 0.02–0.8
+(0.02–0.98 if diarization was not requested), `DIARIZING` 0.8–0.98 and the final
+persistence up to 1.0. It never sits at 1.0 while the job is working. The runner
+writes intermediate progress at most ~2 times per second; state changes and
+checkpoints are always written. Migration `0008_job_stage_prompt` (columns
+`started_at`, `stage_started_at`, `stage_progress` on `transcription_jobs`;
+earlier jobs keep `started_at = created_at`, `stage_started_at = updated_at`
+and, if they were in `ALIGNING`/`DIARIZING`/`MERGING`/`PERSISTING`, their
+`progress` clamped to 0.8/0.98).
 
-### Texto visible antes de los hablantes
+### Text visible before the speakers
 
-Al terminar la transcripción (estado `ALIGNING`) el runner persiste ya el
-`Transcript` y sus `Segment`s literales. Desde ese momento `JobView.transcript_id`
-es el id del transcript **aunque el job siga en `DIARIZING`**, y
-`GET /api/transcripts/{id}/segments` devuelve el texto completo con
-`speaker_id: null`. Al terminar la diarización se asigna `speaker_id` a esos
-mismos segmentos (sin duplicar; ids deterministas). Si la diarización falla el
-transcript queda igual (`diarization_error_code`). Si el job se cancela durante
-la diarización el texto **se conserva** (`CANCELLED` con `transcript_id` no nulo);
-apagar el servidor deja el job en `DIARIZING` y al reabrir solo se rehace la
-diarización. `transcript_id` es `null` en `QUEUED`…`TRANSCRIBING` y en jobs
-fallidos antes de transcribir.
+When transcription finishes (state `ALIGNING`) the runner already persists the
+`Transcript` and its literal `Segment`s. From then on `JobView.transcript_id` is
+the transcript id **even while the job is still in `DIARIZING`**, and
+`GET /api/transcripts/{id}/segments` returns the full text with
+`speaker_id: null`. When diarization finishes, `speaker_id` is assigned to those
+same segments (no duplicates; deterministic ids). If diarization fails the
+transcript stays as it is (`diarization_error_code`). If the job is cancelled
+during diarization the text is **kept** (`CANCELLED` with a non-null
+`transcript_id`); shutting the server down leaves the job in `DIARIZING` and on
+reopening only diarization is redone. `transcript_id` is `null` in
+`QUEUED`…`TRANSCRIBING` and in jobs that failed before transcribing.
 
-### Vista previa en vivo (`GET /api/jobs/{job_id}/preview`)
+### Live preview (`GET /api/jobs/{job_id}/preview`)
 
-Durante `TRANSCRIBING` devuelve los segmentos ya **confirmados en checkpoints**
-(un chunk de 30 min se confirma entero), con el mismo texto recortado que se
-guardará y sin segmentos vacíos:
+During `TRANSCRIBING` it returns the segments already **confirmed in
+checkpoints** (a 30-minute chunk is confirmed as a whole), with the same trimmed
+text that will be stored and without empty segments:
 
 ```json
 {"segments": [{"start_ms": 750, "end_ms": 5250, "text": "Hacen parte de esta materia…"}]}
 ```
 
-`?after_ms=<n>` (entero ≥ 0; otro valor → 422) devuelve solo los segmentos con
-`end_ms > n`; el cliente pasa el mayor `end_ms` que ya tiene. 404 `job_not_found`
-si el job no existe. Sigue funcionando después (los checkpoints se conservan),
-pero una vez creado el transcript la fuente de verdad es
+`?after_ms=<n>` (integer ≥ 0; any other value → 422) returns only segments with
+`end_ms > n`; the client passes the largest `end_ms` it already has. 404
+`job_not_found` if the job does not exist. It keeps working afterwards
+(checkpoints are retained), but once the transcript exists the source of truth is
 `/api/transcripts/{id}/segments`.
 
-### Instrucciones de estilo (`prompt`)
+### Style instructions (`prompt`)
 
-`POST /api/jobs` acepta `prompt` (cadena opcional). Se recorta (`strip`); vacío
-equivale a `null`; más de **600 caracteres** tras recortar → 422
-`job_prompt_invalid` y no se crea nada. Se guarda en el snapshot
-(`selection.prompt`, columna `prompt`, migración 0008) y se pasa al motor:
+`POST /api/jobs` accepts `prompt` (optional string). It is stripped; empty is
+equivalent to `null`; more than **600 characters** after stripping → 422
+`job_prompt_invalid` and nothing is created. It is stored in the snapshot
+(`selection.prompt`, column `prompt`, migration 0008) and passed to the engine:
 
-- **Faster Whisper**: como `initial_prompt`. Convive con el glosario del
-  proyecto, que va como `hotwords`; el orden efectivo es primero las hotwords
-  (la librería las antepone a cada ventana de decodificación) y después el
-  prompt (solo siembra la primera ventana).
-- **OpenAI** (`whisper-1`, `gpt-4o-transcribe…`): campo `prompt` de su API. El
-  modelo `gpt-4o-transcribe-diarize` no lo admite y se omite.
-- **ElevenLabs y whisper.cpp**: lo ignoran.
+- **Faster Whisper**: as `initial_prompt`. It coexists with the project glossary,
+  which is sent as `hotwords`; the effective order is hotwords first (the library
+  prepends them to every decoding window) and then the prompt (it only seeds the
+  first window).
+- **OpenAI** (`whisper-1`, `gpt-4o-transcribe…`): the `prompt` field of its API.
+  The `gpt-4o-transcribe-diarize` model does not accept it and it is omitted.
+- **ElevenLabs and whisper.cpp**: ignore it.
 
-Whisper **no sigue instrucciones como un chat**: el prompt solo condiciona el
-estilo del texto (puntuación, mayúsculas, ortografía, vocabulario y nombres
-propios), como si fuera el texto que precede al audio. «Transcribe en tercera
-persona» o «resume» no funcionan; un ejemplo de cómo debería verse el texto sí.
+Whisper **does not follow instructions like a chat model**: the prompt only
+conditions the style of the text (punctuation, capitalization, spelling,
+vocabulary and proper names), as if it were the text preceding the audio.
+"Transcribe in the third person" or "summarize" do not work; an example of what
+the text should look like does.
 
-### Cerrar el servidor (`POST /api/shutdown`)
+### Shutting down the server (`POST /api/shutdown`)
 
-Pensado para el botón «Cerrar VOZ» de la web. Exige la cabecera
-`X-VOZ-Action: shutdown`; sin ella (o con otro valor) → 403
-`shutdown_forbidden`. Una cabecera propia obliga a otro origen a pasar por un
-preflight CORS, que VOZ nunca concede. Responde 202 `{"status":"stopping"}` y
-unos 0,5 s después pide a uvicorn que termine (`should_exit`): la misma salida
-ordenada que Ctrl+C, el proceso termina con código 0 y el job en curso queda
-recuperable al reabrir. 501 `shutdown_unavailable` si el servidor no lo lanzó el
-comando `voz` (p. ej. `uvicorn voz.bootstrap:app` directo). Tras la respuesta el
-cliente debe asumir que la API deja de responder.
+Intended for the web UI's "Close V" button. It requires the header
+`X-VOZ-Action: shutdown`; without it (or with another value) → 403
+`shutdown_forbidden`. A custom header forces another origin through a CORS
+preflight, which V never grants. It answers 202 `{"status":"stopping"}` and about
+0.5 s later asks uvicorn to exit (`should_exit`): the same orderly exit as
+Ctrl+C. The process ends with code 0 and the job in progress stays recoverable on
+reopening. 501 `shutdown_unavailable` if the server was not launched by the `voz`
+command (for example `uvicorn voz.bootstrap:app` directly). After the response
+the client must assume the API stops answering.
 
-### Icono de escritorio (`/api/desktop-shortcut`)
+### Desktop icon (`/api/desktop-shortcut`)
 
-Crea un acceso directo en el escritorio y en el menú de aplicaciones que ejecuta
-el lanzador `Iniciar-*` de la carpeta de VOZ, con el icono de
-`packaging/icons/` (`voz.png`, `voz.ico`, `voz.svg`, derivados de
-`favicon.svg`). Solo biblioteca estándar y lo que trae cada sistema.
+Creates a shortcut on the desktop and in the application menu that runs the
+`Iniciar-*` launcher in the project folder, with the icon from `packaging/icons/`
+(`voz.png`, `voz.ico`, `voz.svg`, derived from `favicon.svg`). It uses only the
+standard library and what each system ships.
 
-`GET` → `{"supported": bool, "exists": bool, "path": str|null}`. `supported` es
-`false` si VOZ no corre desde una carpeta con lanzadores (p. ej. instalado como
-wheel) o en un SO sin soporte. `exists` es `true` si el acceso que creó VOZ sigue
-en su sitio. `path` es dónde quedó, con el directorio personal abreviado como
-`~` (nunca rutas absolutas del host).
+`GET` → `{"supported": bool, "exists": bool, "path": str|null}`. `supported` is
+`false` if V is not running from a folder with launchers (for example installed
+as a wheel) or on an unsupported OS. `exists` is `true` if the shortcut V created
+is still in place. `path` is where it ended up, with the home directory
+abbreviated as `~` (never absolute host paths).
 
-`POST` (cabecera `X-VOZ-Action: desktop-shortcut`; 403
-`desktop_shortcut_forbidden` sin ella) crea o rehace el acceso y responde 201 con
-el mismo cuerpo que `GET`. 409 `desktop_shortcut_unsupported`; 500
-`desktop_shortcut_failed` (mensaje sin rutas). Linux: `voz.desktop` en el
-escritorio (`xdg-user-dir DESKTOP`) y en `$XDG_DATA_HOME/applications`, con
-`gio set … metadata::trusted` si existe `gio`. Windows: `VOZ.lnk` vía PowerShell
-(respeta un escritorio movido por OneDrive). macOS: `VOZ.app` mínima que abre
-`Iniciar-Mac.command` en Terminal (icono `.icns` con `sips`, si está). El
-registro de dónde quedó vive en `<state>/desktop-shortcut.txt`, nunca en la
-carpeta del código.
+`POST` (header `X-VOZ-Action: desktop-shortcut`; 403
+`desktop_shortcut_forbidden` without it) creates or recreates the shortcut and
+answers 201 with the same body as `GET`. 409 `desktop_shortcut_unsupported`; 500
+`desktop_shortcut_failed` (message without paths). Linux: `voz.desktop` on the
+desktop (`xdg-user-dir DESKTOP`) and in `$XDG_DATA_HOME/applications`, with
+`gio set … metadata::trusted` if `gio` exists. Windows: `VOZ.lnk` via PowerShell
+(honors a desktop moved by OneDrive). macOS: a minimal `VOZ.app` that opens
+`Iniciar-Mac.command` in Terminal (`.icns` icon via `sips`, if available). The
+record of where it was placed lives in `<state>/desktop-shortcut.txt`, never in
+the code folder.
 
-### Selección reproducible (S5.20)
+### Reproducible selection (S5.20)
 
-Al crear el job se revalida `option_id` contra la consulta actual de
-`/api/transcription-options`; si `can_start` es falso se responde 409 con los
-`blocking_reasons`. El job guarda un snapshot completo (proveedor, modelo,
-procedencia, revisión, perfil, decisión de ejecución e idioma) en
-`transcription_job_selections`. El `option_id` solo no es un checkpoint
-reproducible.
+When the job is created, `option_id` is revalidated against the current
+`/api/transcription-options` query; if `can_start` is false the response is 409
+with the `blocking_reasons`. The job stores a full snapshot (provider, model,
+provenance, revision, profile, execution decision and language) in
+`transcription_job_selections`. The `option_id` alone is not a reproducible
+checkpoint.
 
-### Perfil de calidad y glosario (S13.01-S13.03)
+### Quality profile and glossary (S13.01–S13.03)
 
-`profile` (opcional, por defecto `"default"`) elige una receta de decodificación
-de `GET /api/quality-profiles`; un nombre desconocido responde 422
-`quality_profile_unknown` y no crea nada. La selección guarda en
-`quality_profile` el perfil **completo** con sus parámetros efectivos (no solo el
-nombre) y en `glossary` los términos del glosario del proyecto **en el momento de
-crear el job** (ver `docs/api/projects.md`); editar el glosario después no
-cambia jobs ya creados. Los jobs anteriores a esta función devuelven
-`quality_profile: null` y `glossary: []` y siguen con los valores por defecto del
-motor. Detalle, parámetros y qué motores lo respetan: `docs/quality-profiles.md`.
+`profile` (optional, defaults to `"default"`) picks a decoding recipe from
+`GET /api/quality-profiles`; an unknown name answers 422
+`quality_profile_unknown` and creates nothing. The selection stores the **full**
+profile with its effective parameters in `quality_profile` (not just the name),
+and in `glossary` the project glossary terms **as of the moment the job is
+created** (see [projects.md](projects.md)); editing the glossary later does not
+change jobs already created. Jobs that predate this feature return
+`quality_profile: null` and `glossary: []` and keep using the engine defaults.
+Details, parameters and which engines honor it: [quality-profiles.md](../quality-profiles.md).
 
-### Eventos SSE (S5.06)
+### SSE events (S5.06)
 
-`GET /api/jobs/{job_id}/events` emite `event: job` con `data: JobView` al
-conectar y cada vez que cambian `state`, `progress`, `stage_progress`,
-`stage_started_at` o `updated_at` (sondeo del
-repositorio cada ~500 ms, sin bloquear el event loop). Envía `: ping` como
-keep-alive cada 15 s. Al llegar a un estado terminal emite el último `job` y
-`event: end`, y cierra. Job inexistente → 404 antes de abrir el stream.
+`GET /api/jobs/{job_id}/events` emits `event: job` with `data: JobView` on
+connect and every time `state`, `progress`, `stage_progress`, `stage_started_at`
+or `updated_at` changes (the repository is polled every ~500 ms without blocking
+the event loop). It sends `: ping` as a keep-alive every 15 s. On reaching a
+terminal state it emits the last `job` and then `event: end` (data `{}`), and
+closes. A nonexistent job → 404 `job_not_found` before the stream opens.
 
-### Ejecución y recuperación (S14.01, S14.08)
+### Execution and recovery (S14.01, S14.08)
 
-Un `JobRunner` en un hilo procesa jobs de uno en uno: `PREPROCESSING` normaliza
-si falta el derivado, `TRANSCRIBING` ejecuta la transcripción recuperable por
-chunks con checkpoints SQLite, `ALIGNING` crea `Transcript` y `Segment`s
-literales (visibles desde ya) y `DIARIZING` asigna los hablantes. Al arrancar el servidor se re-encolan los jobs procesables sin
-repetir chunks confirmados. `POST …/cancel` marca `CANCELLING` y el runner
-termina en `CANCELLED` entre unidades recuperables. Los fallos se exponen como
-`error_code` estable.
+A single-threaded `JobRunner` processes jobs one at a time: `PREPROCESSING`
+normalizes if the derivative is missing, `TRANSCRIBING` runs recoverable
+chunked transcription with SQLite checkpoints, `ALIGNING` creates the literal
+`Transcript` and `Segment`s (visible immediately) and `DIARIZING` assigns the
+speakers. On server start, processable jobs are re-enqueued without repeating
+confirmed chunks. `POST …/cancel` marks `CANCELLING` and the runner ends in
+`CANCELLED` between recoverable units. Failures are exposed as a stable
+`error_code`.
 
-### Espacio en disco insuficiente (S14.03)
+### Insufficient disk space (S14.03)
 
-Antes de importar un original se exige `tamaño del archivo + 64 MiB` libres en
-el almacén de originales; antes de normalizar, `duration_ms * 32` bytes (PCM
-mono 16 kHz s16) `+ 64 MiB` en el almacén de derivados. Si no alcanza, el error
-tipado `InsufficientDiskSpace` (`code="disk_space_insufficient"`,
-`retryable=true`) se traduce así, sin dejar artefactos parciales:
+Before importing an original, `file size + 64 MiB` must be free in the originals
+store; before normalizing, `duration_ms * 32` bytes (mono 16 kHz s16 PCM)
+`+ 64 MiB` in the derivatives store. If there is not enough, the typed error
+`InsufficientDiskSpace` (`code="disk_space_insufficient"`, `retryable=true`) is
+translated as follows, leaving no partial artifacts:
 
-| Contexto | Resultado |
+| Context | Result |
 | --- | --- |
-| `POST /api/projects/{project_id}/media` | 507 `{"detail": {"code": "disk_space_insufficient", "message": …}}`; el temporal de subida se elimina. También se devuelve 507 si el disco se llena mientras se recibe el cuerpo (`ENOSPC`). |
-| `JobRunner` (normalización pendiente) | job `FAILED` con `error_code = "disk_space_insufficient"`; el job no se reintenta solo, la UI puede ofrecer reintentar tras liberar espacio. |
+| `POST /api/projects/{project_id}/media` | 507 `{"detail": {"code": "disk_space_insufficient", "message": …}}`; the upload temporary file is removed. 507 is also returned if the disk fills up while the body is being received (`ENOSPC`). |
+| `JobRunner` (pending normalization) | job `FAILED` with `error_code = "disk_space_insufficient"`; the job is not retried automatically, the UI can offer a retry after space is freed. |
 
-La comprobación es opcional en los casos de uso (`disk_space=None` la omite) y
-se cablea en `bootstrap.py` con el adaptador `ShutilDiskSpace`.
+The check is optional in the use cases (`disk_space=None` skips it) and is wired
+in `bootstrap.py` with the `ShutilDiskSpace` adapter.
 
-### Memoria insuficiente (S14.05, S14.06)
+### Insufficient memory (S14.05, S14.06)
 
-`POST /api/jobs` compara la memoria **libre medida** (VRAM vía `nvidia-smi`; RAM
-vía `/proc/meminfo`, `MemAvailable`) con el requisito estimado del modelo en el
-dispositivo y precisión que la opción ya resolvió (`execution`). Si no alcanza,
-no se crea el job y se responde 409:
+`POST /api/jobs` compares the **measured** free memory (VRAM via `nvidia-smi`;
+RAM via `/proc/meminfo`, `MemAvailable`) with the model's estimated requirement
+on the device and precision the option already resolved (`execution`). If it is
+not enough, the job is not created and the response is 409:
 
 ```json
 {"detail": {"code": "insufficient_vram", "message": "Not enough free GPU memory to load this model. Choose a smaller model or use the CPU.", "required_mib": 5000, "available_mib": 1200}}
 ```
 
-`insufficient_ram` es análogo para CPU (mensaje: elegir un modelo menor o liberar
-memoria). El mensaje nunca incluye el nombre de la GPU ni rutas; la sugerencia va
-en el propio texto y el cliente puede comparar `required_mib`/`available_mib`.
+`insufficient_ram` is analogous for CPU (message: choose a smaller model or free
+memory). The message never includes the GPU name or paths; the suggestion is in
+the text itself and the client can compare `required_mib`/`available_mib`.
 
-Requisitos aproximados (MiB; `application/resource_requirements.py`, estimación
-conservadora, no medida sobre VOZ): VRAM float16 tiny 600, base 800, small 1500,
-medium 3000, turbo 2500, large-v3 5000 (x0,7 para `int8`/`int8_float16`); RAM en
-CPU int8 tiny 500, base 600, small 1000, medium 2200, turbo 2200, large-v3 3500
-(x2 para precisiones más anchas). Un modelo fuera de la tabla, o memoria sin
-medir, **nunca bloquea**: la estimación es un aviso temprano, no una garantía.
+Approximate requirements (MiB; `application/resource_requirements.py`,
+conservative estimate, not measured on V): float16 VRAM tiny 600, base 800, small
+1500, medium 3000, turbo 2500, large-v3 5000 (x0.7 for `int8`/`int8_float16`);
+CPU int8 RAM tiny 500, base 600, small 1000, medium 2200, turbo 2200, large-v3
+3500 (x2 for wider precisions). A model outside the table, or unmeasured memory,
+**never blocks**: the estimate is an early warning, not a guarantee.
 
-### Idempotencia de la reanudación (S14.14)
+### Resume idempotency (S14.14)
 
-`recover()` y `enqueue()` no duplican un job ya en cola o en ejecución. Al
-persistir, `Transcript` y `Segment`s usan identidades deterministas
-(`uuid5` del job), por lo que reanudar tras una interrupción en
-`ALIGNING`/`DIARIZING`/`PERSISTING` añade solo los segmentos que faltan: el resultado es idéntico al de una
-ejecución limpia y repetir la etapa no duplica nada.
+`recover()` and `enqueue()` do not duplicate a job that is already queued or
+running. When persisting, `Transcript` and `Segment`s use deterministic
+identities (`uuid5` of the job), so resuming after an interruption in
+`ALIGNING`/`DIARIZING`/`PERSISTING` adds only the missing segments: the result is
+identical to a clean run and repeating the stage duplicates nothing.
 
-## Diarización (S6.13, S6.15, S14.07)
+## Diarization (S6.13, S6.15, S14.07)
 
-La diarización (quién habla) es una etapa **opcional** del job, desactivada por
-defecto y siempre local (sherpa-onnx, ADR-0007). Se pide al crear el job:
+Diarization (who is speaking) is an **optional** job stage, off by default and
+always local (sherpa-onnx, ADR-0007). It is requested when the job is created:
 
 ```json
 {"project_id": "…", "media_asset_id": "…", "option_id": "…",
  "diarization": {"enabled": true, "speakers": {"exact": 2}}}
 ```
 
-| Campo | Regla |
+| Field | Rule |
 | --- | --- |
-| `diarization` | opcional; ausente o `null` = desactivada |
-| `enabled` | booleano; si falta se toma `false`. Con `false` se ignora `speakers` (aunque se valida su forma) |
-| `speakers` | objeto opcional con `exact`, `minimum`, `maximum` (enteros de 1 a 32; `null` equivale a ausente). `exact` excluye a los otros dos y `minimum <= maximum`. Sin pistas, el motor estima el número de hablantes |
+| `diarization` | optional; absent or `null` = disabled |
+| `enabled` | boolean; defaults to `false` if missing. With `false`, `speakers` is ignored (although its shape is validated) |
+| `speakers` | optional object with `exact`, `minimum`, `maximum` (integers from 1 to 32; `null` is equivalent to absent). `exact` excludes the other two and `minimum <= maximum`. Without hints, the engine estimates the number of speakers |
 
-Errores:
+Errors:
 
-- 422 `diarization_options_invalid`: forma o valores inválidos (campo desconocido,
-  no booleano/entero, fuera de 1–32, `exact` junto a `minimum`/`maximum`,
-  `minimum > maximum`). Se evalúa antes de tocar el proyecto o la opción.
-- 409 `diarization_models_missing`: se pidió activar la diarización y los
-  modelos de hablantes **no están instalados** (se arregla descargándolos). No se
-  crea nada. Para saber antes de crear el job si están instalados, consultar
-  `GET /api/models` y mirar la entrada `diarization:sherpa-default`
-  (`kind: "diarization"`, `installed`, `runtime_available`); se descargan con
-  `POST /api/models/diarization:sherpa-default/install`
-  `{"method":"download","confirm":true}` (ver `docs/api/models.md`).
-- 409 `diarization_unavailable`: se pidió activar la diarización pero falta el
-  runtime (extra `diarization`; descargar modelos no lo arregla) o no está
-  cableada. Se evalúa antes que `diarization_models_missing`. No se crea el
-  job; pedirla desactivada funciona siempre. La disponibilidad la decide el port
-  `DiarizationAvailability` (`runtime_available`, `models_installed`),
-  cableado en `bootstrap.py`.
+- 422 `diarization_options_invalid`: invalid shape or values (unknown field,
+  non-boolean/non-integer, outside 1–32, `exact` together with
+  `minimum`/`maximum`, `minimum > maximum`). Evaluated before touching the
+  project or the option.
+- 409 `diarization_models_missing`: diarization was requested and the speaker
+  models are **not installed** (fixed by downloading them). Nothing is created.
+  To know before creating the job whether they are installed, query
+  `GET /api/models` and look at the `diarization:sherpa-default` entry
+  (`kind: "diarization"`, `installed`, `runtime_available`); they are downloaded
+  with `POST /api/models/diarization:sherpa-default/install`
+  `{"method":"download","confirm":true}` (see [models.md](models.md)).
+- 409 `diarization_unavailable`: diarization was requested but the runtime is
+  missing (the `diarization` extra; downloading models does not fix it) or is not
+  wired. Evaluated before `diarization_models_missing`. The job is not created;
+  requesting it disabled always works. Availability is decided by the
+  `DiarizationAvailability` port (`runtime_available`, `models_installed`), wired
+  in `bootstrap.py`.
 
-La petición se guarda en el snapshot del job (`transcription_job_selections`,
-columna `diarization_json`, migración `0005_job_diarization`) y se devuelve en
-`JobView.selection.diarization` como `{"enabled": bool, "speakers": {"exact",
-"minimum", "maximum"}}` (`null` en lo no pedido). Las filas anteriores a la
-migración quedan con la diarización desactivada.
+The request is stored in the job snapshot (`transcription_job_selections`,
+column `diarization_json`, migration `0005_job_diarization`) and returned in
+`JobView.selection.diarization` as `{"enabled": bool, "speakers": {"exact",
+"minimum", "maximum"}}` (`null` for what was not requested). Rows that predate
+the migration keep diarization disabled.
 
-### Etapa del pipeline
+### Pipeline stage
 
-Con la diarización activa el runner, tras `TRANSCRIBING` (y `ALIGNING`):
+With diarization on, after `TRANSCRIBING` (and `ALIGNING`) the runner:
 
-1. entra en `DIARIZING` con el transcript ya persistido (ver "Texto visible
-   antes de los hablantes"), **libera el motor ASR** mediante el callback
-   inyectado `release_asr(selection)` (S6.15/S14.07: los modelos de ASR y de
-   diarización nunca conviven en memoria) y ejecuta el `DiarizationProvider`
-   sobre el mismo derivado normalizado que usó el ASR, informando
-   `stage_progress`;
-2. sin salir de `DIARIZING`, `AssignSpeakers` guarda `Speaker`s, `SpeakerTurn`s
-   y asigna `speaker_id` a los segmentos ya existentes. Es idempotente: reanudar
-   tras una caída en `DIARIZING` vuelve a diarizar (los turnos vivían solo en
-   memoria) y reutiliza los `Speaker`s ya creados.
+1. enters `DIARIZING` with the transcript already persisted (see "Text visible
+   before the speakers"), **releases the ASR engine** through the injected
+   callback `release_asr(selection)` (S6.15/S14.07: ASR and diarization models
+   never coexist in memory) and runs the `DiarizationProvider` on the same
+   normalized derivative the ASR used, reporting `stage_progress`;
+2. without leaving `DIARIZING`, `AssignSpeakers` stores `Speaker`s and
+   `SpeakerTurn`s and assigns `speaker_id` to the existing segments. It is
+   idempotent: resuming after a crash in `DIARIZING` diarizes again (turns lived
+   only in memory) and reuses the `Speaker`s already created.
 
-Cancelación (`POST …/cancel`) y apagado del servidor se atienden entre etapas y
-también **dentro** de la diarización (mismo token): cancelar termina en
-`CANCELLED` conservando el texto; apagar deja el job en `DIARIZING` para
-reanudarlo.
+Cancellation (`POST …/cancel`) and server shutdown are honored between stages and
+also **inside** diarization (same token): cancelling ends in `CANCELLED` keeping
+the text; shutting down leaves the job in `DIARIZING` to be resumed.
 
-Velocidad: sherpa-onnx corre en CPU con `min(8, núcleos − 1)` hilos (antes 2).
-Medido con 11 min de audio sintético en una CPU de 20 hilos (con otra carga
-activa): 2 hilos 147 s, 4 hilos 85 s, 8 hilos 70 s, 19 hilos 79 s. No se usa
-CUDA (no hay wheel GPU de sherpa-onnx instalada).
+Speed: sherpa-onnx runs on CPU with `min(8, cores − 1)` threads (previously 2).
+Measured with 11 minutes of synthetic audio on a 20-thread CPU (with other load
+active): 2 threads 147 s, 4 threads 85 s, 8 threads 70 s, 19 threads 79 s. CUDA
+is not used (no GPU wheel of sherpa-onnx is installed).
 
-### Fallo de diarización: el ASR nunca se pierde
+### Diarization failure: the ASR is never lost
 
-Si la diarización falla (modelo ausente, runtime ausente, fallo del proveedor o
-de la asignación), el transcript **se persiste igual** y el job termina
-`COMPLETED` con `error_code = null`. El fallo se expone en
-`JobView.diarization_error_code`, un código estable
+If diarization fails (missing model, missing runtime, provider or assignment
+failure), the transcript **is persisted anyway** and the job ends `COMPLETED`
+with `error_code = null`. The failure is exposed in
+`JobView.diarization_error_code`, a stable code
 (`diarization_model_unavailable`, `diarization_runtime_unavailable`,
-`diarization_invalid_audio`, `diarization_provider_failed`; nunca mensajes ni
-rutas). El código se persiste en `transcription_job_selections.diarization_error_code`
-(misma migración) y no se reintenta solo: un job con el código guardado no
-vuelve a diarizar al reanudarse. Se eligió la tabla de selecciones y no
-`transcription_jobs` para no ampliar la entidad de dominio `TranscriptionJob`,
-cuyo `error_code` solo es válido para jobs `FAILED`.
+`diarization_invalid_audio`, `diarization_provider_failed`; never messages or
+paths). The code is persisted in
+`transcription_job_selections.diarization_error_code` (same migration) and is
+not retried automatically: a job with the code stored does not diarize again
+when resumed. The selections table was chosen over `transcription_jobs` so as
+not to widen the `TranscriptionJob` domain entity, whose `error_code` is only
+valid for `FAILED` jobs.
 
-### Umbral de clustering y hablantes residuales (plan v3, CP-A3)
+### Clustering threshold and residual speakers (plan v3, CP-A3)
 
-Por defecto el motor estima el número de hablantes con un umbral de distancia
-(`DEFAULT_THRESHOLD` en `infrastructure/diarization/sherpa.py`). Medido con la
-grabación real de una clase de 1 h 47 min (profesor y pocos estudiantes), sobre
-copia de la base y los medios en un XDG temporal:
+By default the engine estimates the number of speakers with a distance threshold
+(`DEFAULT_THRESHOLD` in `infrastructure/diarization/sherpa.py`). Measured with
+a real recording of a 1 h 47 min class (a teacher and a few students), on a copy
+of the database and media in a temporary XDG:
 
-| Umbral | Clusters crudos | Tras fundir residuales | Reparto del habla tras fundir |
+| Threshold | Raw clusters | After merging residuals | Speech split after merging |
 | --- | --- | --- | --- |
 | 0.3 | 11 | 5 | 35.7 / 32.9 / 21.0 / 6.7 / 3.6 % |
 | **0.4** (default) | 6 | **3** | 69.0 / 27.5 / 3.5 % |
@@ -364,74 +382,77 @@ copia de la base y los medios en un XDG temporal:
 | 0.6 | 2 | 2 | 68.5 / 31.5 % |
 | 0.7 | 1 | 1 | 100 % |
 
-Con 0.3 el profesor aparece partido en dos clusters (35.7 % + 32.9 % ≈ el 69 % que
-un solo cluster agrupa desde 0.4). 0.4 conserva al profesor entero y una tercera
-voz; unir dos hablantes en la UI es fácil, separar uno no. El default era 0.3.
+At 0.3 the teacher appears split into two clusters (35.7 % + 32.9 % ≈ the 69 %
+that a single cluster holds from 0.4 on). 0.4 keeps the teacher whole plus a
+third voice; merging two speakers in the UI is easy, splitting one is not. The
+default used to be 0.3.
 
-**Hablantes residuales.** El proveedor funde cada cluster con muy poca habla
-(menos del 2 % del habla total, o menos de 10 s con un tope del 5 % para que un
-audio corto no pierda a sus dos interlocutores) en el cluster mayor más cercano
-**en el tiempo** (`application/diarization_cleanup.py`; marcado `ponytail:`
-porque el motor no expone embeddings). Nunca baja del `exact`/`minimum` pedido.
-En la grabación real: 11 clusters crudos a 0.3 pasan a 5.
+**Residual speakers.** The provider merges every cluster with very little speech
+(under 2 % of total speech, or under 10 s with a 5 % cap so that a short audio
+does not lose both of its speakers) into the largest cluster closest **in time**
+(`application/diarization_cleanup.py`; marked `ponytail:` because the engine does
+not expose embeddings). It never goes below the requested `exact`/`minimum`. On
+the real recording: 11 raw clusters at 0.3 become 5.
 
-**El motor corre en un proceso hijo** (`infrastructure/diarization/worker.py`).
-La llamada nativa de sherpa-onnx retiene el GIL todo el paso de segmentación
-(unos 4 min en 1 h 47 min), lo que congelaba el servidor entero: el SSE, el
-progreso y el botón Cancelar. Medido en un clip de 4 min: hueco máximo de un hilo
-latido 8.3 s antes, 0.1 s ahora. Cancelar mata el hijo en menos de 0.2 s incluso
-en la fase silenciosa. Coste: los modelos se recargan en cada pasada (~1 s).
+**The engine runs in a child process** (`infrastructure/diarization/worker.py`).
+The native sherpa-onnx call holds the GIL for the whole segmentation step (about
+4 min for 1 h 47 min), which froze the entire server: SSE, progress and the
+Cancel button. Measured on a 4-minute clip: maximum gap of a heartbeat thread 8.3
+s before, 0.1 s now. Cancelling kills the child in under 0.2 s even in the silent
+phase. Cost: the models are reloaded on each pass (~1 s).
 
-## Recalcular hablantes (`POST /api/transcripts/{transcript_id}/rediarize`)
+## Recomputing speakers (`POST /api/transcripts/{transcript_id}/rediarize`)
 
-Recalcula **solo** los hablantes de una transcripción terminada, sin volver a
-transcribir (no se llama al ASR ni se tocan textos, tiempos, ediciones ni
-revisiones).
+Recomputes **only** the speakers of a finished transcript, without
+re-transcribing (the ASR is not called and texts, timings, edits and revisions
+are not touched).
 
 ```json
 {"speakers": {"exact": 2}}
 ```
 
-`speakers` admite `exact`, `minimum`, `maximum` con las reglas de la
-diarización (1–32, `exact` excluye a los otros, `minimum <= maximum`); `{}` o sin
-`speakers` = el motor estima. → **202** con la vista del job (`JobView`, como
-`POST /api/jobs`): es **el mismo job de la transcripción**, reabierto en
-`DIARIZING` (`progress` 0.8, `stage_progress` `null` al inicio, `transcript_id`
-el de siempre). Se sigue con `GET /api/jobs/{id}` o el SSE
-`/api/jobs/{id}/events` (que hay que volver a abrir tras el 202): `stage_progress`
-y `eta_seconds` como en cualquier job, y al acabar vuelve a `COMPLETED`.
+`speakers` accepts `exact`, `minimum`, `maximum` with the diarization rules
+(1–32, `exact` excludes the others, `minimum <= maximum`); `{}` or no `speakers`
+= the engine estimates. → **202** with the job view (`JobView`, like
+`POST /api/jobs`): it is **the same job as the transcription**, reopened in
+`DIARIZING` (`progress` 0.8, `stage_progress` `null` at the start, `transcript_id`
+unchanged). Follow it with `GET /api/jobs/{id}` or the SSE stream
+`/api/jobs/{id}/events` (which must be reopened after the 202): `stage_progress`
+and `eta_seconds` work as in any job, and when it finishes it returns to
+`COMPLETED`.
 
-| Estado | Código | Significado |
+| Status | Code | Meaning |
 | --- | --- | --- |
-| 404 | `transcript_not_found` | la transcripción no existe |
-| 409 | `rediarize_unavailable` | no hay un job que la haya producido |
-| 409 | `job_already_active` | hay otro job sin terminar (el worker es único) |
-| 409 | `diarization_unavailable` | falta el runtime de diarización |
-| 409 | `diarization_models_missing` | faltan los modelos de hablantes (se bajan en el gestor de modelos) |
-| 422 | `diarization_options_invalid` | cuerpo inválido |
+| 404 | `transcript_not_found` | the transcript does not exist |
+| 409 | `rediarize_unavailable` | no job produced it |
+| 409 | `job_already_active` | another job is unfinished (there is a single worker) |
+| 409 | `diarization_unavailable` | the diarization runtime is missing |
+| 409 | `diarization_models_missing` | the speaker models are missing (download them in the model manager) |
+| 422 | `diarization_options_invalid` | invalid body |
 
-Semántica:
+Semantics:
 
-- Se guardan las nuevas pistas en la selección del job
-  (`transcription_job_selections.diarization_json`, y se limpia
-  `diarization_error_code`); el estado `COMPLETED`/`FAILED`/`CANCELLED` previo se
-  pierde (la entidad ofrece `reopen_for_diarization`). Sin migración.
-- **Nombres y colores se conservan por solapamiento**: cada cluster nuevo toma al
-  hablante antiguo que habla en los mismos tramos, si ese solapamiento cubre al
-  menos el 50 % del habla del cluster o el 50 % del habla del hablante antiguo
-  (una persona que el cálculo anterior había partido y ahora vuelve entera
-  conserva su nombre). Un hablante antiguo va a un solo cluster, el de mayor
-  solapamiento primero (`application/speaker_matching.py`); un cluster que
-  mezcla varias personas antiguas toma el nombre de la que más solapa, como al
-  fusionar a mano. Los demás reciben "Speaker N" y un color libre de la paleta.
-  Los hablantes antiguos que ya nadie referencia se borran.
-- Las asignaciones manuales de segmentos a hablantes (`PUT /api/segments/{id}/speaker`)
-  **se reemplazan** por las del nuevo cálculo.
-- Si el recálculo falla (modelos, audio, proveedor) el job termina `COMPLETED`
-  con `diarization_error_code` y los hablantes anteriores intactos (misma regla que
-  el primer cálculo). Si el derivado de audio ya no existe se regenera.
-- Cancelar (`POST /api/jobs/{id}/cancel`) lo deja `CANCELLED` con el texto y los
-  hablantes anteriores intactos; se puede volver a recalcular (cualquier job
-  terminal con transcript sirve). Si el servidor se apaga a mitad, el job queda
-  en `DIARIZING` y se reanuda al arrancar.
-- `GET /api/library` muestra el job como `DIARIZING` mientras dura.
+- The new hints are stored in the job selection
+  (`transcription_job_selections.diarization_json`, and `diarization_error_code`
+  is cleared); the previous `COMPLETED`/`FAILED`/`CANCELLED` state is lost (the
+  entity offers `reopen_for_diarization`). No migration.
+- **Names and colors are kept by overlap**: each new cluster takes the old
+  speaker that talks in the same stretches, if that overlap covers at least 50 %
+  of the cluster's speech or 50 % of the old speaker's speech (a person the
+  previous computation had split and who now comes back whole keeps their name).
+  An old speaker goes to a single cluster, the one with the largest overlap first
+  (`application/speaker_matching.py`); a cluster that mixes several old people
+  takes the name of the one that overlaps most, as when merging by hand. The
+  rest receive "Speaker N" and a free color from the palette. Old speakers that
+  nothing references any more are deleted.
+- Manual segment-to-speaker assignments (`PUT /api/segments/{id}/speaker`) **are
+  replaced** by those of the new computation.
+- If the recomputation fails (models, audio, provider) the job ends `COMPLETED`
+  with `diarization_error_code` and the previous speakers intact (same rule as
+  the first computation). If the audio derivative no longer exists it is
+  regenerated.
+- Cancelling (`POST /api/jobs/{id}/cancel`) leaves it `CANCELLED` with the text
+  and the previous speakers intact; it can be recomputed again (any terminal job
+  with a transcript works). If the server shuts down midway, the job stays in
+  `DIARIZING` and resumes on start.
+- `GET /api/library` shows the job as `DIARIZING` while it lasts.

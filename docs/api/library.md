@@ -1,18 +1,19 @@
-# Biblioteca, renombrar y eliminar proyectos — plan v3, Slice A
+# Library, media info, rename and delete projects — plan v3, Slice A
 
-Local (`127.0.0.1`). Errores con la forma `{"detail": {"code", "message"}}`; sin
-rutas del host. La biblioteca es la pantalla de inicio: una fila por proyecto.
+Local (`127.0.0.1`). Errors have the shape `{"detail": {"code", "message"}}`; no
+host paths. Common rules: [README.md](README.md). The library is the home screen:
+one row per project.
 
 ## `GET /api/library` (CP-A1)
 
-→ `200 {"items": [item]}` ordenado por **actividad más reciente** primero
-(`max(creación del proyecto, última actualización de su último job)`; el id
-desempata). Una sola consulta por tabla, sin N+1.
+→ `200 {"items": [item]}` ordered by **most recent activity** first
+(`max(project creation, last update of its latest job)`; the id breaks ties). One
+query per table, no N+1.
 
 ```json
 {
   "project_id": "uuid",
-  "name": "Clase de física",
+  "name": "Physics class",
   "created_at": "2026-10-03T01:17:42+00:00",
   "updated_at": "2026-10-03T01:37:13+00:00",
   "media": {
@@ -35,73 +36,82 @@ desempata). Una sola consulta por tabla, sin N+1.
 }
 ```
 
-- `updated_at` es la fecha de actividad por la que se ordena.
-- `media`: la grabación del último job; si el proyecto no tiene job, la primera
-  grabación subida. **`null` si el proyecto nunca recibió una grabación** (un
-  proyecto creado cuyo upload falló): la UI debe tolerarlo. `filename` es el
-  nombre original (`display_name`); `media_type` es el tipo detectado al
-  importar y, si el sondeo no lo reconoció, el que sugiere la extensión del
-  archivo (`mimetypes`, solo como pista); queda `null` si no hay ninguno.
-- `latest_job`: el job más reciente del proyecto (`created_at`, id); `null` sin
-  jobs. `transcript_id` solo existe cuando la fila del transcript ya está
-  guardada (desde el final del ASR, antes de los hablantes); `model_id` es el
-  modelo de la selección del job. `state` ∈ estados de job (`QUEUED` …
-  `COMPLETED`, `FAILED`, `CANCELLING`, `CANCELLED`).
-- `speaker_count` y `segment_count` son los **del transcript de ese último job**
-  (`0` si aún no hay transcript). `speaker_count` cuenta solo los hablantes con
-  **al menos un segmento** (un hablante que solo aparece en turnos, sin ningún
-  segmento, no cuenta).
+- `updated_at` is the activity date used for ordering.
+- `media`: the recording of the latest job; if the project has no job, the first
+  uploaded recording. **`null` if the project never received a recording** (a
+  created project whose upload failed): the UI must tolerate it. `filename` is
+  the original name (`display_name`); `media_type` is the type detected on import
+  and, if probing did not recognize it, the one suggested by the file extension
+  (`mimetypes`, only as a hint); it is `null` if there is none.
+- `latest_job`: the project's most recent job (`created_at`, id); `null` without
+  jobs. `transcript_id` exists only once the transcript row is stored (from the
+  end of ASR, before the speakers); `model_id` is the model of the job's
+  selection. `state` ∈ job states (`QUEUED` … `COMPLETED`, `FAILED`,
+  `CANCELLING`, `CANCELLED`).
+- `speaker_count` and `segment_count` are those **of the latest job's
+  transcript** (`0` if there is no transcript yet). `speaker_count` counts only
+  speakers with **at least one segment** (a speaker that appears only in turns,
+  with no segment, does not count).
 
 ## `GET /api/media/{media_asset_id}`
 
-Ficha de la grabación sin rutas, para reabrir un job por URL sin adivinar nada:
+Path-free recording record, to reopen a job by URL without guessing anything:
 
 ```json
 {"media_asset_id": "uuid", "project_id": "uuid", "filename": "clase.m4a",
  "media_type": "audio/aac", "duration_ms": 6464073, "sha256": "…", "size_bytes": 81037665}
 ```
 
-`404 media_asset_not_found`. Mismo `media_type` con la regla de la biblioteca.
+`404 media_asset_not_found`. `media_type` follows the same rule as the library.
+
+## `GET /api/media/{media_asset_id}/original`
+
+Streams the immutable original inline for the browser player. It serves
+`Range` requests (`Accept-Ranges: bytes`) and sends `Cache-Control: private,
+max-age=3600`; the `Content-Type` is the stored `media_type`, or
+`application/octet-stream` if there is none. There is no `Content-Disposition`
+and no host path in the response. 404 `media_asset_not_found` if the asset does
+not exist; 404 `media_file_missing` if the row exists but the file is no longer
+on disk.
 
 ## `PATCH /api/projects/{project_id}` (CP-A2)
 
-Body `{"name": str}`. Misma validación que al crear: se recorta y debe tener de
-1 a 200 caracteres sin caracteres de control. → `200` el proyecto
+Body `{"name": str}`. Same validation as on creation: it is stripped and must be
+1 to 200 characters with no control characters. → `200` the project
 (`{"id","name","created_at"}`).
 
-| Estado | Código | Significado |
+| Status | Code | Meaning |
 | --- | --- | --- |
-| 404 | `project_not_found` | el proyecto no existe (se evalúa antes que el nombre) |
-| 422 | `project_name_invalid` | vacío, solo espacios, > 200 o con caracteres de control; no se guarda nada |
+| 404 | `project_not_found` | the project does not exist (evaluated before the name) |
+| 422 | `project_name_invalid` | empty, whitespace only, > 200 or with control characters; nothing is saved |
 
 ## `DELETE /api/projects/{project_id}` (CP-A2)
 
-Exige la cabecera `X-VOZ-Action: delete-project` (como el apagado del servidor:
-una página de otro origen no puede enviarla sin preflight, que VOZ nunca
-permite). → `204` sin cuerpo.
+Requires the header `X-VOZ-Action: delete-project` (like the server shutdown: a
+page from another origin cannot send it without a preflight, which V never
+allows). → `204` with no body.
 
-Borra **todo** lo del proyecto:
+It deletes **everything** that belongs to the project:
 
-- filas, en una sola sentencia con `ON DELETE CASCADE`: jobs, selecciones,
-  checkpoints, transcripts, segmentos, palabras, hablantes, turnos, grabaciones
-  (`media_assets`) y glosario;
-- archivos: la carpeta `projects/<project_id>/` de la carpeta de datos de VOZ
-  (originales de solo lectura y derivados). Se usan las primitivas de
-  `infrastructure/safe_fs.py` (`remove_directory_tree`): cadena de directorios
-  sin seguir enlaces, los symlinks internos se borran como enlace (nunca su
-  destino) y en Windows se quita el atributo de solo lectura.
+- rows, in a single statement with `ON DELETE CASCADE`: jobs, selections,
+  checkpoints, transcripts, segments, words, speakers, turns, recordings
+  (`media_assets`) and glossary;
+- files: the `projects/<project_id>/` folder in V's data folder (read-only
+  originals and derivatives). It uses the primitives of
+  `infrastructure/safe_fs.py` (`remove_directory_tree`): a chain of directories
+  without following links, internal symlinks are removed as links (never their
+  target) and on Windows the read-only attribute is cleared.
 
-Orden: **primero los archivos y luego las filas**. Si los archivos no se pueden
-borrar el proyecto sigue intacto y se puede reintentar (el borrado de archivos
-es idempotente).
+Order: **files first, then rows**. If the files cannot be deleted the project
+stays intact and can be retried (file deletion is idempotent).
 
-| Estado | Código | Significado |
+| Status | Code | Meaning |
 | --- | --- | --- |
-| 403 | `project_delete_forbidden` | falta la cabecera `X-VOZ-Action: delete-project` |
-| 404 | `project_not_found` | el proyecto no existe |
-| 409 | `project_busy` | algún job del proyecto no es terminal (`QUEUED` … `PERSISTING`, `CANCELLING`); cancelar y esperar |
-| 500 | `project_delete_failed` | no se pudieron borrar los archivos; no se borró nada de la base |
+| 403 | `project_delete_forbidden` | the header `X-VOZ-Action: delete-project` is missing |
+| 404 | `project_not_found` | the project does not exist |
+| 409 | `project_busy` | some job of the project is not terminal (`QUEUED` … `PERSISTING`, `CANCELLING`); cancel it and wait |
+| 500 | `project_delete_failed` | the files could not be deleted; nothing was deleted from the database |
 
-No se toca nunca el cache de modelos ni el de Buzz (no pertenecen al proyecto).
-Queda sin borrar el pequeño cache de formas de onda (`cache/waveforms/`), que
-está direccionado por contenido y puede compartirse entre proyectos.
+The model cache and the Buzz cache are never touched (they do not belong to the
+project). The small waveform cache (`cache/waveforms/`) is left in place: it is
+content-addressed and may be shared between projects.

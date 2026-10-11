@@ -1,84 +1,82 @@
-# Privacidad: OpenAI (opcional, cloud)
+# Privacy: OpenAI (optional, cloud)
 
-Estado: **experimental**. El adapter está probado solo con un transporte falso
-(nunca se ha llamado al servicio real), así que no se declara soportado. Sigue
-[ADR-0006](../adr/0006-local-first-privacy.md): VOZ es local por defecto y este
-proveedor solo se usa por decisión explícita. La clave de API de OpenAI es
-independiente de ChatGPT/Codex: se factura como API, no como suscripción.
+Status: **experimental**. The adapter has only been tested with a fake transport
+(the real service has never been called), so it is not declared supported. It
+follows [ADR-0006](../adr/0006-local-first-privacy.md): V is local by default and
+this provider is only used by explicit decision. The OpenAI API key is separate
+from ChatGPT/Codex: it is billed as API usage, not as a subscription.
 
-## Cuándo sale audio de tu equipo
+## When audio leaves your machine
 
-Solo si se cumplen las dos condiciones a la vez:
+Only if both conditions hold at the same time:
 
-1. Hay una clave de OpenAI configurada.
-2. Eliges un modelo `openai` (Whisper o GPT-4o Transcribe Diarize) para ese
-   trabajo concreto.
+1. An OpenAI key is configured.
+2. You choose an `openai` model (Whisper or GPT-4o Transcribe Diarize) for that
+   specific job.
 
-Tener la clave **no** activa nada: crear el proveedor, listar opciones o
-registrar la clave no hacen ninguna petición. No hay fallback automático: si un
-modelo local falla, VOZ no reintenta con OpenAI. Las opciones cloud aparecen
-marcadas `cloud: true` en `GET /api/transcription-options` y nunca se
-recomiendan.
+Having the key does **not** enable anything: creating the provider, listing
+options or registering the key make no request. There is no automatic fallback:
+if a local model fails, V does not retry with OpenAI. Cloud options appear marked
+`cloud: true` in `GET /api/transcription-options` and are never recommended.
 
-## Qué se envía
+## What is sent
 
-Una petición `POST https://api.openai.com/v1/audio/transcriptions` (multipart)
-por cada tramo de audio:
+One `POST https://api.openai.com/v1/audio/transcriptions` request (multipart) for
+each audio span:
 
-| Dato | Detalle |
+| Data | Detail |
 | --- | --- |
-| Audio | El WAV normalizado del tramo, con el nombre fijo `audio.wav`. Si supera el límite de subida (25 MB por defecto, leído como 25.000.000 bytes) se divide en subclips WAV con 2 s de solape; ese solape se envía (y se factura) dos veces. |
-| `model` | `whisper-1` o `gpt-4o-transcribe-diarize`. |
-| `response_format` | `verbose_json` (Whisper) o `diarized_json` (diarizado). |
-| `timestamp_granularities[]` | `segment` (solo Whisper). |
-| `chunking_strategy` | `auto` (solo diarizado; la API lo exige para audio largo). |
-| `language` | Solo si indicas idioma. |
-| Cabecera `Authorization` | Tu clave, únicamente en la cabecera HTTPS. |
+| Audio | The span's normalized WAV, with the fixed name `audio.wav`. If it exceeds the upload limit (25 MB by default, read as 25,000,000 bytes) it is split into WAV subclips with a 2 s overlap; that overlap is sent (and billed) twice. |
+| `model` | `whisper-1` or `gpt-4o-transcribe-diarize`. |
+| `response_format` | `verbose_json` (Whisper) or `diarized_json` (diarized). |
+| `timestamp_granularities[]` | `segment` (Whisper only). |
+| `chunking_strategy` | `auto` (diarized only; the API requires it for long audio). |
+| `language` | Only if you specify a language. |
+| `Authorization` header | Your key, only in the HTTPS header. |
 
-**No se envía**: nombre de archivo ni ruta del original, nombre de proyecto,
-transcripciones previas, ediciones, base de datos ni ninguna ruta del host.
+**Not sent**: the original's file name or path, the project name, previous
+transcripts, edits, the database or any host path.
 
-## Qué vuelve y dónde se guarda
+## What comes back and where it is stored
 
-Texto y tiempos por segmento y, con el modelo diarizado, una etiqueta opaca de
-hablante. Se guarda localmente como cualquier otra transcripción; los originales
-siguen siendo inmutables y la respuesta cruda no se conserva ni se registra. Si
-el audio se dividió, las etiquetas de hablante se prefijan con el número de
-tramo (`1:A`, `2:A`): OpenAI no garantiza que `A` sea la misma persona entre
-peticiones, y VOZ no lo asume.
+Text and per-segment timings and, with the diarized model, an opaque speaker
+label. It is stored locally like any other transcript; originals remain immutable
+and the raw response is neither kept nor logged. If the audio was split, speaker
+labels are prefixed with the span number (`1:A`, `2:A`): OpenAI does not
+guarantee that `A` is the same person across requests, and V does not assume it.
 
-## Retención en OpenAI
+## Retention at OpenAI
 
-Depende de la política vigente de OpenAI y de tu organización; VOZ no puede
-verificarla ni controlarla. Consulta: <https://openai.com/policies/privacy-policy>
-y, para datos enviados por API, <https://platform.openai.com/docs/guides/your-data>.
-Si necesitas retención cero, confirma con OpenAI que tu organización la tiene
-habilitada antes de enviar material sensible.
+It depends on OpenAI's current policy and your organization; V can neither verify
+nor control it. See <https://openai.com/policies/privacy-policy> and, for data
+sent through the API, <https://platform.openai.com/docs/guides/your-data>. If you
+need zero retention, confirm with OpenAI that your organization has it enabled
+before sending sensitive material.
 
-## Límites, reintentos y coste
+## Limits, retries and cost
 
-- Límites y precios son constantes fechadas (`LIMITS_DATE`) tomadas de la
-  documentación pública: **no verificados en vivo**. Fuentes:
-  <https://platform.openai.com/docs/guides/speech-to-text> y
-  <https://platform.openai.com/pricing>. El precio del modelo diarizado es una
-  suposición igual al de `gpt-4o-transcribe`.
-- Se reintenta con backoff exponencial y jitter solo ante 429, 5xx y timeouts
-  (hasta 4 intentos; respeta `Retry-After`). Los errores 4xx de autenticación o
-  validación nunca se reintentan.
-- `GET /api/providers/openai/estimate?media_asset_id=...` estima minutos y USD
-  antes de enviar nada ([contrato](../api/providers.md)). Es una estimación:
-  no incluye el solape de subclips ni cambios de tarifa.
+- Limits and prices are dated constants (`LIMITS_DATE`) taken from the public
+  documentation: **not verified live**. Sources:
+  <https://platform.openai.com/docs/guides/speech-to-text> and
+  <https://platform.openai.com/pricing>. The diarized model's price is an
+  assumption equal to that of `gpt-4o-transcribe`.
+- Requests are retried with exponential backoff and jitter only on 429, 5xx and
+  timeouts (up to 4 attempts; `Retry-After` is honored). 4xx authentication or
+  validation errors are never retried.
+- `GET /api/providers/openai/estimate?media_asset_id=...` estimates minutes and
+  USD before anything is sent ([contract](../api/providers.md)). It is an
+  estimate: it does not include subclip overlap or price changes.
 
-## La clave
+## The key
 
-- Se lee de `VOZ_OPENAI_API_KEY`, luego `OPENAI_API_KEY` y, si no existen, de
-  `$XDG_CONFIG_HOME/voz/secrets.toml` (modo `0600`; si el modo es más abierto,
-  o el archivo es un symlink, VOZ lo rechaza con `secrets_file_insecure`).
-- Nunca se guarda en SQLite, nunca se escribe en logs, errores, diagnósticos ni
-  respuestas de la API, y la representación (`repr`) del proveedor, de la
-  petición y del gestor de secretos no la incluye.
-- **Borrarla**: `DELETE /api/providers/openai/key` (quita la entrada del
-  archivo), o borra la línea `openai` de `secrets.toml`. Si la clave viene de una
-  variable de entorno, quítala de tu entorno: VOZ no puede borrarla. Sin clave, la
-  opción OpenAI deja de estar disponible. Revoca además la clave en el panel de
-  OpenAI si sospechas que se expuso.
+- It is read from `VOZ_OPENAI_API_KEY`, then `OPENAI_API_KEY` and, if neither
+  exists, from `$XDG_CONFIG_HOME/voz/secrets.toml` (mode `0600`; if the mode is
+  more open, or the file is a symlink, V rejects it with `secrets_file_insecure`).
+- It is never stored in SQLite, never written to logs, errors, diagnostics or API
+  responses, and the `repr` of the provider, the request and the secrets manager
+  does not include it.
+- **Delete it**: `DELETE /api/providers/openai/key` (removes the entry from the
+  file), or delete the `openai` line from `secrets.toml`. If the key comes from an
+  environment variable, remove it from your environment: V cannot delete it.
+  Without a key, the OpenAI option stops being available. Also revoke the key in
+  the OpenAI dashboard if you suspect it was exposed.

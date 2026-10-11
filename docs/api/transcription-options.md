@@ -1,109 +1,119 @@
-# Opciones de transcripción — Corte B1 / S5.18
+# Transcription options — Cut B1 / S5.18
 
-`GET /api/transcription-options` devuelve HTTP 200 con `{ "options": [...] }`.
-OpenAPI (`/openapi.json`, `/docs`) publica el schema real derivado de las
-proyecciones de application. No requiere parámetros ni cambia estado.
+`GET /api/transcription-options` returns HTTP 200 with `{ "options": [...] }`.
+OpenAPI (`/openapi.json`, `/docs`) publishes the real schema derived from the
+application projections. It takes no parameters and changes no state. Common
+rules: [README.md](README.md).
 
-## Semántica
+## Semantics
 
-| Campo | Significado y límite |
+| Field | Meaning and limit |
 | --- | --- |
-| `provider_id` | Identificador del adapter conocido, no prueba que su runtime esté instalado. |
-| `model_id`, `source`, `revision` | Modelo y procedencia fijada. `source` y `revision` son null para la entrada conocida todavía sin revisión local. Nunca se inventa un SHA. |
-| `profile` | `ProcessingProfile` completo: nombre, preferencia de dispositivo, precisiones GPU ordenadas y precisión CPU. No es el modelo ni la ejecución elegida. |
-| `installation_status` | `registered` si un manifest VOZ válido coincide con identidad, ubicación canónica y timestamp con zona. `not_registered` si no se encuentra un registro válido para esa opción conocida. Un manifest inválido no equivale a ausencia física de pesos. |
-| `files_available` | Comprobación superficial de `model.bin`, `config.json`, `tokenizer.json` y el vocabulario que corresponde al modelo (`vocabulary.txt` en tiny/base/small/medium, `vocabulary.json` en large-v3/turbo): archivos regulares no vacíos y sin symlinks. No valida contenido, checksums ni integridad. |
-| `runtime_available` | La clase de engine se puede importar y el probe del runtime responde. No se construye un engine ni se ejecuta inferencia. |
-| `execution` | `ExecutionDecision`: device, precision y fallback_reason, conservando la política existente. Null si no se puede seleccionar. |
-| `device_name` | Nombre de la GPU medido con `nvidia-smi` (truncado, solo caracteres imprimibles) cuando la ejecución elegida es `cuda`; null en CPU o si no hay medición. Nunca se infiere VRAM por el nombre comercial. |
-| `capabilities` | Intersección del descriptor y lo expuesto por el adapter VOZ. CPU/GPU son backends que soporta el adapter; la disponibilidad concreta se consulta en execution, no se deduce de esta lista. |
-| `can_start` | Todos los prerrequisitos observables pasan: registro, revisión fijada, archivos mínimos, runtime, ejecución compatible y transcripción. Permite intentar cargar; **no garantiza** integridad, RAM/VRAM suficiente, éxito de inferencia ni validación real CUDA. No significa que exista ya un endpoint para iniciar jobs. |
-| `recommendation` | `{ "recommended": bool, "reason": str }` o null. **Con hardware medido** se calcula por ajuste a VRAM/RAM (sección siguiente), sea cual sea el estado de instalación (solo si los únicos bloqueos son de instalación). **Sin medición**: `{ "recommended": true, "reason": "default_compatible_profile" }` para opciones `fast` que pueden iniciarse; null en los demás casos. Política declarativa, no benchmark. Puede haber varias revisiones locales elegibles: no se inventa cuál es más reciente/mejor. |
-| `blocking_reasons` | Códigos estables; lista vacía si can_start es true. |
+| `provider_id` | Identifier of the known adapter; it does not prove its runtime is installed. |
+| `model_id`, `source`, `revision` | Model and pinned provenance. `source` and `revision` are null for a known entry that has no local revision yet. A SHA is never invented. |
+| `display_name` | Human-readable model name. |
+| `profile` | The full `ProcessingProfile`: name, device preference, ordered GPU precisions and CPU precision. It is not the model nor the chosen execution. |
+| `installation_status` | `registered` if a valid V manifest matches identity, canonical location and a time-zone-aware timestamp. `not_registered` if no valid record is found for that known option. An invalid manifest is not the same as the weights being physically absent. |
+| `files_available` | Shallow check of `model.bin`, `config.json`, `tokenizer.json` and the vocabulary that corresponds to the model (`vocabulary.txt` in tiny/base/small/medium, `vocabulary.json` in large-v3/turbo): regular, non-empty files, no symlinks. It does not validate content, checksums or integrity. |
+| `runtime_available` | The engine class can be imported and the runtime probe answers. No engine is built and no inference runs. |
+| `execution` | `ExecutionDecision`: device, precision and fallback_reason, keeping the existing policy. Null if it cannot be selected. |
+| `device_name` | GPU name measured with `nvidia-smi` (truncated, printable characters only) when the chosen execution is `cuda`; null on CPU or if there is no measurement. VRAM is never inferred from the marketing name. |
+| `capabilities` | Intersection of the descriptor and what the V adapter exposes. CPU/GPU are backends the adapter supports; concrete availability is read from `execution`, not deduced from this list. |
+| `can_start` | All observable prerequisites pass: registration, pinned revision, minimum files, runtime, compatible execution and transcription. It allows attempting to load; it **does not guarantee** integrity, enough RAM/VRAM, inference success or real CUDA validation. |
+| `recommendation` | `{ "recommended": bool, "reason": str }` or null. **With measured hardware** it is computed by fit to VRAM/RAM (next section), whatever the installation state (only if the sole blockers are installation ones). **Without measurement**: `{ "recommended": true, "reason": "default_compatible_profile" }` for `fast` options that can start; null otherwise. Declarative policy, not a benchmark. There may be several eligible local revisions: which one is newest/best is not invented. |
+| `blocking_reasons` | Stable codes; an empty list if `can_start` is true. |
+| `cloud`, `provider_label` | `cloud` is true for cloud-provider options; `provider_label` is the provider's display name (null for local options). See [providers.md](providers.md). |
 
-Los códigos de bloqueo son `model_not_registered`, `model_files_missing`,
-`revision_unpinned`, `runtime_unavailable`, `execution_unavailable` y
-`transcription_unavailable`. Pueden coexistir. Runtime ausente, falta de modelo
-o imposibilidad de recomendar son respuestas válidas, no HTTP 500.
+The blocking codes are `model_not_registered`, `model_files_missing`,
+`revision_unpinned`, `runtime_unavailable`, `execution_unavailable` and
+`transcription_unavailable`. They can coexist. A missing runtime, a missing model
+or being unable to recommend are valid responses, not HTTP 500.
 
-Si no se puede inspeccionar el almacenamiento por un fallo de acceso, se devuelve
-HTTP 503 con `detail.code = transcription_options_unavailable` y un mensaje
-seguro. No se devuelven paths, contenido de manifests ni tracebacks.
+If storage cannot be inspected because of an access failure, HTTP 503 is returned
+with `detail.code = transcription_options_unavailable` and a safe message. Paths,
+manifest contents and tracebacks are never returned.
 
-## Recomendación por hardware medido (S8.11)
+## Recommendation from measured hardware (S8.11)
 
-El probe mide, sin cargar ningún modelo: nombre y VRAM total/libre de la primera
-GPU (`nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits`,
-sin shell, timeout de 5 s; solo si CUDA es utilizable) y RAM total/disponible
-(`/proc/meminfo`, solo Linux). Cualquier fallo significa "no medido" (null), nunca
-cero. La función pura `application/hardware_recommendation.recommend` aplica:
+The probe measures, without loading any model: the name and total/free VRAM of
+the first GPU (`nvidia-smi --query-gpu=name,memory.total,memory.free
+--format=csv,noheader,nounits`, no shell, 5 s timeout; only if CUDA is usable)
+and total/available RAM (`/proc/meminfo`, Linux only). Any failure means "not
+measured" (null), never zero. The pure function
+`application/hardware_recommendation.recommend` applies:
 
-| Hardware medido | Opción recomendada (`reason`) |
+| Measured hardware | Recommended option (`reason`) |
 | --- | --- |
-| CUDA, VRAM >= 6 GiB | `turbo` recomendado (`gpu_fast_default`); `large-v3` con `recommended=false` (`gpu_quality_fits`) |
+| CUDA, VRAM >= 6 GiB | `turbo` recommended (`gpu_fast_default`); `large-v3` with `recommended=false` (`gpu_quality_fits`) |
 | CUDA, 5 GiB <= VRAM < 6 GiB | `medium` (`gpu_limited_medium`) |
 | CUDA, VRAM < 5 GiB | `small` (`gpu_limited_small`) |
-| Solo CPU, RAM >= 8 GiB | `small` (`cpu_default`) |
-| Solo CPU, RAM < 8 GiB | `base` (`cpu_low_ram`) |
+| CPU only, RAM >= 8 GiB | `small` (`cpu_default`) |
+| CPU only, RAM < 8 GiB | `base` (`cpu_low_ram`) |
 
-Los demás modelos reciben `recommendation = null`. Origen de la política: las
-cifras de memoria publicadas de faster-whisper/CTranslate2 y los tiempos medidos
-en la máquina objetivo (RTX 4060 Laptop, 8188 MiB: turbo fp16 carga en 1,0 s y
-transcribe 25 s en 0,9 s; large-v3 en 2,1 s / 1,7 s). No es un benchmark
-exhaustivo de VOZ. Sin medición se conserva el comportamiento anterior.
+The other models get `recommendation = null`. Origin of the policy: the memory
+figures published for faster-whisper/CTranslate2 and the times measured on the
+target machine (RTX 4060 Laptop, 8188 MiB: turbo fp16 loads in 1.0 s and
+transcribes 25 s in 0.9 s; large-v3 in 2.1 s / 1.7 s). It is not an exhaustive V
+benchmark. Without measurement the previous behavior is kept.
 
-## Catálogo actual
+## Current catalog
 
-Viene de `faster_whisper_catalog()` (S8.01): seis modelos Faster Whisper con
-fuente y revisión fijadas, licencia MIT, multilingües.
+The Faster Whisper entries come from `faster_whisper_catalog()` (S8.01): six
+Faster Whisper models with pinned source and revision, MIT license, multilingual.
 
-| `model_id` | Perfil |
+| `model_id` | Profile |
 | --- | --- |
 | `tiny`, `base`, `small` | `fast` |
 | `medium` | `quality` |
 | `large-v3` | `quality` |
-| `turbo` (large-v3-turbo) | `fast`, la recomendación por defecto |
+| `turbo` (large-v3-turbo) | `fast`, the default recommendation |
 
-`/api/transcription-options` expone una opción por cada entrada, instalada o no.
-Con registro local válido se exponen las revisiones registradas que coinciden con
-la fuente conocida (puede haber una revisión distinta de la fijada). Sin registro
-se expone la entrada con su revisión fijada y `not_registered`; ya no aparece
-`revision_unpinned` para el catálogo actual, y `option_id` es estable porque
-depende de la revisión fijada. No se consulta catálogo remoto ni caches externos.
-Instalar, importar y borrar se documenta en [models.md](models.md).
+`/api/transcription-options` exposes one option per entry, installed or not. With
+a valid local registration, the registered revisions that match the known source
+are exposed (there may be a revision different from the pinned one). Without a
+registration the entry is exposed with its pinned revision and `not_registered`;
+`revision_unpinned` no longer appears for the current catalog, and `option_id` is
+stable because it depends on the pinned revision. No remote catalog or external
+cache is queried. Installing, importing and deleting are documented in
+[models.md](models.md).
 
-Las capabilities actuales son `cpu`, `gpu`, `language_detection` y
-`transcription`. Aunque el descriptor upstream menciona translation, el port
-actual no permite solicitar esa tarea: B1 no la anuncia. Tampoco anuncia
-diarization ni word_timestamps.
+Besides the Faster Whisper entries, the list also contains whisper.cpp options
+(only when the `whisper-cli` runtime is available; see
+[whisper-cpp.md](../whisper-cpp.md)) and one option per cloud provider
+([providers.md](providers.md)).
 
-## Identidad y futura creación de jobs
+The current capabilities are `cpu`, `gpu`, `language_detection` and
+`transcription`. Although the upstream descriptor mentions translation, the
+current port does not allow requesting that task: B1 does not advertise it. It
+does not advertise diarization or word_timestamps either.
 
-`option_id` usa el prefijo `option-v1-` seguido de SHA-256 del JSON canónico de
-`[provider_id, model_id, source, revision, profile_completo]`, con claves
-ordenadas y separadores compactos. No depende de display_name, orden de listado,
-registro ni hardware observado. Este hash identifica configuración; **no es un
-checksum de los pesos**.
+## Identity and job creation
 
-Una entrada sin revisión no puede enviarse como selección ejecutable (el catálogo
-actual ya no produce ninguna). B2 deberá
-resolver y revalidar el ID contra el catálogo actual y fijar en el job el
-descriptor/perfil completo, la decisión de ejecución y opciones que afecten el
-resultado (por ejemplo idioma). El ID solo no sustituye ese snapshot. B1 no
-modifica checkpoints, migraciones ni persistencia de selección.
+`option_id` uses the prefix `option-v1-` followed by the SHA-256 of the canonical
+JSON of `[provider_id, model_id, source, revision, full_profile]`, with sorted
+keys and compact separators. It does not depend on display_name, listing order,
+registration or observed hardware. This hash identifies a configuration; **it is
+not a checksum of the weights**.
 
-## Límites arquitectónicos y operativos
+An entry without a revision cannot be submitted as an executable selection (the
+current catalog no longer produces any). `POST /api/jobs` revalidates the ID
+against the current catalog and pins in the job the full descriptor/profile, the
+execution decision and the options that affect the result (for example language)
+— see "Reproducible selection" in [jobs.md](jobs.md). The ID alone does not
+replace that snapshot.
 
-El router recibe `GetTranscriptionOptions` desde bootstrap, sin inspección de
-disco ni imports de SDK. El caso de uso depende de dos ports read-only y aplica
-la política con `HardwareCapabilities → ExecutionDecision`. Los adapters leen
-registros y consultan runtime. No hay nuevo service locator ni singleton mutable.
-La ruta síncrona se ejecuta en el thread pool de FastAPI, no en el event loop.
+## Architectural and operational limits
 
-No se descargan modelos, se cargan engines ni se escriben manifests al consultar.
-El resultado es una observación y puede quedar desactualizado; deberá revalidarse
-al crear un job. El runtime conserva su calificación experimental. Model Manager,
-reparación, benchmarks y verificación exhaustiva siguen en Sección 8.
+The router receives `GetTranscriptionOptions` from bootstrap, with no disk
+inspection or SDK imports. The use case depends on two read-only ports and applies
+the policy through `HardwareCapabilities → ExecutionDecision`. The adapters read
+registrations and query the runtime. There is no new service locator or mutable
+singleton. The synchronous route runs in FastAPI's thread pool, not in the event
+loop.
 
-No cambia ninguna decisión arquitectónica de ADR-0001/0004; este documento
-describe el contrato de consulta, no introduce un nuevo ADR.
+Querying does not download models, load engines or write manifests. The result is
+an observation and can go stale; it must be revalidated when a job is created.
+The runtime keeps its experimental rating.
+
+This changes no architectural decision of ADR-0001/0004; this document describes
+the query contract and introduces no new ADR.
