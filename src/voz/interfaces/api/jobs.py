@@ -44,6 +44,7 @@ from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
 )
+from voz.interfaces.api.errors import api_error
 from voz.interfaces.api.job_views import timing_view
 from voz.interfaces.api.segments import segment_view
 
@@ -94,15 +95,8 @@ _REDIARIZE_STATUS: dict[RediarizeFailureCode, int] = {
 }
 
 
-def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail={"code": code, "message": message, **extra},
-    )
-
-
 def _invalid_diarization(message: str) -> HTTPException:
-    return _error(422, "diarization_options_invalid", message)
+    return api_error(422, "diarization_options_invalid", message)
 
 
 def parse_diarization(raw: object) -> DiarizationOptions | None:
@@ -257,7 +251,7 @@ def create_jobs_router(
     def view(job: TranscriptionJob) -> dict[str, object]:
         selection = selections_repo.get(job.id)
         if selection is None:
-            raise _error(
+            raise api_error(
                 500, "job_selection_missing", "The job has no persisted selection."
             )
         return job_view(
@@ -267,7 +261,7 @@ def create_jobs_router(
     def require_job(job_id: UUID) -> TranscriptionJob:
         job = jobs_repo.get(job_id)
         if job is None:
-            raise _error(404, "job_not_found", "The job does not exist.")
+            raise api_error(404, "job_not_found", "The job does not exist.")
         return job
 
     def post_job(request: CreateJobRequest) -> dict[str, object]:
@@ -291,7 +285,7 @@ def create_jobs_router(
             if error.required_mib is not None:
                 extra["required_mib"] = error.required_mib
                 extra["available_mib"] = error.available_mib
-            raise _error(
+            raise api_error(
                 _CREATE_STATUS[error.code],
                 error.code.value,
                 error.user_message,
@@ -315,9 +309,9 @@ def create_jobs_router(
         try:
             return view(runner.cancel(job_id))
         except JobNotFound:
-            raise _error(404, "job_not_found", "The job does not exist.") from None
+            raise api_error(404, "job_not_found", "The job does not exist.") from None
         except JobTerminal:
-            raise _error(409, "job_terminal", "The job already finished.") from None
+            raise api_error(409, "job_terminal", "The job already finished.") from None
 
     def job_preview(job_id: UUID, after_ms: int = Query(0, ge=0)) -> dict[str, object]:
         """Segments confirmed in checkpoints; ``after_ms`` asks only for newer ones."""
@@ -335,7 +329,9 @@ def create_jobs_router(
 
     def list_segments(transcript_id: UUID) -> dict[str, object]:
         if transcripts_repo.get(transcript_id) is None:
-            raise _error(404, "transcript_not_found", "The transcript does not exist.")
+            raise api_error(
+                404, "transcript_not_found", "The transcript does not exist."
+            )
         # S7.05: each word takes the speaker of the turn covering its midpoint.
         timeline = (
             None
@@ -363,7 +359,7 @@ def create_jobs_router(
         try:
             started = rediarize.execute(transcript_id, options)
         except RediarizeError as error:
-            raise _error(
+            raise api_error(
                 _REDIARIZE_STATUS[error.code], error.code.value, error.user_message
             ) from None
         runner.enqueue(started.job.id)

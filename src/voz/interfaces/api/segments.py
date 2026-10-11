@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from voz.application.edit_segment import (
     EditSegmentText,
@@ -16,6 +16,7 @@ from voz.application.edit_segment import (
 from voz.application.ports.repositories import SegmentRepository
 from voz.application.word_speakers import SpeakerTimeline, word_speaker_ids
 from voz.domain.entities.segment import Segment
+from voz.interfaces.api.errors import api_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,13 +64,6 @@ def segment_view(
     }
 
 
-def _error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail={"code": code, "message": message, **extra},
-    )
-
-
 def create_segments_router(
     edit_segment: EditSegmentText, segments_repo: SegmentRepository
 ) -> APIRouter:
@@ -82,15 +76,15 @@ def create_segments_router(
                 edit_segment.execute(segment_id, request.text, request.revision)
             )
         except SegmentNotFound:
-            raise _error(
+            raise api_error(
                 404, "segment_not_found", "The segment does not exist."
             ) from None
         except SegmentTextInvalid:
-            raise _error(
+            raise api_error(
                 422, "segment_text_invalid", "The segment text cannot be empty."
             ) from None
         except SegmentRevisionConflict as conflict:
-            raise _error(
+            raise api_error(
                 409,
                 "segment_revision_conflict",
                 "The segment changed since it was loaded.",

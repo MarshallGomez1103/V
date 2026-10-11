@@ -6,7 +6,6 @@ import hashlib
 import os
 import stat
 import sys
-import unicodedata
 from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO
@@ -18,6 +17,7 @@ from voz.application.ports.media_storage import (
     MediaStorageErrorCode,
 )
 from voz.domain.entities.media_asset import MediaAsset
+from voz.domain.filename_safety import has_unsafe_filename_character
 from voz.infrastructure.safe_fs import (
     BINARY_FLAG,
     DirectoryDurabilityError,
@@ -29,9 +29,6 @@ from voz.infrastructure.safe_fs import (
 
 _COPY_CHUNK_BYTES = 1024 * 1024
 _READ_ONLY_MODE = 0o444
-_UNSAFE_BIDI_CLASSES = frozenset(
-    {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
-)
 
 
 class FileSystemMediaStorage:
@@ -258,11 +255,7 @@ class FileSystemMediaStorage:
 
     @staticmethod
     def _validate_display_name(name: str) -> str:
-        contains_unsafe_control = any(
-            unicodedata.category(character) in {"Cc", "Cf"}
-            or unicodedata.bidirectional(character) in _UNSAFE_BIDI_CLASSES
-            for character in name
-        )
+        contains_unsafe_control = has_unsafe_filename_character(name)
         if (
             not name.strip()
             or name in {".", ".."}

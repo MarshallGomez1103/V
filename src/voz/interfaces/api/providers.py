@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from voz.application.estimate_cloud_cost import (
@@ -17,6 +17,7 @@ from voz.application.ports.provider_secrets import (
     SecretsError,
     SecretsFailureCode,
 )
+from voz.interfaces.api.errors import api_error
 
 _SECRETS_STATUS = {
     SecretsFailureCode.KEY_INVALID: 422,
@@ -65,7 +66,7 @@ def create_providers_router(
 
     def require_known(provider_id: str) -> None:
         if provider_id not in {item.id for item in known}:
-            raise _error(404, "provider_not_found", "Unknown cloud provider.")
+            raise api_error(404, "provider_not_found", "Unknown cloud provider.")
 
     def list_providers() -> list[ProviderView]:
         return [
@@ -83,7 +84,7 @@ def create_providers_router(
         try:
             secrets.set(provider_id, body.key)
         except SecretsError as error:
-            raise _error(
+            raise api_error(
                 _SECRETS_STATUS[error.code], error.code, error.user_message
             ) from None
         return Response(status_code=204)
@@ -93,7 +94,7 @@ def create_providers_router(
         try:
             secrets.delete(provider_id)
         except SecretsError as error:
-            raise _error(
+            raise api_error(
                 _SECRETS_STATUS[error.code], error.code, error.user_message
             ) from None
         return Response(status_code=204)
@@ -116,7 +117,7 @@ def create_providers_router(
             try:
                 result = use_case.execute(provider_id, media_asset_id, model)
             except EstimateError as error:
-                raise _error(
+                raise api_error(
                     _ESTIMATE_STATUS[error.code], error.code, error.user_message
                 ) from None
             return EstimateView(
@@ -128,9 +129,3 @@ def create_providers_router(
 
         router.add_api_route("/{provider_id}/estimate", get_estimate, methods=["GET"])
     return router
-
-
-def _error(status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code, detail={"code": code, "message": message}
-    )

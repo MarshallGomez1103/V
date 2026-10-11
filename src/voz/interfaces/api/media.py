@@ -13,7 +13,6 @@ import errno
 import logging
 import os
 import shutil
-import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,13 +31,12 @@ from voz.application.ports.media_storage import (
     MediaStorageErrorCode,
 )
 from voz.application.ports.repositories import ProjectRepository
+from voz.domain.filename_safety import has_unsafe_filename_character
+from voz.interfaces.api.errors import api_error
 
 DEFAULT_MAX_UPLOAD_BYTES: Final = 8 * 1024**3
 FILENAME_HEADER: Final = "X-Voz-Filename"
 _MAX_FILENAME_LENGTH: Final = 255
-_UNSAFE_BIDI_CLASSES: Final = frozenset(
-    {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
-)
 _PROBE_STATUS: Final[Mapping[MediaProbeFailureCode, tuple[int, str, str]]] = {
     MediaProbeFailureCode.INVALID_MEDIA: (
         422,
@@ -98,7 +96,7 @@ def create_media_router(
     async def upload_media(project_id: UUID, request: Request) -> MediaUploadResponse:
         filename = _sanitized_filename(request.headers.get(FILENAME_HEADER))
         if await run_in_threadpool(projects.get, project_id) is None:
-            raise _error(404, "project_not_found", "The project does not exist.")
+            raise api_error(404, "project_not_found", "The project does not exist.")
         _reject_declared_oversize(
             request.headers.get("content-length"), max_upload_bytes
         )
@@ -131,26 +129,17 @@ def create_media_router(
     return router
 
 
-def _error(status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail={"code": code, "message": message},
-    )
-
-
 def _sanitized_filename(raw_header: str | None) -> str:
     """Accept a percent-encoded UTF-8 basename or reject the request."""
     if raw_header is None:
-        raise _error(400, "filename_invalid", f"{FILENAME_HEADER} header is required.")
+        raise api_error(
+            400, "filename_invalid", f"{FILENAME_HEADER} header is required."
+        )
     try:
         name = unquote(raw_header, errors="strict").strip()
     except UnicodeDecodeError:
         name = ""
-    unsafe_characters = any(
-        unicodedata.category(character) in {"Cc", "Cf"}
-        or unicodedata.bidirectional(character) in _UNSAFE_BIDI_CLASSES
-        for character in name
-    )
+    unsafe_characters = has_unsafe_filename_character(name)
     if (
         not name
         or len(name) > _MAX_FILENAME_LENGTH
@@ -159,7 +148,7 @@ def _sanitized_filename(raw_header: str | None) -> str:
         or "\\" in name
         or unsafe_characters
     ):
-        raise _error(
+        raise api_error(
             400,
             "filename_invalid",
             f"{FILENAME_HEADER} must be a plain file name without path separators.",
@@ -176,7 +165,7 @@ def _reject_declared_oversize(content_length: str | None, limit: int) -> None:
 
 
 def _disk_full() -> HTTPException:
-    return _error(
+    return api_error(
         507,
         "disk_space_insufficient",
         "There is not enough free disk space for this upload.",
@@ -184,7 +173,9 @@ def _disk_full() -> HTTPException:
 
 
 def _too_large() -> HTTPException:
-    return _error(413, "media_too_large", "The uploaded file exceeds the size limit.")
+    return api_error(
+        413, "media_too_large", "The uploaded file exceeds the size limit."
+    )
 
 
 def _create_staging_directory(staging_root: Path) -> Path:
@@ -207,7 +198,7 @@ async def _stream_body_to(request: Request, destination: Path, limit: int) -> No
                 raise _too_large()
             output.write(chunk)
     if received == 0:
-        raise _error(400, "media_empty", "The uploaded file is empty.")
+        raise api_error(400, "media_empty", "The uploaded file is empty.")
 
 
 async def _import_or_translate(
@@ -221,16 +212,16 @@ async def _import_or_translate(
         )
     except MediaProbeError as error:
         status_code, code, message = _PROBE_STATUS[error.code]
-        raise _error(status_code, code, message) from None
+        raise api_error(status_code, code, message) from None
     except InsufficientDiskSpace:
         raise _disk_full() from None
     except MediaStorageError as error:
         if error.code is MediaStorageErrorCode.UNSAFE_DISPLAY_NAME:
-            raise _error(
+            raise api_error(
                 400, "filename_invalid", "The file name cannot be stored safely."
             ) from None
         _logger.warning("Media storage rejected an upload: %s", error.code.value)
-        raise _error(
+        raise api_error(
             503,
             "media_storage_unavailable",
             "Media storage is not available right now.",
@@ -239,7 +230,7 @@ async def _import_or_translate(
         # Last-resort HTTP boundary: a stable 500 instead of a leaked trace.
         # Only the exception type is logged: messages may embed host paths.
         _logger.error("Media import failed: %s", type(error).__name__)
-        raise _error(
+        raise api_error(
             500, "media_import_failed", "The media import failed unexpectedly."
         ) from None
 

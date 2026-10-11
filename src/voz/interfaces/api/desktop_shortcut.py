@@ -6,16 +6,13 @@ another origin cannot send it without a CORS preflight, which VOZ never allows).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header
 
 from voz.application.ports.desktop_shortcut import DesktopShortcut, DesktopShortcutError
+from voz.interfaces.api.errors import api_error
 
 ACTION_HEADER = "X-VOZ-Action"
 ACTION_VALUE = "desktop-shortcut"
-
-
-def _error(status: int, code: str, message: str) -> HTTPException:
-    return HTTPException(status_code=status, detail={"code": code, "message": message})
 
 
 def create_desktop_shortcut_router(shortcut: DesktopShortcut) -> APIRouter:
@@ -36,13 +33,13 @@ def create_desktop_shortcut_router(shortcut: DesktopShortcut) -> APIRouter:
         action: str | None = Header(default=None, alias=ACTION_HEADER),
     ) -> dict[str, object]:
         if action != ACTION_VALUE:
-            raise _error(
+            raise api_error(
                 403,
                 "desktop_shortcut_forbidden",
                 f"Send the header {ACTION_HEADER}: {ACTION_VALUE}.",
             )
         if not shortcut.supported():
-            raise _error(
+            raise api_error(
                 409,
                 "desktop_shortcut_unsupported",
                 "VOZ must run from its folder (with the Iniciar launchers) to "
@@ -51,7 +48,7 @@ def create_desktop_shortcut_router(shortcut: DesktopShortcut) -> APIRouter:
         try:
             shortcut.create()
         except DesktopShortcutError:
-            raise _error(
+            raise api_error(
                 500,
                 "desktop_shortcut_failed",
                 "The shortcut could not be created.",

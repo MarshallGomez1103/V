@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from voz.application.assign_speakers import TranscriptNotFound
 from voz.application.edit_segment import SegmentNotFound
@@ -20,6 +20,7 @@ from voz.application.speakers import (
     SpeakerUpdateInvalid,
     UpdateSpeaker,
 )
+from voz.interfaces.api.errors import api_error
 from voz.interfaces.api.segments import segment_view
 
 
@@ -52,12 +53,6 @@ def speaker_view(summary: SpeakerSummary) -> dict[str, object]:
     }
 
 
-def _error(status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code, detail={"code": code, "message": message}
-    )
-
-
 def create_speakers_router(
     list_speakers: ListTranscriptSpeakers,
     update_speaker: UpdateSpeaker,
@@ -70,7 +65,7 @@ def create_speakers_router(
         try:
             summaries = list_speakers.execute(transcript_id)
         except TranscriptNotFound:
-            raise _error(
+            raise api_error(
                 404, "transcript_not_found", "The transcript does not exist."
             ) from None
         return {"speakers": [speaker_view(summary) for summary in summaries]}
@@ -85,11 +80,11 @@ def create_speakers_router(
                 )
             )
         except SpeakerNotFound:
-            raise _error(
+            raise api_error(
                 404, "speaker_not_found", "The speaker does not exist."
             ) from None
         except SpeakerUpdateInvalid:
-            raise _error(
+            raise api_error(
                 422,
                 "speaker_update_invalid",
                 "The name must have 1 to 80 characters and the color use #rrggbb.",
@@ -103,11 +98,11 @@ def create_speakers_router(
                 )
             }
         except SpeakerNotFound:
-            raise _error(
+            raise api_error(
                 404, "speaker_not_found", "The speaker does not exist."
             ) from None
         except SpeakerMergeInvalid:
-            raise _error(
+            raise api_error(
                 409,
                 "speaker_merge_invalid",
                 "Only two different speakers of the same transcript can be merged.",
@@ -121,11 +116,11 @@ def create_speakers_router(
                 assign_segment_speaker.execute(segment_id, request.speaker_id)
             )
         except SegmentNotFound:
-            raise _error(
+            raise api_error(
                 404, "segment_not_found", "The segment does not exist."
             ) from None
         except SegmentSpeakerInvalid:
-            raise _error(
+            raise api_error(
                 409,
                 "segment_speaker_invalid",
                 "The speaker does not belong to this segment's transcript.",
