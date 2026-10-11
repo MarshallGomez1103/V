@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import zipfile
 from collections.abc import Callable, Mapping
@@ -125,6 +127,7 @@ def healthy_report(
     hardware_probe: HardwareProbe | None = None,
     model_store: ModelStoreView | None = None,
     environ: Mapping[str, str] | None = None,
+    python_executable: str = "/usr/bin/python",
 ) -> DoctorReport:
     """Every dependency faked as healthy; override one to exercise a path."""
     return run_doctor(
@@ -139,6 +142,7 @@ def healthy_report(
         or FakeHardwareProbe(frozenset({ComputePrecision.FLOAT16})),
         model_store=model_store or installed_store(tmp_path),
         environ={} if environ is None else environ,
+        python_executable=python_executable,
     )
 
 
@@ -155,7 +159,7 @@ def test_all_ok_exits_zero(tmp_path: Path) -> None:
     rendered = render(report)
     assert "ffmpeg version 6.1.1" in rendered
     assert "Copyright" not in rendered
-    assert "Resumen: 10 ok, 0 avisos, 0 fallos." in rendered
+    assert "Resumen: 11 ok, 0 avisos, 0 fallos." in rendered
 
 
 def test_missing_ffmpeg_fails_and_exits_one(tmp_path: Path) -> None:
@@ -179,6 +183,99 @@ def test_tool_timeout_is_a_failure_without_traceback(tmp_path: Path) -> None:
     assert statuses(report)["ffmpeg"] == "fail"
     assert "TimeoutExpired" in report.checks[0].detail
     assert "Traceback" not in report.checks[0].detail
+
+
+def fake_v(directory: Path, name: str = "v") -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    executable = directory / name
+    # Never executed: the check must only compare paths.
+    executable.write_text("#!/bin/sh\necho foreign-v-ran >&2\nexit 99\n")
+    executable.chmod(0o755)
+    return executable
+
+
+def path_which(*directories: Path) -> Which:
+    """Real ``shutil.which`` for v/voz over a simulated PATH; other tools stay faked."""
+    search = os.pathsep.join(str(d) for d in directories)
+
+    def which(name: str) -> str | None:
+        if name in {"v", "voz"}:
+            return shutil.which(name, path=search)
+        return fake_which(name)
+
+    return which
+
+
+def v_check(report: DoctorReport) -> tuple[str, str]:
+    check = next(c for c in report.checks if c.name == "comando v")
+    return check.status, check.detail
+
+
+def test_foreign_v_first_in_path_warns_without_running_it(tmp_path: Path) -> None:
+    foreign = fake_v(tmp_path / "vlang")
+    venv_bin = tmp_path / "venv" / "bin"
+    fake_v(venv_bin)
+    fake_v(venv_bin, "voz")
+
+    report = healthy_report(
+        tmp_path,
+        which=path_which(foreign.parent, venv_bin),
+        python_executable=str(venv_bin / "python"),
+    )
+
+    status, detail = v_check(report)
+    assert status == "warn"
+    assert "no es el de V" in detail
+    assert str(tmp_path) not in detail
+    assert exit_code(report) == 0
+
+
+def test_missing_v_is_informational_not_a_failure(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    report = healthy_report(
+        tmp_path,
+        which=lambda name: None if name == "v" else f"/usr/bin/{name}",
+        python_executable=str(tmp_path / "venv" / "bin" / "python"),
+    )
+
+    status, detail = v_check(report)
+    assert status == "ok"
+    assert "no hay `v` en PATH" in detail
+    assert "uv run" in detail
+    assert exit_code(report) == 0
+
+
+def test_own_v_next_to_interpreter_is_ok(tmp_path: Path) -> None:
+    venv_bin = tmp_path / "venv" / "bin"
+    fake_v(venv_bin)
+
+    report = healthy_report(
+        tmp_path,
+        which=path_which(venv_bin),
+        python_executable=str(venv_bin / "python"),
+    )
+
+    assert v_check(report) == ("ok", "`v` en PATH es el de V")
+
+
+def test_own_v_through_symlink_next_to_voz_is_ok(tmp_path: Path) -> None:
+    # uv tool install: ~/.local/bin/v -> <tool venv>/bin/v
+    tool_bin = tmp_path / "tools" / "voz-transcriber" / "bin"
+    real = fake_v(tool_bin)
+    fake_v(tool_bin, "voz")
+    user_bin = tmp_path / "local-bin"
+    user_bin.mkdir()
+    (user_bin / "v").symlink_to(real)
+    (user_bin / "voz").symlink_to(tool_bin / "voz")
+
+    report = healthy_report(
+        tmp_path,
+        which=path_which(user_bin),
+        python_executable=str(tool_bin / "python"),
+    )
+
+    assert v_check(report)[0] == "ok"
 
 
 def test_busy_port_warns(tmp_path: Path) -> None:
@@ -332,6 +429,7 @@ def test_cli_doctor_json_is_parseable(
     assert names == [
         "ffmpeg",
         "ffprobe",
+        "comando v",
         "puerto",
         "rutas",
         "disco",

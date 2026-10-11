@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -96,6 +97,24 @@ def test_wheel_declares_console_script(dist: Path) -> None:
             if name.endswith(".dist-info/entry_points.txt")
         )
     assert "voz = voz.interfaces.cli.main:main" in entry_points
+    assert "v = voz.interfaces.cli.main:main" in entry_points.splitlines()
+
+
+def test_pyproject_declares_v_and_voz_for_the_same_entrypoint() -> None:
+    # Offline guard that does not need a build: `v` is the brand, `voz` the alias.
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
+        "project"
+    ]
+    assert project["scripts"] == {
+        "v": "voz.interfaces.cli.main:main",
+        "voz": "voz.interfaces.cli.main:main",
+    }
+    assert project["name"] == "voz-transcriber"
+    assert set(project["urls"].values()) >= {"https://github.com/MarshallGomez1103/V"}
+    assert all(
+        url.startswith("https://github.com/MarshallGomez1103/V")
+        for url in project["urls"].values()
+    )
 
 
 def test_sdist_has_what_a_rebuild_needs(sdist_names: set[str]) -> None:

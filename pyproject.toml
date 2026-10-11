@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "voz-transcriber"
 version = "0.1.0"
-description = "Local-first workspace for long-form transcription."
+description = "Local-first voice workspace (V, formerly VOZ): long-form transcription today."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -40,7 +40,13 @@ diarization = [
   "sherpa-onnx-core==1.13.8",
 ]
 
+[project.urls]
+Homepage = "https://github.com/MarshallGomez1103/V"
+Repository = "https://github.com/MarshallGomez1103/V"
+Issues = "https://github.com/MarshallGomez1103/V/issues"
+
 [project.scripts]
+v = "voz.interfaces.cli.main:main"
 voz = "voz.interfaces.cli.main:main"
 
 [dependency-groups]

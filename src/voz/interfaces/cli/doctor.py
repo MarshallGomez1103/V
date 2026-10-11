@@ -6,6 +6,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,6 +102,43 @@ def _check_tool(name: str, which: Which, run: Run) -> DoctorCheck:
     # ponytail: the first line already reads "ffmpeg version X"; drop the rest.
     version = first_line.split(" Copyright")[0].strip() or "versión desconocida"
     return DoctorCheck(name, "ok", version)
+
+
+def _same_file(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return False
+
+
+def _check_v_command(which: Which, python_executable: str) -> DoctorCheck:
+    """Warn when the first ``v`` on PATH is not V (e.g. the vlang compiler).
+
+    Only paths are compared; the foreign binary is never executed.
+    """
+    name = "comando v"
+    found = which("v")
+    if found is None:
+        return DoctorCheck(
+            name,
+            "ok",
+            "no hay `v` en PATH (normal en un checkout con `uv run`); "
+            "`voz` es el mismo programa",
+        )
+    # ponytail: "ours" = a `v` next to this interpreter or next to the `voz` on
+    # PATH. Ceiling: a copy of V in an unrelated bin dir reads as foreign.
+    own_dirs = [Path(python_executable).parent]
+    voz = which("voz")
+    if voz is not None:
+        own_dirs.append(Path(voz).parent)
+    if any(_same_file(Path(found), directory / "v") for directory in own_dirs):
+        return DoctorCheck(name, "ok", "`v` en PATH es el de V")
+    return DoctorCheck(
+        name,
+        "warn",
+        "el primer `v` en PATH no es el de V (¿el compilador del lenguaje V?); "
+        "usa `voz` o ajusta PATH",
+    )
 
 
 def _check_port(
@@ -258,6 +296,7 @@ def run_doctor(
     hardware_probe: HardwareProbe | None = None,
     model_store: ModelStoreView | None = None,
     environ: Mapping[str, str] | None = None,
+    python_executable: str = sys.executable,
 ) -> DoctorReport:
     """Run every local prerequisite check; dependencies are injectable for tests."""
     resolved = resolve_voz_paths() if paths is None else paths
@@ -269,6 +308,7 @@ def run_doctor(
         (
             _check_tool("ffmpeg", which, run),
             _check_tool("ffprobe", which, run),
+            _check_v_command(which, python_executable),
             _check_port(host, port, port_in_use),
             _check_paths(resolved, redact=redact),
             _check_disk(resolved.data, resolved.cache, free_bytes),
