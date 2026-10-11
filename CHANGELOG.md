@@ -40,6 +40,44 @@ artefactos. Lo siguiente es lo que ya existe en el repositorio.
   [guía de instalación en Linux](docs/install/linux.md).
 - Documentación: ADR 0001-0006, diagramas C4, contratos de `docs/api/`,
   `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `NOTICE` y licencias de fixtures.
+- Windows, macOS y Linux con doble clic: `Iniciar-Windows.bat`,
+  `Iniciar-Mac.command` e `Iniciar-Linux.sh` instalan `uv` si falta y arrancan
+  VOZ; FFmpeg/ffprobe se descargan una vez si faltan (fijados por commit y
+  SHA-256); rutas nativas en Windows y macOS y sistema de archivos portable
+  (`safe_fs`). Guía en [docs/install/windows-macos.md](docs/install/windows-macos.md).
+- Un segundo doble clic reutiliza el VOZ que ya está abierto en lugar de lanzar
+  otro servidor.
+- Botón **Cerrar servidor** (`POST /api/shutdown`) y acceso directo de escritorio
+  (`GET/POST /api/desktop-shortcut`), ambos protegidos con cabecera anti-CSRF.
+- VOZ instalable como aplicación desde Chrome/Edge (PWA: manifiesto e iconos
+  propios), primera fase del [plan de empaquetado con Tauri](docs/packaging/tauri-plan.md).
+- Interfaz nueva con IBM Carbon Design System: UI Shell, temas White/Gray
+  10/90/100 y automático, 8 acentos, español e inglés (i18n es/en), tooltips en
+  términos técnicos e IBM Plex empaquetada en local (el bundle no carga nada de
+  Internet).
+- Editor de transcripción: hablante a la izquierda, línea de tiempo de hablantes
+  con cursor sincronizado, panel de propiedades y lista virtualizada.
+- Progreso por etapa (Preparando, Transcribiendo, Hablantes, Guardando) con
+  tiempo transcurrido, ETA y texto en vivo (`GET /api/jobs/{id}/preview`); el
+  texto ya se puede leer mientras se calculan los hablantes. `POST /api/jobs`
+  acepta `prompt` (instrucciones de estilo). Migración `0008`.
+- Home con biblioteca de transcripciones (`GET /api/library`) y enlace propio por
+  transcripción (`#/t/<id>`, `#/nueva`, `#/modelos`, `#/proveedores`): Atrás y
+  recargar reabren el mismo trabajo. Contrato en [docs/api/library.md](docs/api/library.md).
+- Renombrar (`PATCH /api/projects/{id}`) y eliminar proyectos
+  (`DELETE /api/projects/{id}`, borra también sus archivos de medios; 409
+  `project_busy` si hay un job en curso).
+- Recalcular hablantes sin volver a transcribir
+  (`POST /api/transcripts/{id}/rediarize`), con umbral de agrupación medido,
+  fusión de hablantes muy pequeños y `talk_ms`/`first_ms` por hablante; panel de
+  hablantes con tiempo de habla, filtro y muestra de audio.
+- La cola de revisión salta al segmento y al audio.
+- Exportar con vista previa: diálogo con formato, "Incluir tiempos", "Agrupar por
+  hablante" y primeras líneas del resultado antes de descargar.
+- Reproductor con volumen hasta 300 %, selector de velocidad y atajos de teclado.
+- Piel **Material 3** como sistema de diseño alternativo, seleccionable en
+  Ajustes junto a Carbon (colores desde el acento elegido, Roboto Flex local);
+  evaluación en [docs/design/material3.md](docs/design/material3.md).
 
 ### Cambiado
 

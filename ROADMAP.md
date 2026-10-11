@@ -184,6 +184,23 @@ Oleada 5b cerró S6 (salvo S6.03), S7 (salvo S7.02), S9 (salvo S9.10),
 S11 (salvo S11.09), S12, S14.02/07/13, S15.10 y S16.19. Siguiente (5c): S13
 calidad, badge CLOUD (S11.09), S15.06, S16.02.
 
+
+Desde 2026-10-10 el trabajo activo es el Programa V (marca V, endurecimiento,
+documentación en inglés, TTS y release). Para retomar, leer
+`.ai/v-plan/HANDOFF.md`, `.ai/v-plan/STATUS.md` y
+`.ai/v-plan/AGENT-PROTOCOL.md` (privados, fuera de Git). Línea base: HEAD
+1186908 = `origin/main`; pytest 1612 passed / 3 skipped, vitest 543.
+
+## Trabajo activo — v3 y portable
+
+| Paquete | IDs | Agente | Estado | Último logro verificable |
+| --- | --- | --- | --- | --- |
+| PORT-001 | S15.15-S15.18 | `root` | verificado | Windows/macOS/Linux con doble clic, segundo doble clic reutiliza servidor y acceso directo de escritorio; PWA instalable sin test (S15.17 abierto). |
+| UI-V2-001 | S5.27-S5.30 | `root` | verificado | Editor, progreso por etapa con ETA, cerrar servidor, temas Carbon e i18n es/en. |
+| API-V3-001 | S5.32, S6.17-S6.19, S14.15-S14.16 | `root` | verificado | `GET /api/library`, renombrar/eliminar proyecto y `rediarize`: `tests/integration/test_library_projects_api.py`, `tests/integration/application/test_rediarize.py`. |
+| UI-V3-001 | S5.21-S5.26 | `root` | verificado | Home/biblioteca, rutas por hash, revisión que salta al audio, exportar con vista previa, volumen hasta 300 % y panel de hablantes. |
+| UI-M3-001 | S5.31 | `root` | verificado | Piel Material 3 seleccionable en Ajustes; CI verde en 3 SO (1186908). |
+
 ## Sección 1 — Bootstrap del repositorio
 
 - [x] **S1.01** Inicializar el repositorio con la estructura base acordada.
@@ -317,6 +334,18 @@ nuevos ni se modifica la calificación experimental del runtime/CUDA.
 - [x] **S5.18** Exponer opciones canónicas de transcripción mediante consulta backend.
 - [x] **S5.19** Implementar selector básico frontend, sin Model Manager.
 - [x] **S5.20** Persistir selección reproducible para creación de job.
+- [x] **S5.21** Home con biblioteca de transcripciones: abrir, renombrar y eliminar (`apps/web/src/components/Library.test.tsx`).
+- [x] **S5.22** Rutas por hash con enlace propio por transcripción y Atrás/recargar (`apps/web/src/lib/navigation.test.ts`).
+- [x] **S5.23** La cola de revisión salta al segmento y al audio (`ReviewQueue.test.tsx`, `SegmentList.test.tsx`).
+- [x] **S5.24** Exportar con vista previa, tiempos y agrupar por hablante (`apps/web/src/App.flows.test.tsx`).
+- [x] **S5.25** Audio con volumen hasta 300 %, velocidad y atajos (`AudioPlayer.test.tsx`).
+- [x] **S5.26** Panel de hablantes con tiempo de habla, filtro y muestra (`SpeakersPanel.test.tsx`, `lib/speakerTurns.test.ts`).
+- [x] **S5.27** Progreso por etapa con ETA y texto en vivo (`App.flows.test.tsx`, `tests/unit/test_job_views.py`).
+- [x] **S5.28** Botón Cerrar servidor (`api/shutdown.test.ts`, `tests/integration/test_shutdown_api.py`).
+- [x] **S5.29** Temas Carbon, acentos e i18n es/en (`i18n/i18n.test.ts`, `theme/appearance.test.ts`).
+- [x] **S5.30** Editor de transcripción con línea de tiempo de hablantes (`App.flows.test.tsx`, `SegmentList.test.tsx`).
+- [x] **S5.31** Piel Material 3 seleccionable en Ajustes (`theme/m3.test.ts`, `theme/appearance.test.ts`).
+- [x] **S5.32** `GET /api/library` (`tests/integration/test_library_projects_api.py`).
 
 S5.18–S5.20 consultan y seleccionan opciones conocidas; descargas, reparación,
 checksums exhaustivos y administración avanzada permanecen en Sección 8.
@@ -342,6 +371,9 @@ edición es usable con una grabación larga.
 - [x] **S6.14** Probar overlap y segmentos sin speaker.
 - [x] **S6.15** Verificar liberación secuencial de VRAM entre ASR y diarización.
 - [x] **S6.16** Implementar adapter sherpa-onnx local sin torch ni token (ADR-0007).
+- [x] **S6.17** `POST /api/transcripts/{id}/rediarize` sin re-transcribir (`tests/integration/application/test_rediarize.py`).
+- [x] **S6.18** Umbral medido y fusión de hablantes pequeños (`tests/unit/application/test_diarization_cleanup.py`, `test_speaker_matching.py`).
+- [x] **S6.19** `talk_ms` y `first_ms` por hablante (`tests/integration/test_speakers_api.py`).
 
 **Criterio de salida:** “quién dijo qué” se puede revisar y corregir sin volver a
 transcribir.
@@ -488,6 +520,8 @@ con sus grabaciones sin presentar intuiciones como resultados.
 - [x] **S14.12** Añadir fuzz tests de metadata de importación.
 - [x] **S14.13** Probar cierre/reapertura durante un job largo.
 - [x] **S14.14** Probar idempotencia de resume.
+- [x] **S14.15** Renombrar proyecto `PATCH /api/projects/{id}` (`tests/integration/test_library_projects_api.py`).
+- [x] **S14.16** Eliminar proyecto con sus medios y 409 `project_busy` (`tests/integration/test_library_projects_api.py`).
 
 **Criterio de salida:** cerrar o reabrir VOZ no destruye el trabajo confirmado y
 los fallos dan acciones recuperables.
@@ -508,6 +542,10 @@ los fallos dan acciones recuperables.
 - [x] **S15.12** Evaluar AppImage con prototipo medido.
 - [x] **S15.13** Evaluar Flatpak con prototipo medido.
 - [ ] **S15.14** Publicar una release solo con autorización explícita.
+- [x] **S15.15** Portable en Windows/macOS/Linux con doble clic y FFmpeg bajo demanda (job `backend-portable` de `.github/workflows/ci.yml` en windows-latest y macos-latest; sin prueba manual).
+- [x] **S15.16** Un segundo doble clic reutiliza el VOZ abierto (`tests/unit/test_cli.py`).
+- [ ] **S15.17** PWA instalable desde Chrome/Edge (sin test automatizado).
+- [x] **S15.18** Acceso directo de escritorio (`tests/unit/infrastructure/test_desktop_shortcut.py`, `tests/integration/test_desktop_shortcut_api.py`; no portable: ver Programa V V1-05).
 
 **Criterio de salida:** un tercero puede instalar un artefacto siguiendo solo el
 README, sin depender del checkout.
