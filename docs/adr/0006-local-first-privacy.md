@@ -83,6 +83,15 @@ evidencia y sus límites reales.
   los transcripts sin credenciales. Hoy la CLI no emite una advertencia en ese
   caso; una advertencia y un modo de autenticación local son **planificados**
   (el plan maestro menciona `auth-local`).
+- **DNS rebinding mitigado (V0-03).** Escuchar en loopback no basta: una página
+  de `evil.example` puede re-resolver su nombre a `127.0.0.1` y leer la API como
+  mismo origen. `HostGuardMiddleware` (`src/voz/interfaces/api/host_guard.py`)
+  responde 400 `host_not_allowed` a toda petición HTTP (API, SSE y estáticos)
+  cuyo `Host` no sea `127.0.0.1`, `localhost`, `[::1]` o el host pasado con
+  `--host`; el puerto da igual. `uvicorn voz.bootstrap:app` queda protegido con
+  la lista de loopback. Los tests usan `http://127.0.0.1` como `base_url`
+  (`tests/conftest.py`); `testserver` nunca entra en la lista. Con
+  `--host 0.0.0.0` solo se acepta un `Host` de loopback hasta V0-04.
 - Otros procesos y usuarios del mismo equipo pueden conectar a `127.0.0.1:8765`.
   El alcance de seguridad está en [SECURITY.md](../../SECURITY.md).
 - No hay `Content-Security-Policy` ni cabeceras de endurecimiento en el servidor

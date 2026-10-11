@@ -4,7 +4,7 @@ Framework and infrastructure wiring belongs here so that the domain remains
 independent of transport concerns.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
@@ -146,6 +146,7 @@ from voz.infrastructure.secrets import ProviderSecrets
 from voz.interfaces.api.desktop_shortcut import create_desktop_shortcut_router
 from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
+from voz.interfaces.api.host_guard import LOOPBACK_HOSTS, HostGuardMiddleware
 from voz.interfaces.api.job_events import create_job_events_router
 from voz.interfaces.api.job_views import job_view as job_view_without_selection
 from voz.interfaces.api.jobs import create_jobs_router, job_has_transcript, job_view
@@ -241,6 +242,7 @@ def create_app(
     paths: VozPaths | None = None,
     engine: Engine | None = None,
     request_shutdown: Callable[[], None] | None = None,
+    allowed_hosts: Iterable[str] = (),
 ) -> FastAPI:
     """Build the local VOZ HTTP application.
 
@@ -248,7 +250,9 @@ def create_app(
     SQLite schema is migrated to head on the first request lifecycle, never at
     import time. An injected ``engine`` is owned by the caller.
     ``request_shutdown`` stops the hosting server (``POST /api/shutdown``);
-    without it that endpoint answers 501.
+    without it that endpoint answers 501. Requests must carry a loopback
+    ``Host`` (any port) or one of ``allowed_hosts`` (the explicit bind host);
+    anything else gets 400 ``host_not_allowed`` (DNS rebinding, ADR-0006).
     """
     resolved_paths = resolve_voz_paths() if paths is None else paths
     owns_engine = engine is None
@@ -469,6 +473,9 @@ def create_app(
         description="Local-first transcription workspace API.",
         version=__version__,
         lifespan=lifespan,
+    )
+    application.add_middleware(
+        HostGuardMiddleware, allowed_hosts=(*LOOPBACK_HOSTS, *allowed_hosts)
     )
     application.include_router(health_router)
     application.include_router(create_shutdown_router(request_shutdown))

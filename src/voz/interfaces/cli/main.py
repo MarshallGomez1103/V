@@ -144,7 +144,7 @@ def run_server(*, host: str, port: int, open_browser: bool) -> None:
             server.should_exit = True
 
     config = uvicorn.Config(
-        app=create_app(request_shutdown=stop_server),
+        app=create_app(request_shutdown=stop_server, allowed_hosts=(host,)),
         host=host,
         port=port,
         log_level="info",

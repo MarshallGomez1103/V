@@ -6,6 +6,7 @@ import inspect
 import os
 import re
 from collections.abc import Iterator
+from functools import partialmethod
 from pathlib import Path
 
 import pytest
@@ -68,6 +69,23 @@ def isolated_user_dirs(
         target.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv(name, str(target))
     return home
+
+
+@pytest.fixture(autouse=True)
+def loopback_test_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``TestClient`` speaks to ``http://127.0.0.1`` instead of ``testserver``.
+
+    The app's host guard (ADR-0006) only answers loopback or the bind host, so
+    ``testserver`` never joins the production allowlist. A test may still pass
+    its own ``base_url`` or ``Host`` header.
+    """
+    from starlette.testclient import TestClient
+
+    monkeypatch.setattr(
+        TestClient,
+        "__init__",
+        partialmethod(TestClient.__init__, base_url="http://127.0.0.1"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    )
 
 
 @pytest.fixture(autouse=True)
