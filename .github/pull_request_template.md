@@ -1,60 +1,58 @@
-## Resumen
+## Summary
 
-Describe brevemente qué cambia este pull request y por qué.
+Briefly describe what this pull request changes and why.
 
-## IDs del roadmap tocados
+## Roadmap IDs touched
 
-Indica los IDs exactos de `ROADMAP.md` (`S<sección>.<número>`), entre uno y
-tres, correspondientes a una sola porción vertical:
+List the exact `ROADMAP.md` IDs (one to three) that belong to a single vertical
+slice:
 
 -
 
 ## Checklist
 
-### Proceso (AGENTS.md / CONTRIBUTING.md)
+### Process (AGENTS.md / CONTRIBUTING.md)
 
-- [ ] Leí `AGENTS.md` y los ADR relevantes para este cambio.
-- [ ] Registré la asignación (IDs exactos) en la tabla de "Trabajo activo" de
-      `ROADMAP.md` antes de implementar.
-- [ ] `ROADMAP.md` quedó actualizado (checkbox, estado y último logro
-      verificable) en la misma edición que este cambio, solo después de
-      verificar el resultado.
+- [ ] I read `AGENTS.md` and the ADRs relevant to this change.
+- [ ] I recorded the assignment (exact IDs) in the "Trabajo activo" table of
+      `ROADMAP.md` before implementing.
+- [ ] `ROADMAP.md` is updated (checkbox, status and latest verified
+      achievement) in the same edit as this change, only after verifying the
+      result.
 
-### Comprobaciones backend ejecutadas
+### Backend checks run
 
 - [ ] `uv sync --all-groups`
 - [ ] `uv run pytest`
 - [ ] `uv run ruff check .`
 - [ ] `uv run ruff format --check .`
 - [ ] `uv run pyright`
-- [ ] No aplica (este cambio no toca backend/CLI).
+- [ ] Not applicable (this change does not touch the backend or CLI).
 
-### Comprobaciones frontend ejecutadas
+### Frontend checks run
 
-- [ ] `npm ci` (en `apps/web`)
+- [ ] `npm ci` (in `apps/web`)
 - [ ] `npm run lint`
 - [ ] `npm run typecheck`
 - [ ] `npm run test`
 - [ ] `npm run build`
-- [ ] No aplica (este cambio no toca `apps/web`).
+- [ ] Not applicable (this change does not touch `apps/web`).
 
-### Privacidad y alcance
+### Privacy and scope
 
-- [ ] No incluye grabaciones, transcripciones o datos privados reales.
-- [ ] No incluye modelos, pesos, medios generados, bases de datos, caches ni
-      contenido de `.ai/`.
-- [ ] No incluye claves API, tokens ni secretos.
-- [ ] Este cambio no modifica más de una porción vertical del roadmap.
+- [ ] Contains no recordings, transcripts or real private data.
+- [ ] Contains no models, weights, generated media, databases, caches or
+      `.ai/` content.
+- [ ] Contains no API keys, tokens or secrets.
+- [ ] This change does not span more than one vertical slice of the roadmap.
 
-### Arquitectura y regresión
+### Architecture and regression
 
-- [ ] Añadí o actualicé una ADR en `docs/adr/` (marca "no aplica" si el
-      cambio no es una decisión de arquitectura durable).
-- [ ] No aplica (no es un cambio de arquitectura durable).
-- [ ] Si este PR corrige un bug, agregué una prueba de regresión.
-- [ ] No aplica (este PR no corrige un bug).
+- [ ] I added or updated an ADR in `docs/adr/`.
+- [ ] Not applicable (not a durable architecture change).
+- [ ] If this PR fixes a bug, I added a regression test.
+- [ ] Not applicable (this PR does not fix a bug).
 
-## Riesgos conocidos / seguimientos pendientes
+## Known risks / pending follow-ups
 
-Describe cualquier limitación, caso no cubierto o trabajo de seguimiento que
-quede fuera de este PR.
+Describe any limitation, uncovered case or follow-up work left out of this PR.

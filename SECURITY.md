@@ -1,92 +1,114 @@
-# Política de seguridad de VOZ
+# V security policy
 
-## Alcance
+## Scope
 
-VOZ es una aplicación local-first: se instala y ejecuta en la máquina de una
-sola persona, sirve por defecto en `http://127.0.0.1:8765` y no requiere una
-cuenta ni un servicio remoto para funcionar (ver [README.md](README.md) y las
-invariantes de producto en [AGENTS.md](AGENTS.md)). Esta política cubre el
-código de este repositorio: la CLI `voz`, el servidor FastAPI local, el
-frontend web y los adaptadores de infraestructura (FFmpeg, persistencia
-SQLite, providers de transcripción).
+V (formerly VOZ) is a local-first application: it is installed and run on one
+person's machine, serves on `http://127.0.0.1:8765` by default, and needs no
+account or remote service to work (see [README.md](README.md) and the product
+invariants in [AGENTS.md](AGENTS.md)). This policy covers the code in this
+repository: the command-line entry point (`voz` today; a `v` alias is
+planned), the local FastAPI server, the web frontend, and the infrastructure
+adapters (FFmpeg, SQLite persistence, transcription providers).
 
-Quedan fuera de alcance: proveedores cloud opcionales de terceros (su propia
-seguridad depende de ese proveedor), el sistema operativo anfitrión, y
-cualquier fork o distribución no oficial del proyecto.
+Out of scope: optional third-party cloud providers (their own security is up
+to that provider), the host operating system, and any fork or unofficial
+distribution of the project.
 
-## Qué se considera una vulnerabilidad
+## Threat model
 
-Ejemplos de lo que consideramos un reporte de seguridad válido para VOZ:
+V is built for a single user on a trusted machine. The assumptions that matter
+when judging a report:
 
-- exposición de rutas absolutas del host hacia la API o el frontend, en
-  contra de la invariante de que la UI no debe conocer paths del sistema de
-  archivos ([AGENTS.md](AGENTS.md));
-- ejecución remota de código o de comandos a través de un archivo subido
-  (por ejemplo, mediante el pipeline de ingestión FFmpeg o el probe de
-  medios);
-- path traversal o escritura fuera del directorio confiable de
-  almacenamiento de medios (ver
-  [ADR-0003](docs/adr/0003-ffmpeg-ingestion.md));
-- fuga de datos privados del usuario: grabaciones, transcripciones, claves API
-  o contenido de la base de datos local hacia un tercero, un log, o un
-  endpoint no destinado a ese propósito;
-- una API que quede accesible fuera de `127.0.0.1` sin que el usuario haya
-  activado explícitamente una opción de exposición en LAN;
-- una vulnerabilidad de dependencia (Python o npm) con una ruta de explotación
-  real y conocida dentro de VOZ.
+- **Loopback server.** The server binds to `127.0.0.1` by default. Loopback is
+  the access control: other processes and users on the same machine can
+  connect to it.
+- **Host header validation.** A page on another site can try DNS rebinding to
+  read the local API as if it were same-origin. `HostGuardMiddleware`
+  rejects any request whose `Host` is not `127.0.0.1`, `localhost`, `[::1]` or
+  a name the user passed explicitly (`--host`, `--allow-host`). See
+  [ADR-0006](docs/adr/0006-local-first-privacy.md).
+- **No authentication when exposed.** If the user passes `--host` with a
+  network address, the API, the media and the transcripts are reachable by
+  everyone on that network, with no credentials. That is documented behavior,
+  not a vulnerability by itself. A local authentication mode is planned, not
+  implemented.
+- **Uploads are untrusted input.** Media files go through the FFmpeg ingestion
+  pipeline; originals are immutable and derived files are stored separately
+  ([ADR-0003](docs/adr/0003-ffmpeg-ingestion.md)).
+- **No host paths in the browser.** API responses must not contain absolute
+  host paths.
 
-Lo siguiente normalmente **no** se trata como un incidente de seguridad, sino
-como un bug funcional (repórtalo con la plantilla de bug del repositorio):
-errores de UI sin impacto en confidencialidad/integridad/disponibilidad, o
-fallas de una funcionalidad ya marcada como experimental en `ROADMAP.md`.
+## What to report
 
-## Cómo reportar
+Examples of valid security reports:
 
-VOZ todavía no publica una dirección de correo electrónico como canal de
-reporte. Usa uno de estos canales privados:
+- absolute host paths exposed through the API or the frontend, against the
+  invariant that the UI must not know filesystem paths;
+- remote code or command execution through an uploaded file (for example via
+  the FFmpeg ingestion pipeline or the media probe);
+- path traversal, or writes outside the trusted media storage directory;
+- leaks of private user data (recordings, transcripts, API keys, or contents of
+  the local database) to a third party, a log, or an endpoint not meant for
+  that purpose;
+- a bypass of the Host header validation, or a way to reach the API from a
+  non-loopback origin without the user having explicitly enabled exposure;
+- a vulnerable dependency (Python or npm) with a real, known exploit path
+  inside V.
 
-1. **GitHub Security Advisories privadas** del repositorio (opción
-   "Report a vulnerability" bajo la pestaña "Security" de GitHub), si tu
-   acceso al repositorio la ofrece.
-2. Si no tienes esa opción disponible, abre un **issue privado dirigido al
-   mantenedor** usando la visibilidad restringida que ofrezca GitHub para
-   colaboradores del repositorio.
+What is normally **not** a security issue, and should go in a regular bug
+report instead:
 
-No abras un issue público ni un pull request público que describa una
-vulnerabilidad no divulgada, ni incluyas en el reporte grabaciones o datos
-reales de otra persona.
+- UI bugs with no impact on confidentiality, integrity or availability;
+- failures of a feature already marked experimental in `ROADMAP.md`;
+- the lack of authentication when the user deliberately exposes the server
+  with `--host`, or access by other local users and processes on the same
+  machine (both are documented limits);
+- vulnerabilities that exist only in a third-party provider, fork or
+  unofficial build.
 
-Incluye en tu reporte, en la medida de lo posible:
+## How to report
 
-- una descripción del problema y su impacto potencial;
-- pasos para reproducirlo, incluyendo versión/commit del repositorio;
-- si aplica, un fixture sintético que reproduzca el problema sin datos
-  privados reales (VOZ no acepta grabaciones privadas como fixtures, ver
+Please do not open a public issue or pull request that describes an undisclosed
+vulnerability, and do not attach recordings or real data belonging to another
+person.
+
+- **Once the repository is public**, report privately via GitHub's Private
+  Vulnerability Reporting (Security -> Report a vulnerability).
+- **Until then**, the repository is private and that feature is not available
+  for it. Contact the maintainer, @MarshallGomez1103, on GitHub without
+  including exploit details, to arrange a private channel.
+
+V does not publish an e-mail address for security reports.
+
+Include, as far as you can:
+
+- a description of the problem and its potential impact;
+- steps to reproduce, with the commit of the repository you tested;
+- if relevant, a synthetic fixture that reproduces the problem without real
+  private data (V does not accept private recordings as fixtures; see
   [AGENTS.md](AGENTS.md)).
 
-## Tiempos orientativos
+## Response times
 
-Este es un proyecto sin release pública y sin equipo de seguridad dedicado;
-estos tiempos son orientativos, no un compromiso contractual:
+V has no public release and no dedicated security team. These are targets, not
+a contractual commitment:
 
-- confirmación de recepción del reporte: en un plazo de referencia de 7 días;
-- evaluación inicial de severidad: en un plazo de referencia de 14 días desde
-  la confirmación;
-- corrección o mitigación: el plazo depende de la severidad y de la
-  disponibilidad del mantenedor; se comunicará una estimación una vez
-  evaluado el reporte.
+- acknowledgement of the report: within 7 days;
+- initial severity assessment: within 14 days of acknowledgement;
+- fix or mitigation: depends on severity and on the maintainer's availability;
+  an estimate is shared once the report has been assessed.
 
-## Versiones soportadas
+## Supported versions
 
-VOZ no tiene todavía una release pública (ver Sección 15 y 16 de
-[ROADMAP.md](ROADMAP.md)). Hasta la primera release, **solo la rama `main` es
-soportada** para reportes y correcciones de seguridad. No existen versiones
-etiquetadas ni un ciclo de mantenimiento de versiones anteriores.
+V has no public release yet (see sections 15 and 16 of
+[ROADMAP.md](ROADMAP.md)). Until the first release, **only the `main` branch
+is supported** for security reports and fixes. There are no tagged versions and
+no maintenance cycle for older versions.
 
-| Versión | Soportada |
+| Version | Supported |
 | --- | --- |
-| `main` (checkout actual) | sí |
-| cualquier fork o versión anterior a la primera release | no |
+| `main` (current checkout) | yes |
+| any fork, or any version before the first release | no |
 
-Cuando exista una primera release pública, esta tabla se actualizará para
-reflejar qué versiones etiquetadas reciben parches de seguridad.
+When a first public release exists, this table will be updated to show which
+tagged versions receive security patches.

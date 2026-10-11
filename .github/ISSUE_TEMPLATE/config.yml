@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Reportar una vulnerabilidad de seguridad
-    url: https://github.com/MarshallGomez1103/voz/security/advisories/new
+  - name: Report a security vulnerability
+    url: https://github.com/MarshallGomez1103/V/blob/main/SECURITY.md
     about: >-
-      No abras un issue público para una vulnerabilidad. Usa una GitHub
-      Security Advisory privada o un issue privado al mantenedor, según
-      SECURITY.md.
-  - name: Preguntas sobre cómo contribuir
-    url: https://github.com/MarshallGomez1103/voz/blob/main/CONTRIBUTING.md
-    about: Lee CONTRIBUTING.md antes de abrir un issue de proceso general.
+      Do not open a public issue for a vulnerability. Follow SECURITY.md: use
+      GitHub's Private Vulnerability Reporting once the repository is public,
+      or contact the maintainer privately until then.
+  - name: Questions about contributing
+    url: https://github.com/MarshallGomez1103/V/blob/main/CONTRIBUTING.md
+    about: Read CONTRIBUTING.md before opening a general process issue.

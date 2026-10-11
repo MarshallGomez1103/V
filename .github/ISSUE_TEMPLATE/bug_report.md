@@ -1,49 +1,50 @@
 ---
-name: Reporte de bug
-about: Reportar un comportamiento incorrecto reproducible en VOZ
+name: Bug report
+about: Report incorrect, reproducible behavior in V
 title: "[bug] "
 labels: bug
 ---
 
-## Descripción
+## Description
 
-Describe el comportamiento incorrecto de forma clara y concisa.
+Describe the incorrect behavior clearly and concisely.
 
-## Pasos para reproducir
+## Steps to reproduce
 
 1. ...
 2. ...
 3. ...
 
-## Comportamiento esperado
+## Expected behavior
 
-Qué esperabas que pasara.
+What you expected to happen.
 
-## Comportamiento observado
+## Observed behavior
 
-Qué pasó realmente. Incluye mensajes de error o códigos estables si los hay.
+What actually happened. Include error messages or stable error codes if there
+are any.
 
-## Entorno
+## Environment
 
-- Commit o rama de VOZ:
-- Sistema operativo:
-- Versión de Python (`python --version`) y de Node (`node --version`):
-- ¿Instalaste el extra `asr-local`? ¿Con qué modelo/provider?
+- V commit or branch:
+- Operating system:
+- Python version (`python --version`) and Node version (`node --version`):
+- Did you install the `asr-local` extra? With which model or provider?
 
-## Evidencia
+## Evidence
 
-Adjunta logs relevantes (redacta rutas privadas y secretos) o una captura de
-pantalla si aplica. **No adjuntes grabaciones, transcripciones ni datos
-privados propios o de terceros.** Si necesitas un archivo de audio para
-reproducir el bug, usa o crea un fixture sintético, como los documentados en
+Attach relevant logs (redact private paths and secrets) or a screenshot if it
+helps. **Do not attach recordings, transcripts or any private data, yours or
+anyone else's.** If you need an audio file to reproduce the bug, use or create
+a synthetic fixture, like the ones documented in
 [`docs/fixtures-licenses.md`](../../docs/fixtures-licenses.md).
 
-## ¿Es una regresión?
+## Is it a regression?
 
-- [ ] Sí, funcionaba antes (indica en qué commit/versión, si lo sabes).
-- [ ] No lo sé o no aplica.
+- [ ] Yes, it worked before (say in which commit or version, if you know).
+- [ ] I don't know, or not applicable.
 
-## IDs de roadmap relacionados (opcional)
+## Related roadmap IDs (optional)
 
-Si el bug está relacionado con un ID de `ROADMAP.md`, indícalo aquí
-(por ejemplo `S4.12`).
+If the bug relates to an ID in `ROADMAP.md`, list it here (for example
+`S4.12`).
