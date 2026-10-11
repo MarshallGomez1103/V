@@ -1,182 +1,189 @@
-# ADR-0003: Ingestión FFmpeg sobre originales inmutables
+# ADR-0003: FFmpeg ingestion over immutable originals
 
-- Estado: Aceptada
-- Fecha: 2026-09-03
-- Responsables: mantenedores de VOZ
-- Alcance: inspección, almacenamiento y normalización multimedia local
-- Última revisión: 2026-09-30 (S16.14; añade cableado actual y evidencia)
-- Diagramas: [componentes](../architecture/03-componentes.md)
+> Translated from Spanish on 2026-10-11 (V1-08b). VOZ is the former name of V (ADR-0009).
 
-## Contexto
+- Status: Accepted
+- Date: 2026-09-03
+- Owners: VOZ maintainers
+- Scope: local media inspection, storage and normalization
+- Last review: 2026-09-30 (S16.14; adds the current wiring and evidence)
+- Diagrams: [components](../architecture/03-componentes.md)
 
-VOZ debe aceptar audio o video según su contenido real, conservar exactamente
-los bytes seleccionados por el usuario y producir un derivado apropiado para
-ASR. Las grabaciones pueden ser largas, tener extensiones engañosas, contener
-varios streams o fallar después de una inspección superficial. Además, una ruta
-puede cambiar entre dos aperturas y los procesos FFmpeg pueden terminar, fallar
-o ser cancelados en cualquier momento.
+## Context
 
-La UI no debe conocer rutas del host y el dominio no debe depender de FFmpeg ni
-del filesystem. La frontera relevante no es una lista de extensiones, sino si
-la instalación local de FFmpeg puede decodificar un stream de audio real.
+VOZ must accept audio or video according to its real content, preserve exactly
+the bytes the user selected and produce a derivative suitable for ASR.
+Recordings can be long, have misleading extensions, contain several streams or
+fail after a superficial inspection. In addition, a path can change between two
+opens, and FFmpeg processes can finish, fail or be cancelled at any moment.
 
-## Decisión
+The UI must not know host paths and the domain must not depend on FFmpeg or on
+the filesystem. The relevant boundary is not a list of extensions, but whether
+the local FFmpeg installation can decode a real audio stream.
 
-La ingestión se coordina en `application` mediante puertos tipados y se ejecuta
-en adapters de `infrastructure`:
+## Decision
 
-1. `MediaStoragePort` copia el archivo seleccionado a un original cuyo destino
-   se deriva solo de UUID, calcula SHA-256 durante la misma lectura y publica
-   sin reemplazar contenido existente.
-2. `MediaProbePort` inspecciona el descriptor ya abierto de esa copia inmutable.
-   El adapter usa `ffprobe`, valida streams y codecs disponibles y devuelve solo
-   metadata permitida, nunca una ruta.
-3. `ImportMedia` persiste el hash, tamaño, duración y MIME conservador. Si el
-   resultado de una escritura es ambiguo, reconcilia por identidad antes de
-   ejecutar una compensación destructiva.
-4. `MediaNormalizationPort` recibe el descriptor del original y las identidades
-   del proyecto/medio. El adapter FFmpeg selecciona el índice absoluto del
-   primer stream de audio decodificable y genera PCM signed 16-bit, mono, 16 kHz.
-5. Los temporales se crean dentro de directorios confinados, permanecen abiertos
-   durante el subprocess y se publican atómicamente sin reemplazo. La fuente y
-   el temporal se entregan a FFmpeg mediante descriptors heredados en Linux.
+Ingestion is coordinated in `application` through typed ports and executed in
+`infrastructure` adapters:
 
-La normalización reporta progreso monotónico y consulta cancelación antes,
-durante y justo antes de publicar. Un fallo de decode se traduce a un error
-tipado; stderr, rutas privadas y tracebacks no forman parte del mensaje normal
-para el usuario.
+1. `MediaStoragePort` copies the selected file to an original whose destination
+   is derived only from UUIDs, computes SHA-256 during the same read and
+   publishes without replacing existing content.
+2. `MediaProbePort` inspects the already-open descriptor of that immutable copy.
+   The adapter uses `ffprobe`, validates available streams and codecs and
+   returns only allowed metadata, never a path.
+3. `ImportMedia` persists the hash, size, duration and a conservative MIME type.
+   If the outcome of a write is ambiguous, it reconciles by identity before
+   running a destructive compensation.
+4. `MediaNormalizationPort` receives the original's descriptor and the
+   project/media identities. The FFmpeg adapter selects the absolute index of
+   the first decodable audio stream and produces signed 16-bit PCM, mono,
+   16 kHz.
+5. Temporary files are created inside confined directories, stay open during the
+   subprocess and are published atomically without replacement. The source and
+   the temporary file are handed to FFmpeg through inherited descriptors on
+   Linux.
 
-## Invariantes de almacenamiento
+Normalization reports monotonic progress and checks for cancellation before,
+during and right before publishing. A decode failure is translated into a typed
+error; stderr, private paths and tracebacks are not part of the normal user
+message.
 
-- El original nunca se modifica ni se usa como salida de FFmpeg.
-- Nombres visibles no se usan como identidades ni componentes de destino.
-- Los directorios bajo el root confiable se abren con `dir_fd` y `O_NOFOLLOW`;
-  se comparan `lstat` y `fstat` donde una carrera podría cambiar la identidad.
-- Archivo y directorio se sincronizan con `fsync` antes de confirmar una
-  publicación durable.
-- Fallos de cleanup o rollback no se silencian como éxito; se reporta cuando el
-  filesystem impide confirmar el estado final.
-- Éxito, fallo y cancelación no dejan temporales conocidos ni procesos hijos.
+## Storage invariants
 
-## Consecuencias positivas
+- The original is never modified nor used as FFmpeg output.
+- Display names are not used as identities or as destination components.
+- Directories under the trusted root are opened with `dir_fd` and
+  `O_NOFOLLOW`; `lstat` and `fstat` are compared wherever a race could change
+  the identity.
+- File and directory are synchronized with `fsync` before a durable publication
+  is confirmed.
+- Cleanup or rollback failures are not silenced as success; they are reported
+  when the filesystem prevents confirming the final state.
+- Success, failure and cancellation leave no known temporary files or child
+  processes.
 
-- Probe, hash y metadata corresponden a los mismos bytes inmutables.
-- WAV, MP3, M4A, OGG, OPUS y WebM comparten el mismo contrato.
-- La extensión del archivo no decide compatibilidad.
-- La aplicación puede importar y normalizar sin entregar rutas a dominio o UI.
-- Cancelar no publica un derivado parcial.
+## Positive consequences
 
-## Costes y límites
+- Probe, hash and metadata correspond to the same immutable bytes.
+- WAV, MP3, M4A, OGG, OPUS and WebM share the same contract.
+- The file extension does not decide compatibility.
+- The application can import and normalize without handing paths to the domain
+  or the UI.
+- Cancelling does not publish a partial derivative.
 
-- El adapter seguro por descriptors usa capacidades POSIX/Linux disponibles en
-  Bazzite. Un port a Windows necesitará otro mecanismo equivalente.
-- La metadata técnica completa se conserva en el resultado del probe; el
-  esquema inicial persiste hash, tamaño, duración y MIME.
-- Un error persistente del filesystem puede impedir confirmar un rollback. Ese
-  estado se expone como error explícito para reconciliación posterior.
-- Esta ADR cubre el pipeline local invocable desde application. La importación
-  HTTP y su contrato se documentan en [docs/api/jobs.md](../api/jobs.md); aquí
-  solo se registra cómo se cablea (sección siguiente).
-- FFmpeg y ffprobe son binarios del sistema, no vendorizados. Sin ellos la
-  importación falla con un error tipado (`MediaProbeFailureCode.TOOL_UNAVAILABLE`, HTTP 503
-  `media_probe_unavailable`) y `voz doctor` lo reporta como fallo. No se fija
-  ni verifica una versión mínima; **planificado** si aparece una
-  incompatibilidad concreta.
-- Compatibilidad probada: fixtures sintéticos WAV, MP3, M4A, OGG, OPUS y WebM
-  sobre Linux. Otras plataformas y contenedores son experimentales.
+## Costs and limits
 
-## Alternativas consideradas
+- The descriptor-based secure adapter uses POSIX/Linux capabilities available
+  on Bazzite. A Windows port will need another equivalent mechanism.
+- The full technical metadata is kept in the probe result; the initial schema
+  persists hash, size, duration and MIME type.
+- A persistent filesystem error can prevent confirming a rollback. That state is
+  exposed as an explicit error for later reconciliation.
+- This ADR covers the local pipeline callable from application. HTTP import and
+  its contract are documented in [docs/api/jobs.md](../api/jobs.md); here we
+  only record how it is wired (next section).
+- FFmpeg and ffprobe are system binaries, not vendored. Without them, import
+  fails with a typed error (`MediaProbeFailureCode.TOOL_UNAVAILABLE`, HTTP 503
+  `media_probe_unavailable`) and `voz doctor` reports it as a failure. No
+  minimum version is pinned or verified; **planned** if a concrete
+  incompatibility appears.
+- Tested compatibility: synthetic WAV, MP3, M4A, OGG, OPUS and WebM fixtures on
+  Linux. Other platforms and containers are experimental.
 
-### Validar por extensión
+## Alternatives considered
 
-Rechazada. Una extensión puede ser incorrecta y no demuestra que exista un
-stream de audio decodificable.
+### Validate by extension
 
-### Inspeccionar la ruta y copiar después
+Rejected. An extension can be wrong and does not prove that a decodable audio
+stream exists.
 
-Rechazada. El archivo puede cambiar entre aperturas y mezclar metadata de un
-contenido con el hash de otro.
+### Inspect the path and copy afterwards
 
-### Escribir directamente al destino final
+Rejected. The file can change between opens, mixing the metadata of one content
+with the hash of another.
 
-Rechazada. Un fallo o cancelación dejaría un derivado parcial que parecería
-completo.
+### Write directly to the final destination
 
-### Exponer rutas desde los casos de uso
+Rejected. A failure or cancellation would leave a partial derivative that would
+look complete.
 
-Rechazada. Acoplaría application al layout del host y facilitaría fugas hacia la
-API o el navegador.
+### Expose paths from the use cases
 
-## Cableado actual (2026-09-30)
+Rejected. It would couple application to the host layout and make leaks toward
+the API or the browser easier.
+
+## Current wiring (2026-09-30)
 
 ```text
 POST /api/projects/{id}/media        (interfaces/api/media.py)
-  cuerpo crudo -> temporal en ~/.cache/voz/uploads (siempre borrado)
+  raw body -> temporary file in ~/.cache/voz/uploads (always deleted)
   -> ImportMedia (application/import_media.py)
-       MediaStoragePort  = FileSystemMediaStorage   (copia inmutable + SHA-256)
-       MediaProbePort    = FfprobeMediaProbe        (sobre la copia ya publicada)
+       MediaStoragePort  = FileSystemMediaStorage   (immutable copy + SHA-256)
+       MediaProbePort    = FfprobeMediaProbe        (on the already-published copy)
        MediaAssetRepository (SQLite)
 
-job en estado PREPROCESSING          (application/job_runner.py)
-  -> PrepareInferenceAudio -> re-probe del original inmutable
+job in PREPROCESSING state           (application/job_runner.py)
+  -> PrepareInferenceAudio -> re-probe of the immutable original
   -> NormalizeImportedMedia -> MediaNormalizationPort = FfmpegMediaNormalizer
-  -> projects/<p>/derivatives/<m>.inference.wav  (solo si el derivado no existe)
+  -> projects/<p>/derivatives/<m>.inference.wav  (only if the derivative does not exist)
 ```
 
-- La normalización ocurre dentro del job, no durante la subida (decisión de
-  Sección 5). Un job reanudado reutiliza el derivado existente
+- Normalization happens inside the job, not during the upload (decision of
+  Section 5). A resumed job reuses the existing derivative
   (`JobRunner._derivative_exists`).
-- La subida rechaza cuerpos vacíos, nombres inseguros y tamaños por encima de
-  `DEFAULT_MAX_UPLOAD_BYTES` (8 GiB). El nombre visible se guarda como
-  `display_name`; nunca forma parte del destino en disco.
-- `ffprobe` corre con `timeout_seconds=15` y sin shell (`FfprobeMediaProbe`).
-- La cancelación de un job durante la normalización llega a FFmpeg mediante
-  `MediaNormalizationCancellationToken`; no se publica un derivado parcial.
+- The upload rejects empty bodies, unsafe names and sizes above
+  `DEFAULT_MAX_UPLOAD_BYTES` (8 GiB). The display name is stored as
+  `display_name`; it is never part of the on-disk destination.
+- `ffprobe` runs with `timeout_seconds=15` and without a shell
+  (`FfprobeMediaProbe`).
+- Cancelling a job during normalization reaches FFmpeg through
+  `MediaNormalizationCancellationToken`; no partial derivative is published.
 
-## Evidencia actual (2026-09-30)
+## Current evidence (2026-09-30)
 
-| Requisito | Prueba |
+| Requirement | Test |
 | --- | --- |
-| Extensión irrelevante o engañosa | `tests/integration/audio/test_ffprobe_media_probe.py` |
-| Fixtures de seis formatos deterministas y decodificables | `tests/integration/media/test_media_fixtures.py`, licencias en [fixtures-licenses.md](../fixtures-licenses.md) |
-| Contrato común del probe | `tests/contract/test_media_probe_port.py`, `tests/unit/infrastructure/audio/test_ffprobe.py` |
-| Copia inmutable, hash, symlinks, traversal, `fsync`, cleanup | `tests/unit/infrastructure/test_media_storage.py` |
-| Importación con compensación y reconciliación | `tests/unit/application/test_import_media.py`, `tests/integration/application/test_import_media_sqlite.py` |
-| PCM mono 16 kHz, original intacto, primer stream de audio | `tests/integration/audio/test_ffmpeg_media_normalizer_integration.py` |
-| Cancelación, callbacks que fallan, carreras de symlink y raíz, fallos de `fsync` sin artefactos parciales | mismo archivo |
-| Normalización desde application | `tests/unit/application/test_normalize_media.py`, `tests/integration/application/test_normalize_imported_media.py` |
-| Contrato HTTP de subida sin rutas | `tests/integration/test_media_upload_api.py` |
-| Preparación del derivado dentro del job | `tests/integration/application/test_job_runner.py::test_missing_derivative_is_prepared_before_transcribing` |
+| Irrelevant or misleading extension | `tests/integration/audio/test_ffprobe_media_probe.py` |
+| Deterministic, decodable fixtures in six formats | `tests/integration/media/test_media_fixtures.py`, licenses in [fixtures-licenses.md](../fixtures-licenses.md) |
+| Common probe contract | `tests/contract/test_media_probe_port.py`, `tests/unit/infrastructure/audio/test_ffprobe.py` |
+| Immutable copy, hash, symlinks, traversal, `fsync`, cleanup | `tests/unit/infrastructure/test_media_storage.py` |
+| Import with compensation and reconciliation | `tests/unit/application/test_import_media.py`, `tests/integration/application/test_import_media_sqlite.py` |
+| Mono 16 kHz PCM, intact original, first audio stream | `tests/integration/audio/test_ffmpeg_media_normalizer_integration.py` |
+| Cancellation, failing callbacks, symlink and root races, `fsync` failures without partial artifacts | same file |
+| Normalization from application | `tests/unit/application/test_normalize_media.py`, `tests/integration/application/test_normalize_imported_media.py` |
+| HTTP upload contract without paths | `tests/integration/test_media_upload_api.py` |
+| Derivative preparation inside the job | `tests/integration/application/test_job_runner.py::test_missing_derivative_is_prepared_before_transcribing` |
 
-## Alternativas adicionales consideradas
+## Additional alternatives considered
 
-### Subida multipart
+### Multipart upload
 
-No adoptada. FastAPI necesitaría una dependencia adicional para multipart
-(documentado en [docs/api/jobs.md](../api/jobs.md)); el cuerpo crudo con
-cabecera `X-Voz-Filename` se transmite directamente a un temporal con límite de
-tamaño (regla de dependencias de [AGENTS.md](../../AGENTS.md)).
+Not adopted. FastAPI would need an additional dependency for multipart
+(documented in [docs/api/jobs.md](../api/jobs.md)); the raw body with the
+`X-Voz-Filename` header is streamed directly to a size-limited temporary file
+(dependency rule in [AGENTS.md](../../AGENTS.md)).
 
-### Normalizar durante la subida
+### Normalize during the upload
 
-No adoptada. Bloquearía la petición HTTP con un trabajo largo y cancelable. La
-normalización es una etapa del job con progreso y cancelación.
+Not adopted. It would block the HTTP request with a long, cancellable piece of
+work. Normalization is a job stage with progress and cancellation.
 
-### Bibliotecas Python de audio (PyAV, pydub, soundfile) en lugar de FFmpeg
+### Python audio libraries (PyAV, pydub, soundfile) instead of FFmpeg
 
-No adoptadas por ahora. FFmpeg ya es requisito, decodifica los seis formatos
-del contrato y permite pasar descriptors heredados sin rutas. Cada biblioteca
-añadiría una dependencia y otro conjunto de códecs a verificar.
+Not adopted for now. FFmpeg is already a requirement, decodes the six formats
+of the contract and allows passing inherited descriptors without paths. Each
+library would add a dependency and another set of codecs to verify.
 
-## Verificación
+## Verification
 
-La decisión se considera aplicada cuando:
+The decision is considered applied when:
 
-- un archivo con extensión irrelevante se acepta por sus streams/codecs;
-- los fixtures licenciados de seis formatos se inspeccionan y decodifican;
-- hash y metadata sobreviven la reapertura de SQLite;
-- el recorrido importación -> normalización produce PCM mono de 16 kHz y deja
-  el original byte-identical;
-- cancelación, corrupción, errores de callback y carreras simuladas no publican
-  artefactos parciales ni dejan procesos o descriptors abiertos;
-- pruebas de traversal, symlinks y nombres inseguros no escriben fuera del root.
+- a file with an irrelevant extension is accepted by its streams/codecs;
+- the licensed fixtures in six formats are inspected and decoded;
+- hash and metadata survive reopening SQLite;
+- the import -> normalization path produces 16 kHz mono PCM and leaves the
+  original byte-identical;
+- cancellation, corruption, callback errors and simulated races do not publish
+  partial artifacts nor leave open processes or descriptors;
+- traversal, symlink and unsafe-name tests do not write outside the root.

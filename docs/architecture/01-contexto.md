@@ -1,35 +1,36 @@
-# C4 nivel 1: contexto del sistema
+# C4 level 1: system context
 
-Roadmap: S16.09. Estado del código verificado contra `src/voz/bootstrap.py`,
-`src/voz/interfaces/cli/main.py` y `src/voz/infrastructure/`.
+Roadmap: S16.09. Code state verified against `src/voz/bootstrap.py`,
+`src/voz/interfaces/cli/main.py` and `src/voz/infrastructure/`.
 
-VOZ es una aplicación local-first: una persona importa audio o video desde su
-propio disco, lanza una transcripción y lee el resultado en el navegador. Todo
-ocurre en su máquina; no hay cuenta, servidor remoto ni telemetría.
+V (formerly VOZ) is a local-first application: a person imports audio or video
+from their own disk, starts a transcription and reads the result in the
+browser. Everything happens on their machine; there is no account, no remote
+server and no telemetry.
 
 ```mermaid
 flowchart TB
-    usuario(["Persona usuaria<br/>estudiante o profesional con grabaciones largas"])
+    usuario(["User<br/>student or professional with long recordings"])
 
-    subgraph voz_sys["Sistema VOZ (una sola máquina, proceso local)"]
-        voz["VOZ<br/>importa medios, transcribe y sirve el workspace web"]
+    subgraph voz_sys["V system (a single machine, local process)"]
+        voz["V<br/>imports media, transcribes and serves the web workspace"]
     end
 
-    ffmpeg["FFmpeg y ffprobe<br/>binarios del host: inspeccionan y normalizan audio"]
-    fw["Faster Whisper<br/>librería Python opcional, extra asr-local"]
-    hf["Hugging Face Hub<br/>solo al instalar un modelo, con confirmación explícita"]
-    fs[("Filesystem del usuario<br/>archivos de origen y directorios XDG")]
+    ffmpeg["FFmpeg and ffprobe<br/>host binaries: inspect and normalize audio"]
+    fw["Faster Whisper<br/>optional Python library, asr-local extra"]
+    hf["Hugging Face Hub<br/>only when installing a model, with explicit confirmation"]
+    fs[("User filesystem<br/>source files and XDG directories")]
 
-    cloud["Providers cloud: OpenAI, ElevenLabs<br/>planificado, solo si el usuario los elige"]
-    cpp["whisper.cpp<br/>planificado"]
-    diar["Diarización pyannote<br/>planificado"]
-    buzz["Cache de Buzz<br/>planificado, adapter opcional"]
+    cloud["Cloud providers: OpenAI, ElevenLabs<br/>planned, only if the user chooses them"]
+    cpp["whisper.cpp<br/>planned"]
+    diar["pyannote diarization<br/>planned"]
+    buzz["Buzz cache<br/>planned, optional adapter"]
 
-    usuario -->|"navegador en 127.0.0.1 o CLI voz"| voz
+    usuario -->|"browser at 127.0.0.1 or the voz CLI"| voz
     voz -->|"subprocess"| ffmpeg
-    voz -->|"llamada en proceso, local_files_only"| fw
-    voz -->|"lee y escribe datos propios"| fs
-    voz -.->|"descarga puntual de modelo, opt-in"| hf
+    voz -->|"in-process call, local_files_only"| fw
+    voz -->|"reads and writes its own data"| fs
+    voz -.->|"one-off model download, opt-in"| hf
 
     voz -.-> cloud
     voz -.-> cpp
@@ -37,33 +38,35 @@ flowchart TB
     voz -.-> buzz
 ```
 
-## Actores
+## Actors
 
-| Actor | Interacción real hoy |
+| Actor | Real interaction today |
 | --- | --- |
-| Persona usuaria | Ejecuta `voz` (abre `http://127.0.0.1:8765` en el navegador salvo `--no-browser`) o `voz doctor` para diagnosticar. Ver `src/voz/interfaces/cli/main.py`. |
+| User | Runs `voz` (opens `http://127.0.0.1:8765` in the browser unless `--no-browser` is given) or `voz doctor` to diagnose. See `src/voz/interfaces/cli/main.py`. |
 
-No hay otros actores: no existen usuarios múltiples, roles ni autenticación
-([SECURITY.md](../../SECURITY.md) describe el alcance de seguridad local).
+There are no other actors: there are no multiple users, roles or
+authentication ([SECURITY.md](../../SECURITY.md) describes the local security
+scope).
 
-## Sistemas externos
+## External systems
 
-| Sistema | Uso hoy | Cuándo toca la red |
+| System | Use today | When it touches the network |
 | --- | --- | --- |
-| FFmpeg y ffprobe | `FfprobeMediaProbe` y `FfmpegMediaNormalizer` (`src/voz/infrastructure/audio/`) los invocan como subprocess. `voz doctor` verifica su presencia. | Nunca. |
-| Faster Whisper | Único provider real: `FasterWhisperProvider` (`src/voz/infrastructure/asr/faster_whisper.py`). Es un extra opcional de `pyproject.toml`; sin él, el arranque básico funciona pero no se puede transcribir. | Nunca al transcribir: se construye con `local_files_only=True`. |
-| Hugging Face Hub | `FileSystemModelStore.install` (`src/voz/infrastructure/model_storage.py`) usa `huggingface_hub.snapshot_download` con revisión fijada y confirmación explícita. Ningún endpoint HTTP ni comando CLI la invoca hoy (verificado con `grep`): es una API de infraestructura lista para el Model Manager (Sección 8). | Solo durante una instalación explícita. |
-| Filesystem | Originales, derivados, base de datos, cachés temporales. Layout en [ADR-0002](../adr/0002-sqlite-persistence.md). | No aplica. |
+| FFmpeg and ffprobe | `FfprobeMediaProbe` and `FfmpegMediaNormalizer` (`src/voz/infrastructure/audio/`) invoke them as subprocesses. `voz doctor` checks that they are present. | Never. |
+| Faster Whisper | The only real provider: `FasterWhisperProvider` (`src/voz/infrastructure/asr/faster_whisper.py`). It is an optional extra in `pyproject.toml`; without it the basic startup works but transcription is not possible. | Never while transcribing: it is built with `local_files_only=True`. |
+| Hugging Face Hub | `FileSystemModelStore.install` (`src/voz/infrastructure/model_storage.py`) uses `huggingface_hub.snapshot_download` with a pinned revision and explicit confirmation. No HTTP endpoint or CLI command invokes it today (verified with `grep`): it is an infrastructure API ready for the Model Manager (Section 8). | Only during an explicit installation. |
+| Filesystem | Originals, derivatives, database, temporary caches. Layout in [ADR-0002](../adr/0002-sqlite-persistence.md). | Not applicable. |
 
-## Planificado (no existe en el código)
+## Planned (not in the code)
 
-- Providers cloud (OpenAI, ElevenLabs): Secciones 11 (OpenAI) y 12 (ElevenLabs) del
-  [ROADMAP](../../ROADMAP.md). Deben ser opt-in por la regla de
-  [ADR-0006](../adr/0006-local-first-privacy.md).
-- whisper.cpp, WhisperX/alignment y diarización pyannote: Secciones 6, 7 y 9.
-- Adapter opcional de cache de Buzz: [ADR-0001](../adr/0001-modular-monolith.md)
-  lo permite, no hay código.
+- Cloud providers (OpenAI, ElevenLabs): Sections 11 (OpenAI) and 12
+  (ElevenLabs) of the [ROADMAP](../../ROADMAP.md). They must be opt-in under the
+  rule in [ADR-0006](../adr/0006-local-first-privacy.md).
+- whisper.cpp, WhisperX/alignment and pyannote diarization: Sections 6, 7
+  and 9.
+- Optional Buzz cache adapter: [ADR-0001](../adr/0001-modular-monolith.md)
+  allows it; there is no code.
 
-## Siguiente nivel
+## Next level
 
-[C4-2 Contenedores](02-contenedores.md).
+[C4-2 Containers](02-contenedores.md).

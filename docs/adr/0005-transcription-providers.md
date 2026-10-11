@@ -1,158 +1,161 @@
-# ADR-0005: Port de providers de transcripción sin framework de plugins
+# ADR-0005: Transcription provider port without a plugin framework
 
-- Estado: Aceptada
-- Fecha: 2026-09-30
-- Responsables: mantenedores de VOZ
-- Alcance: contrato `TranscriptionProvider`, registry y regla de crecimiento de
-  providers (S16.15)
-- Relacionadas: [ADR-0001](0001-modular-monolith.md) (fronteras),
+> Translated from Spanish on 2026-10-11 (V1-08b). VOZ is the former name of V (ADR-0009).
+
+- Status: Accepted
+- Date: 2026-09-30
+- Owners: VOZ maintainers
+- Scope: the `TranscriptionProvider` contract, the registry and the rule for
+  growing providers (S16.15)
+- Related: [ADR-0001](0001-modular-monolith.md) (boundaries),
   [ADR-0004](0004-local-asr-and-recoverable-chunks.md) (Faster Whisper),
-  [ADR-0006](0006-local-first-privacy.md) (cloud solo por elección explícita)
-- Diagramas: [componentes](../architecture/03-componentes.md)
+  [ADR-0006](0006-local-first-privacy.md) (cloud only by explicit choice)
+- Diagrams: [components](../architecture/03-componentes.md)
 
-## Contexto
+## Context
 
-El plan maestro prevé varios motores: Faster Whisper (local principal),
-whisper.cpp, OpenAI y ElevenLabs (cloud opcionales), además de diarización y
-alignment. Los casos de uso no deben conocer tipos de un SDK concreto. Al mismo
-tiempo, [AGENTS.md](../../AGENTS.md) prohíbe construir un framework de plugins
-dinámico antes de que al menos dos providers reales demuestren la abstracción
-necesaria.
+The master plan anticipates several engines: Faster Whisper (the main local
+one), whisper.cpp, OpenAI and ElevenLabs (optional cloud), plus diarization and
+alignment. The use cases must not know the types of a specific SDK. At the same
+time, [AGENTS.md](../../AGENTS.md) forbids building a dynamic plugin framework
+before at least two real providers demonstrate the necessary abstraction.
 
-Hoy existe **un único provider real**: Faster Whisper. Diseñar el punto de
-extensión a partir de un solo ejemplo tiende a fijar detalles de ese motor en el
-contrato, así que la abstracción se mantiene mínima y se revisa cuando llegue el
-segundo.
+Today there is **a single real provider**: Faster Whisper. Designing the
+extension point from a single example tends to bake that engine's details into
+the contract, so the abstraction is kept minimal and revisited when the second
+one arrives.
 
-## Decisión
+## Decision
 
-1. **Port único y estructural.** `TranscriptionProvider` es un `Protocol`
-   `runtime_checkable` en `src/voz/application/ports/transcription.py`, con la
-   propiedad `provider_id` y el método
+1. **A single, structural port.** `TranscriptionProvider` is a
+   `runtime_checkable` `Protocol` in `src/voz/application/ports/transcription.py`,
+   with the `provider_id` property and the method
    `transcribe(*, audio: BinaryIO, options: TranscriptionOptions, cancellation: TranscriptionCancellationToken | None) -> TranscriptionResult`.
-   Los adapters no heredan de application: cumplen el protocolo.
-2. **Tipos canónicos independientes del motor** en el mismo módulo:
-   `TranscriptionOptions` (`ModelDescriptor`, idioma opcional y `TranscriptionClip`
-   opcional), `TranscriptionResult` y `TranscriptionSegment` (milisegundos
-   enteros, ordenados y sin solapes, texto literal), `TranscriptionFailureCode`
-   (`transcription_model_not_installed`, `transcription_gpu_unavailable`,
-   `transcription_invalid_audio`, `transcription_provider_failed`,
-   `transcription_cancelled`) y `TranscriptionError` con mensaje seguro y
-   `retryable`. Los tipos del SDK (engine, segmentos, `compute_type`) permanecen
-   privados en el adapter (`_Engine`, `_EngineSegment` en
-   `src/voz/infrastructure/asr/faster_whisper.py`).
-3. **Identidad del modelo en el dominio.** `ModelDescriptor` y
-   `ProcessingProfile` (`src/voz/domain/entities/`) llevan `provider_id`,
-   modelo, procedencia (`source` + `revision` fija) y capacidades
-   (`ModelCapability`). El audio llega como descriptor abierto, nunca como ruta.
-4. **Registry explícito y determinista.**
-   `TranscriptionProviderRegistry`
-   (`src/voz/application/transcription_provider_registry.py`) es un diccionario
-   en memoria inyectado por constructor: valida que el candidato implemente el
-   port, que `provider_id` sea un identificador seguro (`[a-z0-9][a-z0-9._-]{0,63}`),
-   rechaza duplicados sin reemplazar y lista en orden léxico. No descubre
-   módulos, no importa por nombre y no lee configuración.
-5. **Composición en un solo lugar.** `create_local_asr_runtime`
-   (`src/voz/bootstrap.py`) construye `FasterWhisperProvider` para un descriptor
-   exacto y lo registra; `create_app` expone `provider_for(selection)` al
-   `JobRunner`, que recibe un `Callable[[JobSelection], TranscriptionProvider]`
-   y nunca importa un adapter.
-6. **Regla de no plugin framework.** Hasta que existan **dos providers reales
-   ejecutados** (no dobles de prueba), no se añaden entry points, carga dinámica
-   de módulos, manifests de plugin, jerarquías base ni generalización de
-   `create_local_asr_runtime`. El registry actual es un mapa, no un mecanismo de
-   plugins. La aparición del segundo provider (whisper.cpp, Sección 9, o un
-   cloud opcional) obliga a revisar esta ADR y a extraer solo lo que los dos
-   compartan de verdad.
-7. **Capacidades adicionales, contratos separados y posteriores.**
-   `DiarizationProvider` y `AlignmentProvider` (mencionados en ADR-0001) no
-   existen; se crearán con su sección del roadmap y sus propios tipos
-   canónicos, no como métodos opcionales de `TranscriptionProvider`.
-8. **Providers cloud** implementarán el mismo port, pero solo se seleccionan
-   por decisión explícita del usuario y siguen las reglas de
-   [ADR-0006](0006-local-first-privacy.md). No existen en el código.
+   Adapters do not inherit from application: they satisfy the protocol.
+2. **Engine-independent canonical types** in the same module:
+   `TranscriptionOptions` (`ModelDescriptor`, optional language and optional
+   `TranscriptionClip`), `TranscriptionResult` and `TranscriptionSegment`
+   (integer milliseconds, ordered and non-overlapping, literal text),
+   `TranscriptionFailureCode` (`transcription_model_not_installed`,
+   `transcription_gpu_unavailable`, `transcription_invalid_audio`,
+   `transcription_provider_failed`, `transcription_cancelled`) and
+   `TranscriptionError` with a safe message and `retryable`. SDK types (engine,
+   segments, `compute_type`) remain private to the adapter (`_Engine`,
+   `_EngineSegment` in `src/voz/infrastructure/asr/faster_whisper.py`).
+3. **Model identity in the domain.** `ModelDescriptor` and `ProcessingProfile`
+   (`src/voz/domain/entities/`) carry `provider_id`, model, provenance
+   (`source` + pinned `revision`) and capabilities (`ModelCapability`). Audio
+   arrives as an open descriptor, never as a path.
+4. **Explicit, deterministic registry.** `TranscriptionProviderRegistry`
+   (`src/voz/application/transcription_provider_registry.py`) is an in-memory
+   dictionary injected through the constructor: it validates that the candidate
+   implements the port, that `provider_id` is a safe identifier
+   (`[a-z0-9][a-z0-9._-]{0,63}`), rejects duplicates without replacing them and
+   lists in lexical order. It does not discover modules, does not import by name
+   and does not read configuration.
+5. **Composition in a single place.** `create_local_asr_runtime`
+   (`src/voz/bootstrap.py`) builds `FasterWhisperProvider` for an exact
+   descriptor and registers it; `create_app` exposes `provider_for(selection)`
+   to the `JobRunner`, which receives a
+   `Callable[[JobSelection], TranscriptionProvider]` and never imports an
+   adapter.
+6. **No-plugin-framework rule.** Until **two real, executed providers** exist
+   (not test doubles), no entry points, dynamic module loading, plugin
+   manifests, base hierarchies or generalization of
+   `create_local_asr_runtime` are added. The current registry is a map, not a
+   plugin mechanism. The arrival of the second provider (whisper.cpp,
+   Section 9, or an optional cloud one) forces a review of this ADR and the
+   extraction of only what the two really share.
+7. **Additional capabilities, separate and later contracts.**
+   `DiarizationProvider` and `AlignmentProvider` (mentioned in ADR-0001) do not
+   exist; they will be created with their roadmap section and their own
+   canonical types, not as optional methods of `TranscriptionProvider`.
+8. **Cloud providers** will implement the same port, but are only selected by
+   the user's explicit decision and follow the rules of
+   [ADR-0006](0006-local-first-privacy.md). They do not exist in the code.
 
-## Consecuencias positivas
+## Positive consequences
 
-- Los casos de uso (`RecoverableTranscription`, `JobRunner`) se prueban con
-  providers falsos y no importan ningún SDK.
-- Cambiar de motor no altera la representación canónica del transcript ni la
-  UI.
-- La ausencia de un framework de plugins evita compromisos de API pública con
-  un solo ejemplo.
-- Los errores llegan a la API como códigos estables sin rutas ni tracebacks.
+- The use cases (`RecoverableTranscription`, `JobRunner`) are tested with fake
+  providers and import no SDK.
+- Changing the engine does not alter the canonical transcript representation or
+  the UI.
+- The absence of a plugin framework avoids public API commitments based on a
+  single example.
+- Errors reach the API as stable codes without paths or tracebacks.
 
-## Costes y límites
+## Costs and limits
 
-- Con un solo provider, el registry aporta poco más que validación de
-  identidad; se conserva porque ya es la superficie que el segundo provider
-  usará.
-- Partes del sistema son hoy específicas de Faster Whisper por diseño:
-  `create_local_asr_runtime` rechaza descriptores de otro provider con
-  `ValueError`; `provider_for` en `create_app` siempre construye un runtime local
-  de Faster Whisper; `LocalTranscriptionModelCatalog` y
-  `FasterWhisperRuntimeProbe` (`src/voz/infrastructure/asr/options.py`) solo
-  conocen ese motor. Añadir otro exigirá generalizar esos puntos (y solo
-  entonces).
-- El port no incluye `close()`: la liberación de recursos pertenece al dueño
-  del adapter en el composition root ([ADR-0004](0004-local-asr-and-recoverable-chunks.md)).
-- La suite contractual ejecuta un provider estructural y `FasterWhisperProvider`
-  con un engine falso; el camino con modelo real es un smoke opt-in. La prueba
-  de que el contrato es suficiente llegará con el segundo motor real.
-- Word timestamps, traducción y diarización no forman parte del contrato actual.
+- With a single provider, the registry adds little beyond identity validation;
+  it is kept because it is already the surface the second provider will use.
+- Parts of the system are Faster Whisper-specific today by design:
+  `create_local_asr_runtime` rejects descriptors from another provider with
+  `ValueError`; `provider_for` in `create_app` always builds a local Faster
+  Whisper runtime; `LocalTranscriptionModelCatalog` and
+  `FasterWhisperRuntimeProbe` (`src/voz/infrastructure/asr/options.py`) only
+  know that engine. Adding another will require generalizing those points (and
+  only then).
+- The port does not include `close()`: releasing resources belongs to the
+  adapter's owner in the composition root
+  ([ADR-0004](0004-local-asr-and-recoverable-chunks.md)).
+- The contract suite runs a structural provider and `FasterWhisperProvider`
+  with a fake engine; the real-model path is an opt-in smoke test. Proof that
+  the contract is sufficient will come with the second real engine.
+- Word timestamps, translation and diarization are not part of the current
+  contract.
 
-## Alternativas consideradas
+## Alternatives considered
 
-### Framework de plugins (entry points, carga dinámica, manifests)
+### Plugin framework (entry points, dynamic loading, manifests)
 
-Rechazada por ahora. Prohibido por AGENTS.md hasta tener dos providers reales;
-añadiría superficie de seguridad y compatibilidad sin un segundo caso de uso.
+Rejected for now. Forbidden by AGENTS.md until there are two real providers; it
+would add security and compatibility surface without a second use case.
 
-### Clase base abstracta (`ABC`) en lugar de `Protocol`
+### Abstract base class (`ABC`) instead of `Protocol`
 
-Rechazada. Obligaría a los adapters a importar application y a heredar; el
-protocolo estructural mantiene la dependencia hacia adentro y permite dobles
-simples en tests.
+Rejected. It would force adapters to import application and inherit; the
+structural protocol keeps the dependency pointing inward and allows simple
+doubles in tests.
 
-### Un solo port «ASR» con transcripción, alineación y diarización
+### A single "ASR" port with transcription, alignment and diarization
 
-Rechazada. Las capacidades varían por motor y evolucionan por separado; se
-modelan como puertos independientes cuando existan.
+Rejected. Capabilities vary per engine and evolve separately; they are modeled
+as independent ports when they exist.
 
-### Selección de provider mediante condicionales en los casos de uso
+### Provider selection through conditionals in the use cases
 
-Rechazada. Filtra detalles de motores a application y obliga a modificarla por
-cada proveedor nuevo.
+Rejected. It leaks engine details into application and forces modifying it for
+each new provider.
 
-### Registro global (singleton) o service locator
+### Global registry (singleton) or service locator
 
-Rechazada. Oculta dependencias y dificulta los tests; el registry es una
-instancia inyectada desde el composition root.
+Rejected. It hides dependencies and makes tests harder; the registry is an
+instance injected from the composition root.
 
-## Evidencia actual (2026-09-30)
+## Current evidence (2026-09-30)
 
-| Requisito | Código o prueba |
+| Requirement | Code or test |
 | --- | --- |
-| Port y tipos canónicos | `src/voz/application/ports/transcription.py`, `tests/contract/test_transcription_provider.py` (validación de segmentos, resultado y opciones) |
-| Contrato compartido por implementaciones | mismo archivo, fixture `provider_case` con `structural` y `faster-whisper`: audio válido, timestamps monótonos, audio inválido tipado, cancelación |
-| Registry: identidad, duplicados, orden, snapshot inmutable, rechazo de no-providers | `tests/unit/application/test_transcription_provider_registry.py` |
-| Registry sin imports de infraestructura o frameworks | `test_registry_has_no_domain_infrastructure_or_framework_imports` |
-| Faster Whisper único adapter real | `src/voz/infrastructure/asr/faster_whisper.py` (`provider_id = "faster-whisper"`) y `tests/unit/infrastructure/asr/` |
-| Composición explícita sin descargas | `tests/unit/test_asr_bootstrap.py` (`providers.provider_ids() == ("faster-whisper",)`, rechazo de otro provider) |
-| El job usa el provider vía factoría | `tests/integration/application/test_job_runner.py` |
+| Port and canonical types | `src/voz/application/ports/transcription.py`, `tests/contract/test_transcription_provider.py` (validation of segments, result and options) |
+| Contract shared by implementations | same file, `provider_case` fixture with `structural` and `faster-whisper`: valid audio, monotonic timestamps, typed invalid audio, cancellation |
+| Registry: identity, duplicates, order, immutable snapshot, rejection of non-providers | `tests/unit/application/test_transcription_provider_registry.py` |
+| Registry without infrastructure or framework imports | `test_registry_has_no_domain_infrastructure_or_framework_imports` |
+| Faster Whisper as the only real adapter | `src/voz/infrastructure/asr/faster_whisper.py` (`provider_id = "faster-whisper"`) and `tests/unit/infrastructure/asr/` |
+| Explicit composition without downloads | `tests/unit/test_asr_bootstrap.py` (`providers.provider_ids() == ("faster-whisper",)`, rejection of another provider) |
+| The job uses the provider through a factory | `tests/integration/application/test_job_runner.py` |
 
-## Verificación
+## Verification
 
-Esta decisión se considera respetada cuando:
+This decision is considered respected when:
 
-- ningún caso de uso importa un módulo bajo `voz.infrastructure`;
-- todo provider expone un `provider_id` seguro, único en el registry;
-- todo provider nuevo se añade a la suite `tests/contract/` y pasa los mismos
-  casos;
-- los tipos del SDK no aparecen en firmas públicas de application ni en la API;
-- no existe código de descubrimiento dinámico de providers mientras solo haya
-  uno real.
+- no use case imports a module under `voz.infrastructure`;
+- every provider exposes a safe `provider_id`, unique in the registry;
+- every new provider is added to the `tests/contract/` suite and passes the same
+  cases;
+- SDK types do not appear in public application signatures nor in the API;
+- no dynamic provider discovery code exists while there is only one real
+  provider.
 
-**Criterio de revisión:** al integrar el segundo provider real, actualizar o
-sustituir esta ADR con lo que ambos comparten y retirar los puntos específicos
-de Faster Whisper enumerados en «Costes y límites».
+**Review criterion:** when integrating the second real provider, update or
+replace this ADR with what both share and remove the Faster Whisper-specific
+points listed in "Costs and limits".

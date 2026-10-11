@@ -1,97 +1,100 @@
-# ADR-0007: Diarización local con sherpa-onnx (sin torch ni token)
+# ADR-0007: Local diarization with sherpa-onnx (no torch, no token)
 
-- Estado: Aceptada
-- Fecha: 2026-09-30
-- Responsables: mantenedores de VOZ
-- Alcance: motor por defecto de diarización y su instalación de modelos
+> Translated from Spanish on 2026-10-11 (V1-08b). VOZ is the former name of V (ADR-0009).
+
+- Status: Accepted
+- Date: 2026-09-30
+- Owners: VOZ maintainers
+- Scope: default diarization engine and its model installation
   (S6.04, S6.05-S6.07, S6.16)
-- Relacionadas: [ADR-0005](0005-transcription-providers.md) (providers),
-  [ADR-0006](0006-local-first-privacy.md) (local-first, descargas explícitas)
+- Related: [ADR-0005](0005-transcription-providers.md) (providers),
+  [ADR-0006](0006-local-first-privacy.md) (local-first, explicit downloads)
 
-## Contexto
+## Context
 
-La diarización responde «quién habló cuándo» y alimenta speakers editables. El
-candidato habitual, pyannote `speaker-diarization-community-1`, exige PyTorch
-(cientos de MB de dependencias) y un token de Hugging Face con aceptación de
-términos. Eso contradice el objetivo de VOZ: local, gratis, open source y sin
-cuentas (ADR-0006). Tampoco conviene que la instalación por defecto arrastre
-torch junto a CTranslate2 en un sistema inmutable (Bazzite).
+Diarization answers "who spoke when" and feeds editable speakers. The usual
+candidate, pyannote `speaker-diarization-community-1`, requires PyTorch
+(hundreds of MB of dependencies) and a Hugging Face token with accepted terms.
+That contradicts VOZ's goal: local, free, open source and account-free
+(ADR-0006). Nor is it desirable for the default installation to drag in torch
+alongside CTranslate2 on an immutable system (Bazzite).
 
-## Decisión
+## Decision
 
-1. **Motor:** `sherpa-onnx` (ONNX Runtime, wheels CPU, sin torch) detrás del port
-   `DiarizationProvider` (`src/voz/application/ports/diarization.py`). Es un
-   extra opcional (`pip install voz[diarization]`); se importa de forma
-   perezosa y, si falta, el error es `diarization_runtime_unavailable`.
-2. **Modelos fijados** (sin token; URL, tamaño y SHA-256 verificados antes de
-   publicar):
-   - segmentación: `sherpa-onnx-pyannote-segmentation-3-0` (export ONNX de
-     pyannote/segmentation-3.0), licencia **MIT**;
+1. **Engine:** `sherpa-onnx` (ONNX Runtime, CPU wheels, no torch) behind the
+   `DiarizationProvider` port (`src/voz/application/ports/diarization.py`). It
+   is an optional extra (`pip install voz[diarization]`); it is imported lazily
+   and, if missing, the error is `diarization_runtime_unavailable`.
+2. **Pinned models** (no token; URL, size and SHA-256 verified before
+   publishing):
+   - segmentation: `sherpa-onnx-pyannote-segmentation-3-0` (ONNX export of
+     pyannote/segmentation-3.0), **MIT** license;
    - embeddings: `wespeaker_en_voxceleb_resnet34_LM.onnx` (WeSpeaker ResNet34),
-     licencia **Apache-2.0**.
-   Se instalan solo por acción explícita (`DiarizationModelStore.install`) en
-   `<XDG data>/models/diarization/`, con `.part`, reanudación por `Range`,
-   publicación atómica y un manifiesto; nunca se descargan al importar ni al
-   diarizar.
-3. **Clustering:** `FastClustering` de sherpa. Automático por umbral (0.3);
-   exacto con `num_clusters=N`; rango mín/máx = automático y, si el resultado
-   queda fuera, una segunda pasada con `num_clusters` recortado al límite, sin
-   recargar los modelos (`set_config` solo cambia el clustering).
-4. **Umbral 0.3.** Medido con diálogo sintético en español: 0.5 fusiona voces
-   distintas y 0.3 separa A/B/A. Se prefiere sobre-segmentar: fusionar speakers
-   en la UI es trivial; separar una voz fusionada no lo es.
-5. **Contrato:** entrada WAV PCM s16 mono 16 kHz (el derivado normalizado del ASR;
-   otro formato es `diarization_invalid_audio`); salida `DiarizedTurn` en ms
-   enteros ordenados con `cluster` opaco. La cancelación se sondea desde el
-   callback de progreso nativo. Las rutas del host no salen de la infraestructura.
+     **Apache-2.0** license.
+   They are installed only by explicit action (`DiarizationModelStore.install`)
+   in `<XDG data>/models/diarization/`, with `.part` files, resumption through
+   `Range`, atomic publication and a manifest; they are never downloaded at
+   import time or when diarizing.
+3. **Clustering:** sherpa's `FastClustering`. Automatic by threshold (0.3);
+   exact with `num_clusters=N`; min/max range = automatic and, if the result
+   falls outside, a second pass with `num_clusters` clamped to the limit,
+   without reloading the models (`set_config` only changes the clustering).
+4. **Threshold 0.3.** Measured with synthetic Spanish dialogue: 0.5 merges
+   different voices and 0.3 separates A/B/A. Over-segmentation is preferred:
+   merging speakers in the UI is trivial; separating a merged voice is not.
+5. **Contract:** input is mono 16 kHz s16 PCM WAV (the normalized ASR
+   derivative; any other format is `diarization_invalid_audio`); output is
+   `DiarizedTurn` in ordered integer ms with an opaque `cluster`. Cancellation
+   is polled from the native progress callback. Host paths do not leave the
+   infrastructure.
 
-## Consecuencias positivas
+## Positive consequences
 
-- Instalación ligera (~33 MB de modelos) y sin cuentas; funciona sin red tras la
-  descarga explícita.
-- Corre en CPU; no compite por VRAM con el ASR (S14.07).
-- El port permite sustituir el motor sin tocar casos de uso.
+- Lightweight installation (~33 MB of models) and no accounts; works without a
+  network after the explicit download.
+- Runs on CPU; does not compete for VRAM with ASR (S14.07).
+- The port allows replacing the engine without touching use cases.
 
-## Costes y límites
+## Costs and limits
 
-- Calidad algo inferior a pyannote Community-1; el embedding es entrenado en
-  VoxCeleb (inglés), la separación en español se apoya en voz, no en idioma.
-- El clustering rápido no modela solapamiento de voces más allá de lo que da la
-  segmentación; la reconciliación con segmentos de ASR vive en application.
-- Rango = como mucho dos pasadas (segmentación + embeddings se repiten;
-  ponytail: solo el clustering podría cachearse con un cambio upstream).
-- El audio se carga entero en memoria como float32 (unos 230 MB por hora).
+- Quality somewhat lower than pyannote Community-1; the embedding is trained on
+  VoxCeleb (English), so separation in Spanish relies on voice, not language.
+- Fast clustering does not model overlapping voices beyond what the
+  segmentation gives; reconciliation with ASR segments lives in application.
+- Range = at most two passes (segmentation + embeddings are repeated;
+  ponytail: only the clustering could be cached with an upstream change).
+- The audio is loaded entirely into memory as float32 (about 230 MB per hour).
 
-## Alternativas consideradas
+## Alternatives considered
 
-| Alternativa | Por qué no es la opción por defecto |
+| Alternative | Why it is not the default option |
 | --- | --- |
-| pyannote Community-1 con torch | Requiere torch y token HF con términos aceptados |
-| NVIDIA NeMo (MSDD/Sortformer) | Dependencias muy pesadas; orientado a GPU/CUDA |
-| WhisperX | Acopla ASR, alineación y diarización (que usa pyannote y token) |
+| pyannote Community-1 with torch | Requires torch and an HF token with accepted terms |
+| NVIDIA NeMo (MSDD/Sortformer) | Very heavy dependencies; GPU/CUDA-oriented |
+| WhisperX | Couples ASR, alignment and diarization (which uses pyannote and a token) |
 
-## Cómo cambiar de modelo
+## How to change the model
 
-Cambiar el catálogo fijado en `DiarizationModelStore` (URL, tamaño, SHA-256 y
-nombres de archivo) y las rutas pasadas a `SherpaOnnxDiarizationProvider`;
-otro motor completo solo necesita implementar `DiarizationProvider`. El
-manifiesto compara las fuentes fijadas, así que un catálogo distinto fuerza una
-reinstalación limpia.
+Change the pinned catalog in `DiarizationModelStore` (URL, size, SHA-256 and
+file names) and the paths passed to `SherpaOnnxDiarizationProvider`; a whole
+different engine only needs to implement `DiarizationProvider`. The manifest
+compares the pinned sources, so a different catalog forces a clean
+reinstallation.
 
-## Evidencia actual (2026-09-30)
+## Current evidence (2026-09-30)
 
-| Requisito | Código o prueba |
+| Requirement | Code or test |
 | --- | --- |
-| Descarga verificada, reanudable y atómica | `src/voz/infrastructure/diarization/models.py`, `tests/unit/infrastructure/diarization/test_diarization_models.py` |
-| Provider, WAV estricto, cancelación, errores tipados | `src/voz/infrastructure/diarization/sherpa.py`, `tests/unit/infrastructure/diarization/test_sherpa_provider.py` |
-| Auto / rango / exacto con motor falso | mismo archivo (`test_range_reruns_clamped_without_reloading_models`) |
-| Prueba real opt-in | `test_real_engine_finds_at_least_two_speakers` (`VOZ_DIARIZATION_E2E_MODELS` y `VOZ_DIARIZATION_E2E_AUDIO`) |
+| Verified, resumable and atomic download | `src/voz/infrastructure/diarization/models.py`, `tests/unit/infrastructure/diarization/test_diarization_models.py` |
+| Provider, strict WAV, cancellation, typed errors | `src/voz/infrastructure/diarization/sherpa.py`, `tests/unit/infrastructure/diarization/test_sherpa_provider.py` |
+| Auto / range / exact with a fake engine | same file (`test_range_reruns_clamped_without_reloading_models`) |
+| Opt-in real test | `test_real_engine_finds_at_least_two_speakers` (`VOZ_DIARIZATION_E2E_MODELS` and `VOZ_DIARIZATION_E2E_AUDIO`) |
 
-## Verificación
+## Verification
 
-Esta decisión se considera respetada cuando:
+This decision is considered respected when:
 
-- ningún módulo fuera de `infrastructure/diarization` importa `sherpa_onnx`;
-- ninguna ruta descarga modelos sin una llamada explícita a `install`;
-- el extra `diarization` no añade torch al entorno;
-- todo modelo nuevo se fija con tamaño y SHA-256.
+- no module outside `infrastructure/diarization` imports `sherpa_onnx`;
+- no path downloads models without an explicit call to `install`;
+- the `diarization` extra does not add torch to the environment;
+- every new model is pinned with size and SHA-256.

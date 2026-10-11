@@ -1,172 +1,174 @@
-# ADR-0002: SQLite con mapeo explícito y migraciones Alembic
+# ADR-0002: SQLite with explicit mapping and Alembic migrations
 
-- Estado: Aceptada
-- Fecha: 2026-09-02
-- Responsables: mantenedores de VOZ
-- Alcance: persistencia local inicial: SQLite, migraciones y layout de filesystem XDG
-- Última revisión: 2026-09-30 (S16.13; corrige el nombre del archivo y añade el
-  layout de filesystem)
-- Diagramas: [contenedores](../architecture/02-contenedores.md)
+> Translated from Spanish on 2026-10-11 (V1-08b). VOZ is the former name of V (ADR-0009).
 
-## Contexto
+- Status: Accepted
+- Date: 2026-09-02
+- Owners: VOZ maintainers
+- Scope: initial local persistence: SQLite, migrations and the XDG filesystem layout
+- Last review: 2026-09-30 (S16.13; fixes the file name and adds the filesystem
+  layout)
+- Diagrams: [containers](../architecture/02-contenedores.md)
 
-VOZ necesita que proyectos, medios, transcripciones, hablantes y jobs sobrevivan
-al cierre de la aplicación. El producto se ejecuta para una persona en una sola
-máquina y no necesita un servidor de base de datos. Al mismo tiempo, el dominio
-no debe depender de SQLAlchemy ni adoptar detalles de tablas como reglas de
-negocio.
+## Context
 
-Los jobs largos también requieren escrituras incrementales y lecturas
-concurrentes desde la UI. La evolución del esquema debe ser reproducible y no
-puede depender de crear tablas implícitamente en cada arranque.
+VOZ needs projects, media, transcriptions, speakers and jobs to survive the
+application being closed. The product runs for one person on a single machine
+and does not need a database server. At the same time, the domain must not
+depend on SQLAlchemy nor adopt table details as business rules.
 
-## Decisión
+Long jobs also require incremental writes and concurrent reads from the UI.
+Schema evolution must be reproducible and cannot depend on implicitly creating
+tables at every startup.
 
-La primera implementación persistente utilizará SQLite mediante SQLAlchemy 2,
-con migraciones versionadas en Alembic y `journal_mode=WAL` activado por cada
-conexión del adapter.
+## Decision
 
-- El archivo predeterminado es `~/.local/share/voz/voz.sqlite3`
-  (`DATABASE_FILENAME` en `src/voz/bootstrap.py`), resuelto por el módulo XDG
-  existente. La redacción original de esta ADR decía `voz.db`; el código nunca
-  usó ese nombre.
-- Los contratos de repositories vivirán en `application/ports` y trabajarán con
-  entidades del dominio.
-- Tablas, metadata y conversión fila-entidad vivirán exclusivamente en
+The first persistent implementation will use SQLite through SQLAlchemy 2, with
+versioned Alembic migrations and `journal_mode=WAL` enabled on every adapter
+connection.
+
+- The default file is `~/.local/share/voz/voz.sqlite3`
+  (`DATABASE_FILENAME` in `src/voz/bootstrap.py`), resolved by the existing XDG
+  module. The original wording of this ADR said `voz.db`; the code never used
+  that name.
+- Repository contracts will live in `application/ports` and will work with
+  domain entities.
+- Tables, metadata and row-to-entity conversion will live exclusively in
   `infrastructure/persistence`.
-- Las entidades del dominio no serán modelos ORM y no importarán SQLAlchemy.
-- La migración inicial será la fuente autoritativa del esquema distribuido.
-- Las pruebas podrán crear un engine SQLite temporal sin escribir datos en el
-  checkout ni en los directorios XDG reales.
-- Cada operación de repository tiene un límite transaccional explícito (cada
-  método abre `engine.begin()` o `engine.connect()`). Una futura unidad de
-  trabajo podrá coordinar varias operaciones si aparece un caso de uso que lo
-  necesite. Hoy la única escritura multi-tabla atómica es el commit de chunk
-  (segmentos, checkpoint y job) en `SqliteTranscriptionCheckpointStore`
+- Domain entities will not be ORM models and will not import SQLAlchemy.
+- The initial migration will be the authoritative source of the distributed
+  schema.
+- Tests may create a temporary SQLite engine without writing data into the
+  checkout or into the real XDG directories.
+- Each repository operation has an explicit transactional boundary (each method
+  opens `engine.begin()` or `engine.connect()`). A future unit of work may
+  coordinate several operations if a use case that needs it appears. Today the
+  only atomic multi-table write is the chunk commit (segments, checkpoint and
+  job) in `SqliteTranscriptionCheckpointStore`
   ([ADR-0004](0004-local-asr-and-recoverable-chunks.md)).
-- Cada conexión activa `foreign_keys=ON`, `journal_mode=WAL` y
-  `busy_timeout` (por defecto 5 000 ms); `create_sqlite_engine` exige una ruta
-  absoluta y no tiene valor por defecto ligado al checkout o al directorio de
-  trabajo.
-- La migración se aplica en el lifespan de la aplicación con
-  `upgrade_to_head` (`src/voz/infrastructure/persistence/migrate.py`), nunca al
-  importar el módulo, y es idempotente. Los scripts viven en
-  `migrations/versions/` (checkout) o dentro del wheel
-  (`pyproject.toml`, `force-include`).
+- Each connection enables `foreign_keys=ON`, `journal_mode=WAL` and
+  `busy_timeout` (5,000 ms by default); `create_sqlite_engine` requires an
+  absolute path and has no default value tied to the checkout or the working
+  directory.
+- The migration is applied in the application lifespan with `upgrade_to_head`
+  (`src/voz/infrastructure/persistence/migrate.py`), never at module import
+  time, and it is idempotent. The scripts live in `migrations/versions/`
+  (checkout) or inside the wheel (`pyproject.toml`, `force-include`).
 
-## Filesystem y XDG
+## Filesystem and XDG
 
-La base de datos no contiene los medios: guarda identidad, hash, tamaño,
-duración, tipo y nombre visible. Los bytes viven en el filesystem bajo
-directorios XDG resueltos por `resolve_voz_paths` (`src/voz/infrastructure/paths.py`),
-que ignora variables `XDG_*` vacías o relativas.
+The database does not contain the media: it stores identity, hash, size,
+duration, type and display name. The bytes live on the filesystem under XDG
+directories resolved by `resolve_voz_paths`
+(`src/voz/infrastructure/paths.py`), which ignores empty or relative `XDG_*`
+variables.
 
-| Ubicación (sin variables `XDG_*`) | Contenido | Quién lo escribe |
+| Location (without `XDG_*` variables) | Contents | Written by |
 | --- | --- | --- |
-| `~/.local/share/voz/voz.sqlite3` (+ `-wal`, `-shm`) | Base de datos | `create_sqlite_engine` |
-| `~/.local/share/voz/projects/<project_uuid>/originals/<media_uuid>.original` | Original inmutable, permisos de solo lectura | `FileSystemMediaStorage` |
-| `~/.local/share/voz/projects/<project_uuid>/derivatives/<media_uuid>.inference.wav` | Derivado PCM mono 16 kHz | `FfmpegMediaNormalizer` |
-| `~/.local/share/voz/models/` | Modelos instalados con manifest | `FileSystemModelStore` |
-| `~/.cache/voz/uploads/` | Staging de subidas HTTP, borrado en todos los caminos | `interfaces/api/media.py` |
-| `~/.cache/voz/downloads/` | Metadatos de descarga de modelos | `FileSystemModelStore` |
-| `~/.config/voz/`, `~/.local/state/voz/` | Resueltos y comprobados por `voz doctor`; el código no escribe en ellos todavía | Nadie |
+| `~/.local/share/voz/voz.sqlite3` (+ `-wal`, `-shm`) | Database | `create_sqlite_engine` |
+| `~/.local/share/voz/projects/<project_uuid>/originals/<media_uuid>.original` | Immutable original, read-only permissions | `FileSystemMediaStorage` |
+| `~/.local/share/voz/projects/<project_uuid>/derivatives/<media_uuid>.inference.wav` | Mono 16 kHz PCM derivative | `FfmpegMediaNormalizer` |
+| `~/.local/share/voz/models/` | Installed models with a manifest | `FileSystemModelStore` |
+| `~/.cache/voz/uploads/` | Staging for HTTP uploads, deleted on every path | `interfaces/api/media.py` |
+| `~/.cache/voz/downloads/` | Model download metadata | `FileSystemModelStore` |
+| `~/.config/voz/`, `~/.local/state/voz/` | Resolved and checked by `voz doctor`; the code does not write to them yet | Nobody |
 
-Reglas:
+Rules:
 
-- Nada de runtime se escribe dentro del checkout; las pruebas usan `tmp_path`.
-- Ninguna ruta de disco se guarda en SQLite ni se envía al navegador: los
-  destinos se derivan de UUID (`original_path_for`, `FfmpegMediaNormalizer`).
-  `test_schema_and_adapters_never_persist_host_paths` lo comprueba.
-- No existe una transacción que abarque SQLite y filesystem. La consistencia se
-  logra ordenando las operaciones y compensando: `ImportMedia` publica el
-  original, persiste la fila y, si la fila falla, descarta el original; si el
-  resultado es ambiguo, reconcilia antes de borrar
+- Nothing at runtime is written inside the checkout; tests use `tmp_path`.
+- No disk path is stored in SQLite or sent to the browser: destinations are
+  derived from UUIDs (`original_path_for`, `FfmpegMediaNormalizer`).
+  `test_schema_and_adapters_never_persist_host_paths` checks it.
+- There is no transaction spanning SQLite and the filesystem. Consistency is
+  achieved by ordering the operations and compensating: `ImportMedia` publishes
+  the original, persists the row and, if the row fails, discards the original;
+  if the outcome is ambiguous, it reconciles before deleting
   ([ADR-0003](0003-ffmpeg-ingestion.md)).
-- Los originales son inmutables; todo derivado se escribe en otro directorio.
+- Originals are immutable; every derivative is written to another directory.
 
-**Planificado, no implementado:** `projects/<id>/chunks|exports|artifacts`,
-`~/.cache/voz/waveforms|temp`, `~/.config/voz/config.toml`, respaldo o
-exportación de la base de datos y política de retención/borrado de proyectos.
+**Planned, not implemented:** `projects/<id>/chunks|exports|artifacts`,
+`~/.cache/voz/waveforms|temp`, `~/.config/voz/config.toml`, database backup or
+export, and a retention/deletion policy for projects.
 
-## Consecuencias positivas
+## Positive consequences
 
-- No hay servicio externo que instalar o administrar.
-- WAL permite que las lecturas locales continúen mientras se confirman
-  escrituras cortas.
-- El dominio puede probarse sin base de datos.
-- Los adapters pueden sustituirse sin cambiar los casos de uso.
-- Alembic deja una ruta auditable para evolucionar el esquema.
+- There is no external service to install or administer.
+- WAL lets local reads continue while short writes are being committed.
+- The domain can be tested without a database.
+- Adapters can be replaced without changing the use cases.
+- Alembic leaves an auditable path for evolving the schema.
 
-## Costes y límites
+## Costs and limits
 
-- SQLite sigue siendo almacenamiento de un solo equipo, no multiusuario remoto.
-- Hay conversión explícita entre filas y entidades.
-- Las operaciones síncronas no deben ejecutarse en el event loop durante jobs
-  pesados; la capa de aplicación deberá enviarlas a un worker cuando aplique.
-- WAL crea archivos auxiliares `-wal` y `-shm`, que son datos de ejecución y no
-  pertenecen a Git.
+- SQLite remains single-machine storage, not remote multi-user storage.
+- There is an explicit conversion between rows and entities.
+- Synchronous operations must not run in the event loop during heavy jobs; the
+  application layer will have to send them to a worker where applicable.
+- WAL creates auxiliary `-wal` and `-shm` files, which are runtime data and do
+  not belong in Git.
 
-## Alternativas consideradas
+## Alternatives considered
 
 ### Postgres
 
-Rechazado para la primera versión. Añade instalación, credenciales y un proceso
-externo sin aportar valor al caso local de un usuario.
+Rejected for the first version. It adds installation, credentials and an
+external process without adding value for the single-user local case.
 
-### ORM dentro del dominio
+### ORM inside the domain
 
-Rechazado. Acoplaría invariantes y tests centrales al ciclo de vida de
-SQLAlchemy y dificultaría sustituir la persistencia.
+Rejected. It would couple core invariants and tests to the SQLAlchemy
+lifecycle and make replacing persistence harder.
 
-### Guardar los medios como BLOB dentro de SQLite
+### Storing the media as BLOBs inside SQLite
 
-Rechazada. Las grabaciones pesan gigabytes; el archivo de base de datos y su
-WAL crecerían sin control, y FFmpeg y el reproductor necesitan descriptors de
-archivo. Se guarda el hash SHA-256 como identidad del contenido.
+Rejected. Recordings weigh gigabytes; the database file and its WAL would grow
+without control, and FFmpeg and the player need file descriptors. The SHA-256
+hash is stored as the content identity.
 
-### Guardar rutas absolutas en la base de datos
+### Storing absolute paths in the database
 
-Rechazada. Vincula la base al layout del host, facilita fugas hacia la API y
-rompe al mover el directorio de datos. Los destinos se derivan de UUID.
+Rejected. It ties the database to the host layout, makes leaks toward the API
+easier and breaks when the data directory is moved. Destinations are derived
+from UUIDs.
 
-### Ubicar la base de datos en el checkout o en el directorio de trabajo
+### Placing the database in the checkout or the working directory
 
-Rechazada. Mezclaría datos privados con código y con Git; contradice la regla
-XDG de [AGENTS.md](../../AGENTS.md).
+Rejected. It would mix private data with code and with Git; it contradicts the
+XDG rule in [AGENTS.md](../../AGENTS.md).
 
-### Crear tablas automáticamente sin migraciones
+### Creating tables automatically without migrations
 
-Rechazado como mecanismo de distribución. Puede ser útil en fixtures de tests,
-pero no registra cómo evoluciona una base existente.
+Rejected as a distribution mechanism. It can be useful in test fixtures, but it
+does not record how an existing database evolves.
 
-## Evidencia actual (2026-09-30)
+## Current evidence (2026-09-30)
 
-| Requisito | Prueba o código |
+| Requirement | Test or code |
 | --- | --- |
-| Pragmas por conexión y reapertura WAL | `tests/integration/persistence/test_database.py` |
-| Migraciones equivalentes a la metadata y downgrade seguro | `tests/integration/persistence/test_migrations.py` |
-| Migración idempotente al arrancar | `tests/integration/persistence/test_runtime_migrate.py` |
-| Repositories reconstruyen entidades y sobreviven a la reapertura del engine | `tests/integration/persistence/test_sqlite_repositories.py`, `tests/unit/infrastructure/persistence/test_repositories.py` |
-| Selección de job reproducible en SQLite | `tests/integration/persistence/test_sqlite_job_selections.py` |
-| Sin rutas del host en el esquema | `test_schema_and_adapters_never_persist_host_paths` |
-| Resolución XDG con overrides absolutos y fallback | `tests/unit/test_xdg_paths.py` |
-| Importación con compensación filesystem/SQLite | `tests/integration/application/test_import_media_sqlite.py`, `tests/unit/application/test_import_media.py` |
-| Dominio sin SQLAlchemy | `tests/unit/domain/test_entity_invariants.py` |
+| Per-connection pragmas and WAL reopening | `tests/integration/persistence/test_database.py` |
+| Migrations equivalent to the metadata and safe downgrade | `tests/integration/persistence/test_migrations.py` |
+| Idempotent migration at startup | `tests/integration/persistence/test_runtime_migrate.py` |
+| Repositories rebuild entities and survive reopening the engine | `tests/integration/persistence/test_sqlite_repositories.py`, `tests/unit/infrastructure/persistence/test_repositories.py` |
+| Reproducible job selection in SQLite | `tests/integration/persistence/test_sqlite_job_selections.py` |
+| No host paths in the schema | `test_schema_and_adapters_never_persist_host_paths` |
+| XDG resolution with absolute overrides and fallback | `tests/unit/test_xdg_paths.py` |
+| Import with filesystem/SQLite compensation | `tests/integration/application/test_import_media_sqlite.py`, `tests/unit/application/test_import_media.py` |
+| Domain without SQLAlchemy | `tests/unit/domain/test_entity_invariants.py` |
 
-Esquema actual (`schema.py`): `projects`, `media_assets`, `transcripts`,
+Current schema (`schema.py`): `projects`, `media_assets`, `transcripts`,
 `segments`, `words`, `speakers`, `speaker_turns`, `transcription_jobs`,
 `transcription_checkpoints`, `transcription_job_selections`.
 
-## Verificación
+## Verification
 
-La decisión se considera implementada cuando:
+The decision is considered implemented when:
 
-- ningún módulo bajo `domain` importa SQLAlchemy;
-- los ports no exponen `Session`, tablas ni expresiones SQL;
-- la migración inicial crea todas las tablas de la Sección 2;
-- una conexión nueva reporta `journal_mode=wal` cuando el archivo lo permite;
-- repositories reconstruyen entidades equivalentes después de cerrar y abrir
-  otro engine sobre el mismo archivo;
-- las pruebas usan rutas temporales y no crean `voz.sqlite3` en el repositorio;
-- ninguna ruta del host se persiste ni se devuelve por HTTP;
-- los datos de runtime solo se escriben bajo los directorios XDG resueltos.
+- no module under `domain` imports SQLAlchemy;
+- the ports do not expose `Session`, tables or SQL expressions;
+- the initial migration creates every table of Section 2;
+- a new connection reports `journal_mode=wal` when the file allows it;
+- repositories rebuild equivalent entities after closing and opening another
+  engine on the same file;
+- tests use temporary paths and do not create `voz.sqlite3` in the repository;
+- no host path is persisted or returned over HTTP;
+- runtime data is only written under the resolved XDG directories.

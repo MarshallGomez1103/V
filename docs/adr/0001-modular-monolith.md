@@ -1,39 +1,42 @@
-# ADR-0001: Monolito modular local con arquitectura hexagonal
+# ADR-0001: Local modular monolith with hexagonal architecture
 
-- Estado: Aceptada
-- Fecha: 2026-09-01
-- Responsables: mantenedores de VOZ
-- Alcance: arquitectura inicial del producto y límites hexagonales
-- Última revisión: 2026-09-30 (S16.12, sin cambio de decisión)
-- Diagramas: [C4 contexto](../architecture/01-contexto.md),
-  [contenedores](../architecture/02-contenedores.md),
-  [componentes](../architecture/03-componentes.md)
+> Translated from Spanish on 2026-10-11 (V1-08b). VOZ is the former name of V (ADR-0009).
 
-## Contexto
+- Status: Accepted
+- Date: 2026-09-01
+- Owners: VOZ maintainers
+- Scope: initial product architecture and hexagonal boundaries
+- Last review: 2026-09-30 (S16.12, no change to the decision)
+- Diagrams: [C4 context](../architecture/01-contexto.md),
+  [containers](../architecture/02-contenedores.md),
+  [components](../architecture/03-componentes.md)
 
-VOZ será una aplicación local-first para importar audio o video, ejecutar
-transcripciones largas, editar resultados sincronizados y exportarlos. En una
-misma máquina compartirá GPU, filesystem, base de datos y ciclo de vida. La
-primera versión necesita una instalación sencilla, funcionamiento sin Internet
-después de descargar modelos y capacidad de incorporar distintos proveedores de
-transcripción y diarización.
+## Context
 
-El trabajo pesado debe ejecutarse sin bloquear la interfaz y debe poder guardar
-progreso recuperable. Sin embargo, separar la aplicación en servicios
-independientes desde el inicio agregaría puertos, despliegues, serialización,
-observabilidad distribuida y nuevos modos de fallo sin aislar recursos físicos:
-todos seguirían compitiendo por la misma GPU y el mismo disco.
+VOZ will be a local-first application for importing audio or video, running
+long transcriptions, editing synchronized results and exporting them. On a
+single machine it will share the GPU, filesystem, database and lifecycle. The
+first version needs a simple installation, operation without Internet after
+models are downloaded, and the ability to incorporate different transcription
+and diarization providers.
 
-La variación que sí conviene aislar está entre el dominio y los mecanismos
-externos: FastAPI, SQLite, FFmpeg, motores ASR, proveedores cloud y la interfaz
-web.
+The heavy work must run without blocking the interface and must be able to
+save recoverable progress. However, splitting the application into independent
+services from the start would add ports, deployments, serialization,
+distributed observability and new failure modes without isolating any physical
+resource: they would all still compete for the same GPU and the same disk.
 
-## Decisión
+The variation worth isolating lies between the domain and the external
+mechanisms: FastAPI, SQLite, FFmpeg, ASR engines, cloud providers and the web
+interface.
 
-VOZ se implementará inicialmente como un **monolito modular local** con
-**arquitectura Clean/Hexagonal** y un **pipeline interno asíncrono de jobs**.
+## Decision
 
-Las dependencias apuntan hacia el núcleo:
+VOZ will initially be implemented as a **local modular monolith** with a
+**Clean/Hexagonal architecture** and an **asynchronous internal job
+pipeline**.
+
+Dependencies point toward the core:
 
 ```text
 Web UI / CLI / API
@@ -47,164 +50,166 @@ Domain
 Infrastructure adapters implement application/domain ports
 ```
 
-Se establecen estas fronteras:
+These boundaries are established:
 
-- **Domain:** entidades, value objects, reglas e invariantes sin dependencias de
-  frameworks.
-- **Application:** casos de uso, puertos y coordinación del pipeline.
-- **Infrastructure:** adaptadores de persistencia, filesystem, FFmpeg, modelos,
-  ASR, diarización y observabilidad.
-- **Interfaces:** API HTTP, CLI y traducción entre contratos externos e internos.
-- **Web UI:** cliente del contrato HTTP/eventos; no conoce rutas del host ni
-  detalles de proveedor.
+- **Domain:** entities, value objects, rules and invariants with no framework
+  dependencies.
+- **Application:** use cases, ports and pipeline coordination.
+- **Infrastructure:** adapters for persistence, filesystem, FFmpeg, models,
+  ASR, diarization and observability.
+- **Interfaces:** HTTP API, CLI and translation between external and internal
+  contracts.
+- **Web UI:** client of the HTTP/event contract; it knows neither host paths
+  nor provider details.
 
-Los proveedores externos implementarán contratos comunes, por ejemplo
-`TranscriptionProvider`, `DiarizationProvider` y `AlignmentProvider` (hoy solo
-existe el primero; ver la revisión más abajo). La selección y construcción de
-adaptadores ocurre en un composition root.
+External providers will implement common contracts, for example
+`TranscriptionProvider`, `DiarizationProvider` and `AlignmentProvider` (today
+only the first exists; see the review below). The selection and construction of
+adapters happens in a composition root.
 
-Las operaciones largas se modelarán como jobs con estado explícito, progreso,
-cancelación, errores tipados y checkpoints cuando corresponda. Para progreso de
-servidor a navegador se preferirá SSE; WebSocket solo se añadirá si aparece una
-necesidad bidireccional concreta.
+Long operations will be modeled as jobs with explicit state, progress,
+cancellation, typed errors and checkpoints where applicable. For server-to-
+browser progress, SSE will be preferred; WebSocket will only be added if a
+concrete bidirectional need appears.
 
-SQLite y el filesystem son decisiones iniciales de infraestructura, no
-dependencias del dominio. Los datos de ejecución respetarán XDG Base Directory y
-se mantendrán fuera del checkout.
+SQLite and the filesystem are initial infrastructure decisions, not domain
+dependencies. Runtime data will follow the XDG Base Directory specification and
+will be kept outside the checkout.
 
-## Consecuencias positivas
+## Positive consequences
 
-- Una instalación y un proceso local son suficientes para la primera versión.
-- El dominio se puede probar sin cargar GPU, FFmpeg, FastAPI o clientes cloud.
-- Cambiar Faster Whisper por whisper.cpp no requiere modificar el dominio.
-- Añadir un proveedor cloud no obliga a rediseñar la representación canónica del
-  transcript ni la UI central.
-- La persistencia y los providers pueden evolucionar mediante puertos y
-  adaptadores.
-- Se conservan checkpoints y eventos de progreso sin introducir infraestructura
-  distribuida.
-- El despliegue local, el diagnóstico y la privacidad son más comprensibles.
+- A single installation and a single local process are enough for the first
+  version.
+- The domain can be tested without loading the GPU, FFmpeg, FastAPI or cloud
+  clients.
+- Replacing Faster Whisper with whisper.cpp does not require changing the
+  domain.
+- Adding a cloud provider does not force a redesign of the canonical transcript
+  representation or of the core UI.
+- Persistence and providers can evolve through ports and adapters.
+- Checkpoints and progress events are kept without introducing distributed
+  infrastructure.
+- Local deployment, diagnostics and privacy are easier to reason about.
 
-## Costes y límites
+## Costs and limits
 
-- Las fronteras modulares dependen de disciplina y pruebas; no las impone una
-  frontera de proceso.
-- Una tarea que bloquee el event loop puede afectar toda la aplicación. El
-  trabajo de CPU/GPU debe ejecutarse mediante workers/procesos apropiados.
-- Un fallo del proceso puede interrumpir todos los módulos, por lo que la
-  persistencia incremental y la recuperación son requisitos reales.
-- SQLite no pretende cubrir uso multiusuario distribuido.
-- El composition root debe evitar acoplar casos de uso a implementaciones
-  concretas.
+- The module boundaries depend on discipline and tests; a process boundary does
+  not enforce them.
+- A task that blocks the event loop can affect the whole application. CPU/GPU
+  work must run through appropriate workers/processes.
+- A process failure can interrupt every module, so incremental persistence and
+  recovery are real requirements.
+- SQLite does not aim to cover distributed multi-user use.
+- The composition root must avoid coupling use cases to concrete
+  implementations.
 
-## Alternativas consideradas
+## Alternatives considered
 
-### Microservicios desde v1
+### Microservices from v1
 
-Rechazada. Multiplica despliegue, comunicación, observabilidad y recuperación,
-pero no separa la GPU ni mejora el caso de un usuario local.
+Rejected. It multiplies deployment, communication, observability and recovery,
+but does not separate the GPU nor improve the case of a local user.
 
-### Integración directa con el proceso o GUI de Buzz
+### Direct integration with Buzz's process or GUI
 
-Rechazada como arquitectura central. Buzz puede ser referencia y su cache puede
-integrarse mediante un adaptador opcional, pero sus detalles internos no serán
-el contrato de VOZ.
+Rejected as the central architecture. Buzz can be a reference and its cache can
+be integrated through an optional adapter, but its internal details will not be
+VOZ's contract.
 
-### Aplicación de escritorio Electron/Tauri desde el inicio
+### Electron/Tauri desktop application from the start
 
-Pospuesta. Primero se validará el flujo web local servido por `voz`. Un wrapper
-de escritorio puede evaluarse después sin cambiar el núcleo.
+Postponed. The local web flow served by `voz` will be validated first. A
+desktop wrapper can be evaluated later without changing the core.
 
-### Event Sourcing o CQRS completo
+### Event Sourcing or full CQRS
 
-Rechazados para v1. Comandos y consultas separados a nivel de casos de uso,
-junto con checkpoints de jobs, cubren las necesidades conocidas con menor
-complejidad.
+Rejected for v1. Separate commands and queries at the use-case level, together
+with job checkpoints, cover the known needs with less complexity.
 
-### Capas sin ports (application llama a SQLAlchemy y FFmpeg directamente)
+### Layers without ports (application calls SQLAlchemy and FFmpeg directly)
 
-Rechazada. Habría eliminado el código de adaptación, pero los tests de casos de
-uso necesitarían base de datos, binarios y modelos reales, y cambiar un
-proveedor tocaría la lógica de negocio.
+Rejected. It would have removed the adaptation code, but use-case tests would
+need a real database, binaries and models, and changing a provider would touch
+business logic.
 
-### Herramienta de arquitectura (import-linter u otra) desde el inicio
+### Architecture tool (import-linter or another) from the start
 
-Pospuesta. Añadiría una dependencia de desarrollo; el test de AST existente
-cubre el caso más importante. Se reevaluará al documentar la guarda planificada
-(regla de dependencias de [AGENTS.md](../../AGENTS.md)).
+Postponed. It would add a development dependency; the existing AST test covers
+the most important case. It will be reassessed when the planned guard is
+documented (dependency rule in [AGENTS.md](../../AGENTS.md)).
 
-## Límites hexagonales: reglas y evidencia actual (revisión 2026-09-30)
+## Hexagonal boundaries: rules and current evidence (review 2026-09-30)
 
-Mapa de capas a código real:
+Mapping of layers to real code:
 
-| Capa | Directorio | Puede importar |
+| Layer | Directory | May import |
 | --- | --- | --- |
-| Domain | `src/voz/domain/` | solo biblioteca estándar y su propio paquete |
-| Application (casos de uso y ports) | `src/voz/application/`, `src/voz/application/ports/` | domain y biblioteca estándar |
-| Infrastructure (adapters de salida) | `src/voz/infrastructure/` | application (ports), domain y SDKs concretos |
-| Interfaces (adapters de entrada) | `src/voz/interfaces/` | application, domain y frameworks de transporte |
-| Composition root | `src/voz/bootstrap.py` | todas las capas; único lugar que cablea adapters |
+| Domain | `src/voz/domain/` | only the standard library and its own package |
+| Application (use cases and ports) | `src/voz/application/`, `src/voz/application/ports/` | domain and the standard library |
+| Infrastructure (outbound adapters) | `src/voz/infrastructure/` | application (ports), domain and concrete SDKs |
+| Interfaces (inbound adapters) | `src/voz/interfaces/` | application, domain and transport frameworks |
+| Composition root | `src/voz/bootstrap.py` | all layers; the only place that wires adapters |
 
-Evidencia por regla (la columna «Automatizado» distingue un test que falla si la
-regla se rompe de una comprobación puntual hecha al revisar):
+Evidence per rule (the "Automated" column distinguishes a test that fails if
+the rule is broken from a one-off check made during the review):
 
-| Regla | Evidencia | Automatizado |
+| Rule | Evidence | Automated |
 | --- | --- | --- |
-| `domain` no importa frameworks | `tests/unit/domain/test_entity_invariants.py::test_domain_does_not_import_framework_or_persistence_packages` recorre el AST y veta `fastapi`, `pydantic` y `sqlalchemy`. Una búsqueda por `grep` el 2026-09-30 no halló imports de `torch`, `faster_whisper`, `typer`, `uvicorn` ni `voz.application` en `src/voz/domain`. | Parcial: la lista vetada es corta. |
-| `application` no importa adapters ni frameworks | `grep` del 2026-09-30 sin resultados para `fastapi`, `sqlalchemy`, `starlette`, `faster_whisper`, `typer`, `uvicorn`, `voz.infrastructure` y `voz.interfaces` en `src/voz/application`. El test `tests/unit/application/test_transcription_provider_registry.py::test_registry_has_no_domain_infrastructure_or_framework_imports` fija la lista de imports de un módulo. | Parcial: un solo módulo. |
-| Casos de uso dependen de ports | `ImportMedia`, `NormalizeImportedMedia`, `PrepareInferenceAudio`, `CreateTranscriptionJob`, `JobRunner` y `RecoverableTranscription` reciben `MediaStoragePort`, `MediaProbePort`, `MediaNormalizationPort`, repositories, `TranscriptionCheckpointStore` y `TranscriptionProvider` como campos o parámetros. Tests unitarios de application usan dobles en memoria (`tests/unit/application/`). | Sí, indirectamente: los tests no necesitan SQL, FFmpeg ni ASR. |
-| Los ports no filtran detalles de infraestructura | `src/voz/application/ports/` no contiene `Session`, tablas ni expresiones SQL (`grep` sin resultados para `sqlalchemy`/`Session` en `src/voz/application`). | No |
-| Routers solo traducen transporte | Cada router es una función `create_*_router(...)` que recibe casos de uso o repositories ya construidos y traduce errores tipados a `{"detail": {"code", "message"}}`. Cubierto por `tests/integration/test_*_api.py`. | Sí, comportamiento; no la ausencia de lógica. |
-| Los adapters se instancian en el composition root | `Sqlite*Repository`, `FileSystemMediaStorage`, `FfprobeMediaProbe`, `FfmpegMediaNormalizer`, `FasterWhisperProvider` y `FileSystemModelStore` se construyen en `create_app()` y `create_local_asr_runtime()` (`src/voz/bootstrap.py`). Excepción: `interfaces/cli/doctor.py` construye sondas de solo lectura. `tests/unit/test_asr_bootstrap.py` cubre la composición ASR sin descargas. | Parcial |
-| Sin rutas del host hacia la UI | El esquema no tiene columnas de ruta (`src/voz/infrastructure/persistence/schema.py`; `test_schema_and_adapters_never_persist_host_paths` en `tests/unit/infrastructure/persistence/test_repositories.py`). Destinos de disco derivados de UUID. Tests: `test_health_api.py` (sin rutas sensibles), `test_media_upload_api.py`, `test_media_stream_api.py::test_deleted_original_file_is_reported_missing_without_path`. | Sí |
-| Jobs largos con estado, progreso, cancelación y recuperación | `TranscriptionJobState` con 12 estados y transiciones validadas (`src/voz/domain/entities/transcription_job.py`); `JobRunner` con hilo, cancelación cooperativa y `recover()` (`src/voz/application/job_runner.py`); `tests/integration/application/test_job_runner.py`. | Sí |
-| Los providers pasan contract tests comunes | `tests/contract/test_transcription_provider.py` parametriza un provider estructural y `FasterWhisperProvider` con un engine falso. Detalle en [ADR-0005](0005-transcription-providers.md). | Sí |
-| Funciona offline con modelos instalados | Ver [ADR-0006](0006-local-first-privacy.md). | Parcial |
+| `domain` does not import frameworks | `tests/unit/domain/test_entity_invariants.py::test_domain_does_not_import_framework_or_persistence_packages` walks the AST and bans `fastapi`, `pydantic` and `sqlalchemy`. A `grep` search on 2026-09-30 found no imports of `torch`, `faster_whisper`, `typer`, `uvicorn` or `voz.application` in `src/voz/domain`. | Partial: the banned list is short. |
+| `application` does not import adapters or frameworks | `grep` on 2026-09-30 with no results for `fastapi`, `sqlalchemy`, `starlette`, `faster_whisper`, `typer`, `uvicorn`, `voz.infrastructure` and `voz.interfaces` in `src/voz/application`. The test `tests/unit/application/test_transcription_provider_registry.py::test_registry_has_no_domain_infrastructure_or_framework_imports` pins the import list of one module. | Partial: a single module. |
+| Use cases depend on ports | `ImportMedia`, `NormalizeImportedMedia`, `PrepareInferenceAudio`, `CreateTranscriptionJob`, `JobRunner` and `RecoverableTranscription` receive `MediaStoragePort`, `MediaProbePort`, `MediaNormalizationPort`, repositories, `TranscriptionCheckpointStore` and `TranscriptionProvider` as fields or parameters. Application unit tests use in-memory doubles (`tests/unit/application/`). | Yes, indirectly: the tests need no SQL, FFmpeg or ASR. |
+| Ports do not leak infrastructure details | `src/voz/application/ports/` contains no `Session`, tables or SQL expressions (`grep` with no results for `sqlalchemy`/`Session` in `src/voz/application`). | No |
+| Routers only translate transport | Each router is a `create_*_router(...)` function that receives already-built use cases or repositories and translates typed errors to `{"detail": {"code", "message"}}`. Covered by `tests/integration/test_*_api.py`. | Yes, behavior; not the absence of logic. |
+| Adapters are instantiated in the composition root | `Sqlite*Repository`, `FileSystemMediaStorage`, `FfprobeMediaProbe`, `FfmpegMediaNormalizer`, `FasterWhisperProvider` and `FileSystemModelStore` are built in `create_app()` and `create_local_asr_runtime()` (`src/voz/bootstrap.py`). Exception: `interfaces/cli/doctor.py` builds read-only probes. `tests/unit/test_asr_bootstrap.py` covers the ASR composition without downloads. | Partial |
+| No host paths to the UI | The schema has no path columns (`src/voz/infrastructure/persistence/schema.py`; `test_schema_and_adapters_never_persist_host_paths` in `tests/unit/infrastructure/persistence/test_repositories.py`). Disk destinations are derived from UUIDs. Tests: `test_health_api.py` (no sensitive paths), `test_media_upload_api.py`, `test_media_stream_api.py::test_deleted_original_file_is_reported_missing_without_path`. | Yes |
+| Long jobs with state, progress, cancellation and recovery | `TranscriptionJobState` with 12 states and validated transitions (`src/voz/domain/entities/transcription_job.py`); `JobRunner` with a thread, cooperative cancellation and `recover()` (`src/voz/application/job_runner.py`); `tests/integration/application/test_job_runner.py`. | Yes |
+| Providers pass common contract tests | `tests/contract/test_transcription_provider.py` parametrizes a structural provider and `FasterWhisperProvider` with a fake engine. Details in [ADR-0005](0005-transcription-providers.md). | Yes |
+| Works offline with installed models | See [ADR-0006](0006-local-first-privacy.md). | Partial |
 
-### Implementación real frente a lo escrito arriba
+### Actual implementation versus what is written above
 
-Puntos donde el código difiere de la redacción inicial de esta ADR, sin cambiar
-la decisión:
+Points where the code differs from the initial wording of this ADR, without
+changing the decision:
 
-- **Pipeline «asíncrono»**: los jobs corren en un único hilo daemon
-  (`JobRunner`, cola `queue.Queue` en memoria), no en corrutinas ni procesos.
-  El trabajo pesado no corre en el event loop: las rutas con SQLite o disco son
-  funciones síncronas (`def`, que FastAPI ejecuta en su threadpool) o usan
-  `run_in_threadpool`/`anyio.to_thread` (`media.py`, `media_stream.py`,
+- **"Asynchronous" pipeline**: jobs run in a single daemon thread
+  (`JobRunner`, in-memory `queue.Queue`), not in coroutines or processes. The
+  heavy work does not run in the event loop: routes that touch SQLite or disk
+  are synchronous functions (`def`, which FastAPI runs in its threadpool) or
+  use `run_in_threadpool`/`anyio.to_thread` (`media.py`, `media_stream.py`,
   `job_events.py`).
-  Escalar a varios workers o procesos queda **planificado** (`ponytail:` en
+  Scaling to several workers or processes is **planned** (`ponytail:` in
   `job_runner.py`).
-- **SSE**: el endpoint `GET /api/jobs/{id}/events` sondea el repositorio cada
-  ~500 ms; no hay bus de eventos interno (`src/voz/interfaces/api/job_events.py`).
-  Un pub/sub en proceso queda **planificado** si el sondeo deja de bastar.
-- **Contratos `DiarizationProvider` y `AlignmentProvider`**: no existen todavía.
-  Solo `TranscriptionProvider` está implementado. Ver ADR-0005.
-- **Web UI**: el bundle compilado se sirve como estático desde `src/voz/static`
-  con `StaticFiles`; no hay proceso separado.
+- **SSE**: the `GET /api/jobs/{id}/events` endpoint polls the repository about
+  every 500 ms; there is no internal event bus
+  (`src/voz/interfaces/api/job_events.py`). An in-process pub/sub is
+  **planned** if polling stops being enough.
+- **`DiarizationProvider` and `AlignmentProvider` contracts**: they do not exist
+  yet. Only `TranscriptionProvider` is implemented. See ADR-0005.
+- **Web UI**: the compiled bundle is served as static files from
+  `src/voz/static` with `StaticFiles`; there is no separate process.
 
-### Deuda de frontera conocida
+### Known boundary debt
 
-- `interfaces/api/media_stream.py` recibe el adapter concreto
-  `FileSystemMediaStorage` para resolver la ruta que sirve `FileResponse`. La
-  ruta nunca llega al navegador, pero un port de lectura de originales sería
-  más simétrico.
-- No hay una guarda automática que recorra todo `src/voz/application` y
-  `src/voz/domain` con una lista completa de imports prohibidos (frameworks,
-  `voz.infrastructure`, `voz.interfaces`, SDKs de proveedores). **Planificado**:
-  un test de AST al estilo del test de dominio existente, sin añadir
-  dependencias.
+- `interfaces/api/media_stream.py` receives the concrete
+  `FileSystemMediaStorage` adapter to resolve the path that `FileResponse`
+  serves. The path never reaches the browser, but a read port for originals
+  would be more symmetric.
+- There is no automatic guard that walks all of `src/voz/application` and
+  `src/voz/domain` with a complete list of forbidden imports (frameworks,
+  `voz.infrastructure`, `voz.interfaces`, provider SDKs). **Planned**: an AST
+  test in the style of the existing domain test, without adding dependencies.
 
-## Reglas de cumplimiento
+## Compliance rules
 
-Esta decisión se considera respetada cuando:
+This decision is considered respected when:
 
-- `domain` no importa paquetes de frameworks o proveedores;
-- casos de uso dependen de ports y no de SQL/FFmpeg/SDKs concretos;
-- routers no contienen reglas de negocio;
-- la UI no recibe rutas absolutas del host;
-- los proveedores pasan contract tests comunes;
-- el proceso funciona offline con modelos ya instalados;
-- los jobs largos persisten progreso recuperable.
+- `domain` does not import framework or provider packages;
+- use cases depend on ports and not on concrete SQL/FFmpeg/SDKs;
+- routers contain no business rules;
+- the UI does not receive absolute host paths;
+- providers pass common contract tests;
+- the process works offline with already-installed models;
+- long jobs persist recoverable progress.
 
-Cambiar estas reglas requiere una nueva ADR que sustituya explícitamente esta
-decisión.
+Changing these rules requires a new ADR that explicitly supersedes this
+decision.

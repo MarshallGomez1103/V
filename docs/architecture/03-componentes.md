@@ -1,50 +1,55 @@
-# C4 nivel 3: componentes
+# C4 level 3: components
 
-Roadmap: S16.11. Nombres de módulos y clases verificados con `grep` sobre
-`src/voz/` y `apps/web/src/` en el commit `b775251` más el árbol de trabajo de
-la oleada 3. Marco de decisión: [ADR-0001](../adr/0001-modular-monolith.md).
+Roadmap: S16.11. Module and class names verified with `grep` over `src/voz/`
+and `apps/web/src/` at commit `b775251` plus the working tree of wave 3.
+Decision framework: [ADR-0001](../adr/0001-modular-monolith.md).
 
-## Regla de dependencia
+This page describes V (formerly VOZ) as of that snapshot. The Python package
+and its internal names keep the old name on purpose
+([ADR-0009](../adr/0009-rename-to-v.md)).
+
+## Dependency rule
 
 ```text
 interfaces ─┐
             ├──> application ──> domain
-infrastructure ┘        (ports viven en application/ports)
-bootstrap.py ──> todas las capas (único punto que instancia adapters)
+infrastructure ┘        (ports live in application/ports)
+bootstrap.py ──> all layers (the only place that instantiates adapters)
 ```
 
-Comprobado hoy: ningún módulo de `src/voz/domain` ni de `src/voz/application`
-importa `fastapi`, `sqlalchemy`, `starlette`, `faster_whisper`, `typer`,
-`uvicorn` ni `voz.infrastructure`/`voz.interfaces` (búsqueda por `grep` sin
-resultados). Automatizado: solo el dominio (`test_domain_does_not_import_framework_or_persistence_packages`,
-que veta `fastapi`, `pydantic` y `sqlalchemy`) y el registry de providers
-(`test_registry_has_no_domain_infrastructure_or_framework_imports`). Una guarda
-automática para toda la capa `application` es **planificada**; ver
+Checked today: no module in `src/voz/domain` or `src/voz/application` imports
+`fastapi`, `sqlalchemy`, `starlette`, `faster_whisper`, `typer`, `uvicorn` or
+`voz.infrastructure`/`voz.interfaces` (`grep` search with no results).
+Automated: only the domain
+(`test_domain_does_not_import_framework_or_persistence_packages`, which bans
+`fastapi`, `pydantic` and `sqlalchemy`) and the provider registry
+(`test_registry_has_no_domain_infrastructure_or_framework_imports`). An
+automatic guard for the whole `application` layer is **planned**; see
 [ADR-0001](../adr/0001-modular-monolith.md).
 
-## Vista de componentes del backend
+## Backend component view
 
 ```mermaid
 flowchart TB
-    subgraph interfaces["interfaces: traducen transporte, sin reglas de negocio"]
+    subgraph interfaces["interfaces: translate transport, no business rules"]
         cli["cli/main.py<br/>Typer: voz, serve, doctor"]
         doctor["cli/doctor.py<br/>run_doctor, render"]
         r_health["api/health.py"]
         r_proj["api/projects.py"]
-        r_media["api/media.py<br/>subida de cuerpo crudo"]
-        r_stream["api/media_stream.py<br/>original con Range"]
+        r_media["api/media.py<br/>raw-body upload"]
+        r_stream["api/media_stream.py<br/>original with Range"]
         r_opts["api/transcription_options.py"]
         r_jobs["api/jobs.py + job_views.py"]
-        r_sse["api/job_events.py<br/>SSE por sondeo"]
+        r_sse["api/job_events.py<br/>polling SSE"]
     end
 
-    subgraph application["application: casos de uso y ports"]
+    subgraph application["application: use cases and ports"]
         uc_proj["CreateProject, ListProjects"]
         uc_import["ImportMedia"]
         uc_norm["NormalizeImportedMedia<br/>PrepareInferenceAudio"]
         uc_opts["GetTranscriptionOptions"]
         uc_create["CreateTranscriptionJob"]
-        runner["JobRunner<br/>máquina de estados, un worker"]
+        runner["JobRunner<br/>state machine, one worker"]
         recov["RecoverableTranscription<br/>chunked_transcription.py"]
         registry["TranscriptionProviderRegistry"]
         devsel["select_execution<br/>asr_device_selection.py"]
@@ -61,7 +66,7 @@ flowchart TB
         end
     end
 
-    subgraph domain["domain: entidades e invariantes puras"]
+    subgraph domain["domain: pure entities and invariants"]
         ent["Project, MediaAsset, Transcript, Segment, Word,<br/>Speaker, SpeakerTurn"]
         job["TranscriptionJob + TranscriptionJobState"]
         model["ModelDescriptor, ProcessingProfile"]
@@ -82,8 +87,8 @@ flowchart TB
     boot["bootstrap.py<br/>create_app, create_local_asr_runtime<br/>composition root"]
 
     cli --> boot
-    boot ==>|"instancia y cablea"| infra
-    boot ==>|"inyecta en routers"| interfaces
+    boot ==>|"instantiates and wires"| infra
+    boot ==>|"injects into routers"| interfaces
 
     r_proj --> uc_proj
     r_media --> uc_import
@@ -109,170 +114,176 @@ flowchart TB
 
     application --> domain
 
-    sql -.->|"implementa"| p_repo
-    sql -.->|"implementa"| p_ckpt
-    mstore -.->|"implementa"| p_store
-    probe -.->|"implementa"| p_probe
-    norm -.->|"implementa"| p_norm
-    inf -.->|"implementa"| p_audio
-    fw -.->|"implementa"| p_prov
-    modst -.->|"implementa"| p_model
-    acat -.->|"implementa"| p_model
+    sql -.->|"implements"| p_repo
+    sql -.->|"implements"| p_ckpt
+    mstore -.->|"implements"| p_store
+    probe -.->|"implements"| p_probe
+    norm -.->|"implements"| p_norm
+    inf -.->|"implements"| p_audio
+    fw -.->|"implements"| p_prov
+    modst -.->|"implements"| p_model
+    acat -.->|"implements"| p_model
 ```
 
-> Las flechas de `bootstrap.py` a capas completas resumen decenas de
-> constructores; el detalle exacto es `create_app()` y
-> `create_local_asr_runtime()` en `src/voz/bootstrap.py`.
+> The arrows from `bootstrap.py` to whole layers summarize dozens of
+> constructors; the exact detail is `create_app()` and
+> `create_local_asr_runtime()` in `src/voz/bootstrap.py`.
 
-## Componentes por capa
+## Components by layer
 
 ### `domain` (`src/voz/domain/entities/`)
 
-Dataclasses inmutables con validación en `__post_init__` y sin imports de
-framework.
+Immutable dataclasses with validation in `__post_init__` and no framework
+imports.
 
-| Componente | Archivo |
+| Component | File |
 | --- | --- |
 | `Project`, `MediaAsset`, `Transcript`, `Segment`, `Word`, `Speaker`, `SpeakerTurn` | `project.py`, `media_asset.py`, `transcript.py`, `segment.py`, `word.py`, `speaker.py`, `speaker_turn.py` |
-| `TranscriptionJob`, `TranscriptionJobState` (12 estados, transiciones validadas) | `transcription_job.py` |
+| `TranscriptionJob`, `TranscriptionJobState` (12 states, validated transitions) | `transcription_job.py` |
 | `ModelDescriptor`, `ModelCapability` | `model_descriptor.py` |
 | `ProcessingProfile`, `ProcessingProfileName`, `DevicePreference`, `ComputePrecision` | `processing_profile.py` |
 
 ### `application` (`src/voz/application/`)
 
-| Componente | Archivo | Rol |
+| Component | File | Role |
 | --- | --- | --- |
-| `CreateProject`, `ListProjects` | `projects.py` | Casos de uso de proyectos. |
-| `ImportMedia` | `import_media.py` | Copia inmutable, hash, probe y persistencia del `MediaAsset`. |
-| `NormalizeImportedMedia`, `PrepareInferenceAudio` | `normalize_media.py`, `prepare_inference_audio.py` | Derivado PCM mono 16 kHz por identidad, sin rutas. |
-| `GetTranscriptionOptions` | `get_transcription_options.py` | Opciones con `can_start` y razones de bloqueo. |
-| `CreateTranscriptionJob` | `create_transcription_job.py` | Revalida la opción y guarda el snapshot reproducible. |
-| `JobRunner` | `job_runner.py` | Un worker, estados explícitos, cancelación, `recover()`, `transcript_id_for`. |
-| `RecoverableTranscription`, planificación de chunks | `recoverable_transcription.py`, `chunked_transcription.py` | Un checkpoint atómico por chunk; reanuda sin repetir. |
-| `select_execution` | `asr_device_selection.py` | Decisión observable CPU/GPU y motivo de fallback. |
-| `TranscriptionProviderRegistry` | `transcription_provider_registry.py` | Registro por ID estable, sin reemplazo. Ver [ADR-0005](../adr/0005-transcription-providers.md). |
-| Exportadores puros (`TxtExporter`, `MarkdownExporter`, SRT, VTT, JSON canónico) | `export/` | Renderers sobre segmentos; el cableado HTTP de exportación es trabajo en curso de la oleada 3 y no figura en `bootstrap.py` al escribir esto. |
+| `CreateProject`, `ListProjects` | `projects.py` | Project use cases. |
+| `ImportMedia` | `import_media.py` | Immutable copy, hash, probe and persistence of the `MediaAsset`. |
+| `NormalizeImportedMedia`, `PrepareInferenceAudio` | `normalize_media.py`, `prepare_inference_audio.py` | Mono 16 kHz PCM derivative by identity, no paths. |
+| `GetTranscriptionOptions` | `get_transcription_options.py` | Options with `can_start` and blocking reasons. |
+| `CreateTranscriptionJob` | `create_transcription_job.py` | Revalidates the option and stores the reproducible snapshot. |
+| `JobRunner` | `job_runner.py` | One worker, explicit states, cancellation, `recover()`, `transcript_id_for`. |
+| `RecoverableTranscription`, chunk planning | `recoverable_transcription.py`, `chunked_transcription.py` | One atomic checkpoint per chunk; resumes without repeating work. |
+| `select_execution` | `asr_device_selection.py` | Observable CPU/GPU decision and fallback reason. |
+| `TranscriptionProviderRegistry` | `transcription_provider_registry.py` | Registry by stable ID, no replacement. See [ADR-0005](../adr/0005-transcription-providers.md). |
+| Pure exporters (`TxtExporter`, `MarkdownExporter`, SRT, VTT, canonical JSON) | `export/` | Renderers over segments; the HTTP export wiring was work in progress in wave 3 and was not in `bootstrap.py` when this was written. |
 
-Ports (`application/ports/`): `repositories.py` (ocho repositories),
+Ports (`application/ports/`): `repositories.py` (eight repositories),
 `transcription_checkpoint.py`, `transcription_job_selection.py`,
 `media_storage.py`, `media_probe.py`, `media_normalization.py`,
-`inference_audio.py`, `transcription.py` (`TranscriptionProvider` y tipos
-canónicos), `model_installation.py`, `transcription_options.py`.
+`inference_audio.py`, `transcription.py` (`TranscriptionProvider` and canonical
+types), `model_installation.py`, `transcription_options.py`.
 
 ### `infrastructure` (`src/voz/infrastructure/`)
 
-| Adapter | Archivo | Implementa |
+| Adapter | File | Implements |
 | --- | --- | --- |
-| `create_sqlite_engine`, esquema, `Sqlite*Repository` | `persistence/database.py`, `schema.py`, `repositories.py` | Ocho repositories (`Sqlite*Repository`); `bootstrap.py` cablea hoy cinco (proyecto, medio, transcript, segmento, job) y los de palabras, hablantes y turnos quedan sin uso HTTP. |
-| `SqliteTranscriptionCheckpointStore` | `persistence/transcription_checkpoints.py` | Commit atómico de chunk, progreso y job. |
-| `SqliteTranscriptionJobSelectionRepository` | `persistence/transcription_job_selections.py` | Snapshot de selección. |
-| `upgrade_to_head` | `persistence/migrate.py` | Alembic programático (`migrations/versions/`). |
+| `create_sqlite_engine`, schema, `Sqlite*Repository` | `persistence/database.py`, `schema.py`, `repositories.py` | Eight repositories (`Sqlite*Repository`); `bootstrap.py` wires five today (project, media, transcript, segment, job), and the word, speaker and turn ones have no HTTP use. |
+| `SqliteTranscriptionCheckpointStore` | `persistence/transcription_checkpoints.py` | Atomic commit of chunk, progress and job. |
+| `SqliteTranscriptionJobSelectionRepository` | `persistence/transcription_job_selections.py` | Selection snapshot. |
+| `upgrade_to_head` | `persistence/migrate.py` | Programmatic Alembic (`migrations/versions/`). |
 | `FileSystemMediaStorage` | `media_storage.py` | `MediaStoragePort`. |
 | `FfprobeMediaProbe` | `audio/ffprobe.py` | `MediaProbePort`. |
 | `FfmpegMediaNormalizer` | `audio/ffmpeg.py` | `MediaNormalizationPort`. |
-| `FileSystemInferenceAudioSource` | `inference_audio.py` | `InferenceAudioSource`, WAV acotado por chunk. |
-| `FasterWhisperProvider` | `asr/faster_whisper.py` | `TranscriptionProvider` (único real). |
-| `LocalTranscriptionModelCatalog`, `FasterWhisperRuntimeProbe`, `CTranslate2HardwareProbe`, descriptores `fast`/`quality` | `asr/options.py`, `asr/hardware.py`, `asr/catalog.py` | Catálogo, disponibilidad de runtime y sondeo de hardware. |
-| `FileSystemModelStore` | `model_storage.py` | Instalación explícita y resolución local de modelos. |
-| `VozPaths`, `resolve_voz_paths` | `paths.py` | Rutas XDG. |
+| `FileSystemInferenceAudioSource` | `inference_audio.py` | `InferenceAudioSource`, WAV bounded per chunk. |
+| `FasterWhisperProvider` | `asr/faster_whisper.py` | `TranscriptionProvider` (the only real one). |
+| `LocalTranscriptionModelCatalog`, `FasterWhisperRuntimeProbe`, `CTranslate2HardwareProbe`, `fast`/`quality` descriptors | `asr/options.py`, `asr/hardware.py`, `asr/catalog.py` | Catalog, runtime availability and hardware probing. |
+| `FileSystemModelStore` | `model_storage.py` | Explicit installation and local model resolution. |
+| `VozPaths`, `resolve_voz_paths` | `paths.py` | XDG paths. |
 
 ### `interfaces` (`src/voz/interfaces/`)
 
-Un router por recurso. Salvo `health.py` (router estático), cada uno es una
-función `create_*_router(...)` que recibe sus dependencias ya construidas
+One router per resource. Except for `health.py` (a static router), each one is
+a `create_*_router(...)` function that receives its already-built dependencies
 (`api/projects.py`, `media.py`, `media_stream.py`, `transcription_options.py`,
-`jobs.py`, `job_events.py`). La CLI vive en `cli/main.py` y `cli/doctor.py`.
+`jobs.py`, `job_events.py`). The CLI lives in `cli/main.py` and
+`cli/doctor.py`.
 
 ### Composition root (`src/voz/bootstrap.py`)
 
-`create_app()` instancia repositories, storage, probe, `JobRunner` y routers;
-`create_local_asr_runtime()` compone Faster Whisper para un descriptor exacto
-(`LocalAsrRuntime`, con `close()`). `provider_for` crea un runtime por
-descriptor bajo demanda y el lifespan los cierra.
+`create_app()` instantiates repositories, storage, probe, `JobRunner` and
+routers; `create_local_asr_runtime()` composes Faster Whisper for an exact
+descriptor (`LocalAsrRuntime`, with `close()`). `provider_for` creates one
+runtime per descriptor on demand and the lifespan closes them.
 
-## Desviaciones conocidas de la regla de dependencia
+## Known deviations from the dependency rule
 
-Honestas y acotadas; no son violaciones de la regla de `AGENTS.md` (las
-interfaces pueden depender de infraestructura), pero merecen atención:
+Honest and bounded; they are not violations of the `AGENTS.md` rule
+(interfaces may depend on infrastructure), but they deserve attention:
 
-- `interfaces/api/media_stream.py` recibe el adapter concreto
-  `FileSystemMediaStorage` y llama a `original_path_for` para servir
-  `FileResponse`. La ruta se queda en el servidor: nunca se serializa al
-  navegador (test `test_deleted_original_file_is_reported_missing_without_path`).
-  Un port de lectura de originales sería más limpio; no está planificado como
-  ítem de roadmap.
-- `interfaces/cli/doctor.py` usa `CTranslate2HardwareProbe`,
-  `FasterWhisperRuntimeProbe` y `resolve_voz_paths` directamente, porque es una
-  herramienta de diagnóstico sin caso de uso propio.
-- El `JobRunner` (application) usa `threading` y `queue` de la biblioteca
-  estándar; es un detalle de ejecución aceptado y marcado con `ponytail:`.
+- `interfaces/api/media_stream.py` receives the concrete
+  `FileSystemMediaStorage` adapter and calls `original_path_for` to serve a
+  `FileResponse`. The path stays on the server: it is never serialized to the
+  browser (test `test_deleted_original_file_is_reported_missing_without_path`).
+  A read port for originals would be cleaner; it is not planned as a roadmap
+  item.
+- `interfaces/cli/doctor.py` uses `CTranslate2HardwareProbe`,
+  `FasterWhisperRuntimeProbe` and `resolve_voz_paths` directly, because it is
+  a diagnostic tool with no use case of its own.
+- `JobRunner` (application) uses the standard library's `threading` and
+  `queue`; this is an accepted execution detail, marked with `ponytail:`.
 
-## Flujo principal: importar, transcribir y seguir el progreso
+## Main flow: import, transcribe and follow progress
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Navegador
+    participant B as Browser
     participant API as FastAPI (routers)
-    participant UC as Casos de uso
-    participant R as JobRunner (hilo)
+    participant UC as Use cases
+    participant R as JobRunner (thread)
     participant DB as SQLite
-    participant FS as Filesystem XDG
+    participant FS as XDG filesystem
     participant FF as ffprobe / ffmpeg
     participant FW as FasterWhisperProvider
 
-    B->>API: POST /api/projects/{id}/media (cuerpo crudo)
+    B->>API: POST /api/projects/{id}/media (raw body)
     API->>UC: ImportMedia
-    UC->>FS: copia inmutable + SHA-256
-    UC->>FF: ffprobe sobre el descriptor abierto
+    UC->>FS: immutable copy + SHA-256
+    UC->>FF: ffprobe on the open descriptor
     UC->>DB: MediaAsset
-    API-->>B: 201 metadata sin rutas
+    API-->>B: 201 metadata without paths
 
     B->>API: POST /api/jobs (option_id)
     API->>UC: CreateTranscriptionJob
-    UC->>DB: job QUEUED + snapshot de selección
+    UC->>DB: QUEUED job + selection snapshot
     API->>R: enqueue(job_id)
     API-->>B: 201 JobView
 
     B->>API: GET /api/jobs/{id}/events
-    loop cada ~500 ms
-        API->>DB: leer job
-        API-->>B: event: job si cambió
+    loop every ~500 ms
+        API->>DB: read job
+        API-->>B: event: job if it changed
     end
 
     R->>DB: PROBING, PREPROCESSING
-    R->>FF: normalizar a PCM mono 16 kHz (si falta)
-    R->>FS: derivado .inference.wav
-    loop cada chunk
+    R->>FF: normalize to mono 16 kHz PCM (if missing)
+    R->>FS: .inference.wav derivative
+    loop each chunk
         R->>FW: transcribe(chunk)
-        R->>DB: segmentos + checkpoint + progreso (1 transacción)
+        R->>DB: segments + checkpoint + progress (1 transaction)
     end
-    R->>DB: PERSISTING, transcript y segmentos, COMPLETED
+    R->>DB: PERSISTING, transcript and segments, COMPLETED
     API-->>B: event: end
     B->>API: GET /api/transcripts/{id}/segments
 ```
 
 ## Frontend (`apps/web/src/`)
 
-| Componente | Archivos | Rol |
+This table is the snapshot described at the top of the page. Since then the
+frontend has grown (for example, UI text now goes through `apps/web/src/i18n`
+in Spanish and English, and styles are SCSS); the table below is not
+regenerated here.
+
+| Component | Files | Role |
 | --- | --- | --- |
-| Composición | `main.tsx`, `App.tsx` | Estado local de la pantalla; sin store global ni router. |
-| Clientes de contrato | `api/health.ts`, `projects.ts`, `media.ts`, `transcriptionOptions.ts`, `jobs.ts`, `jobEvents.ts`, `errors.ts` | Tipan las respuestas (con guardas como `isJobView`) y traducen `{"detail": {"code", "message"}}`. |
-| Hooks | `hooks/useJobEvents.ts`, `useSeek.ts` | Suscripción SSE y sincronía audio/segmento. |
-| Componentes | `components/NewProjectCard.tsx`, `TranscriptionOptionsSelector.tsx`, `JobScreen.tsx`, `SegmentList.tsx`, `AudioPlayer.tsx`, `HealthStatus.tsx` | Interfaz en español; el reproductor usa `/api/media/{id}/original`. |
-| Estilos | `styles.css`, `styles/tokens.css` | Tokens de diseño. |
+| Composition | `main.tsx`, `App.tsx` | Local screen state; no global store and no router. |
+| Contract clients | `api/health.ts`, `projects.ts`, `media.ts`, `transcriptionOptions.ts`, `jobs.ts`, `jobEvents.ts`, `errors.ts` | Type the responses (with guards such as `isJobView`) and translate `{"detail": {"code", "message"}}`. |
+| Hooks | `hooks/useJobEvents.ts`, `useSeek.ts` | SSE subscription and audio/segment synchronization. |
+| Components | `components/NewProjectCard.tsx`, `TranscriptionOptionsSelector.tsx`, `JobScreen.tsx`, `SegmentList.tsx`, `AudioPlayer.tsx`, `HealthStatus.tsx` | Spanish-language UI at the time of the snapshot; the player uses `/api/media/{id}/original`. |
+| Styles | `styles.css`, `styles/tokens.css` | Design tokens. |
 
-El frontend no conoce rutas del host, esquema de base de datos ni providers: solo
-IDs y los campos del contrato. TanStack Query, Zustand y WaveSurfer.js del plan
-maestro son **planificados**: hoy usa `fetch`/`EventSource` y el elemento
-`<audio>`.
+The frontend knows nothing about host paths, the database schema or providers:
+only IDs and the contract fields. TanStack Query, Zustand and WaveSurfer.js
+from the master plan are **planned**: today it uses `fetch`/`EventSource` and
+the `<audio>` element.
 
-## Planificado (sin código)
+## Planned (no code)
 
-`DiarizationProvider`/`AlignmentProvider`, Model Manager con API/CLI de
-instalación, exportación HTTP cableada, edición de transcript, providers
-adicionales y `voz.infrastructure.providers.*`: ver secciones 6 a 12 del
+`DiarizationProvider`/`AlignmentProvider`, a Model Manager with an
+installation API/CLI, wired HTTP export, transcript editing, additional
+providers and `voz.infrastructure.providers.*`: see sections 6 to 12 of the
 [ROADMAP](../../ROADMAP.md).
 
-Anterior: [C4-2 Contenedores](02-contenedores.md). Índice:
+Previous: [C4-2 Containers](02-contenedores.md). Index:
 [README](README.md).
