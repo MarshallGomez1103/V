@@ -236,6 +236,7 @@ async def _import_or_translate(
             "Media storage is not available right now.",
         ) from None
     except Exception as error:
+        # Last-resort HTTP boundary: a stable 500 instead of a leaked trace.
         # Only the exception type is logged: messages may embed host paths.
         _logger.error("Media import failed: %s", type(error).__name__)
         raise _error(

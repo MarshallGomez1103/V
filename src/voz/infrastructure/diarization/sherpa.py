@@ -376,7 +376,7 @@ class SherpaOnnxDiarizationProvider:
                 )
             except DiarizationError:
                 raise
-            except Exception as error:
+            except Exception as error:  # native loader errors are untyped
                 raise DiarizationError(
                     _Code.PROVIDER_FAILED, "The diarization models could not be loaded."
                 ) from error
@@ -405,6 +405,8 @@ class SherpaOnnxDiarizationProvider:
                 progress=progress,
             )
         except Exception as error:
+            # Native engine errors are untyped; an abort via the progress
+            # callback surfaces here as cancellation. Else chained, typed.
             self._raise_if_cancelled(cancellation)
             raise DiarizationError(
                 _Code.PROVIDER_FAILED, "Speaker diarization failed."

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import wave
@@ -16,6 +17,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import Engine
 
+from voz.application import job_runner as job_runner_module
 from voz.application.assign_speakers import AssignSpeakers
 from voz.application.job_runner import JobRunner, transcript_id_for
 from voz.application.ports.diarization import (
@@ -373,12 +375,24 @@ def test_disabled_diarization_never_touches_engines(tmp_path: Path) -> None:
     ],
 )
 def test_diarization_failure_keeps_the_transcript(
-    tmp_path: Path, error: Exception, code: str
+    tmp_path: Path,
+    error: Exception,
+    code: str,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = world(tmp_path)
+    # Alembic's fileConfig in other tests may have disabled existing loggers.
+    monkeypatch.setattr(job_runner_module._LOG, "disabled", False)  # pyright: ignore[reportPrivateUsage]
 
-    finished = fixture.runner(FakeDiarizer(fixture.timeline, error=error)).run_job(
-        fixture.job.id
+    with caplog.at_level(logging.ERROR):
+        finished = fixture.runner(FakeDiarizer(fixture.timeline, error=error)).run_job(
+            fixture.job.id
+        )
+
+    assert any(
+        str(fixture.job.id) in record.getMessage() and record.exc_info
+        for record in caplog.records
     )
 
     assert finished is not None

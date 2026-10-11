@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -55,6 +56,9 @@ class MediaImportRollbackError(RuntimeError):
 
 class MediaImportOutcomeUncertainError(RuntimeError):
     """Persistence failed and its committed outcome cannot be proven safely."""
+
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -111,15 +115,23 @@ class ImportMedia:
         try:
             self.media_assets.add(media_asset)
         except Exception as persistence_error:
+            # Boundary: any repository failure is reconciled against the stored
+            # row; every path below re-raises (chained) or returns a verified row.
             try:
                 persisted = self.media_assets.get(media_asset_id)
             except Exception as reconciliation_error:
+                # Chained into the uncertain-outcome error, never swallowed.
                 raise MediaImportOutcomeUncertainError(
                     "Media persistence failed and its committed outcome could "
                     "not be determined safely; the original was preserved."
                 ) from reconciliation_error
 
             if persisted == media_asset:
+                _LOG.warning(
+                    "Media %s was committed although add() raised",
+                    media_asset_id,
+                    exc_info=persistence_error,
+                )
                 return ImportedMedia(
                     media_asset=media_asset,
                     probe_result=probe_result,
@@ -143,6 +155,7 @@ class ImportMedia:
                 media_asset_id=media_asset_id,
             )
         except Exception as rollback_error:
+            # Any storage failure becomes a typed error; the cause stays chained.
             raise MediaImportRollbackError(
                 "Media import failed and its original could not be discarded safely."
             ) from rollback_error

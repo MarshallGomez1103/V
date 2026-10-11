@@ -138,7 +138,7 @@ class FileSystemModelStore:
             )
         except ModelInstallationError:
             raise
-        except Exception as error:
+        except Exception as error:  # huggingface_hub errors are untyped; chained
             raise ModelInstallationError(
                 ModelInstallationFailureCode.DOWNLOAD_FAILED,
                 "The pinned model snapshot could not be downloaded.",

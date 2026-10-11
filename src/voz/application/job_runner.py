@@ -474,10 +474,15 @@ class JobRunner:
         except _Stopping:
             return job
         except Exception as error:
+            # Boundary: whatever the adapters raise ends in a persisted FAILED
+            # (or CANCELLED) job; the traceback is logged because only the code
+            # is stored.
             job = self._latest(job)
             if token.is_cancelled() or job.state is TranscriptionJobState.CANCELLING:
                 return self._finish_cancelled(job)
-            return self._fail(job, _error_code(error))
+            code = _error_code(error)
+            _LOG.error("Job %s failed (%s)", job.id, code, exc_info=error)
+            return self._fail(job, code)
 
     def _diarize(
         self,
@@ -516,6 +521,8 @@ class JobRunner:
                 )
             return result, selection
         except Exception as error:
+            # Diarization is best-effort: its failure is recorded (and logged
+            # there) and the transcript is kept. Cancel/shutdown re-raise.
             if token.is_cancelled():
                 raise
             if self._stopping.is_set():
@@ -537,7 +544,7 @@ class JobRunner:
                     "Speaker assignment is not wired.",
                 )
             self.assign_speakers.execute(transcript_id_for(job.id), diarized)
-        except Exception as error:
+        except Exception as error:  # best-effort: recorded and logged, not fatal
             return self._record_diarization_error(job, selection, error)
         return selection
 
@@ -560,7 +567,7 @@ class JobRunner:
             return selection
         try:
             self.assign_provider_speakers.execute(transcript_id, job.project_id, labels)
-        except Exception as error:
+        except Exception as error:  # best-effort: recorded and logged, not fatal
             return self._record_diarization_error(job, selection, error)
         return selection
 
@@ -568,6 +575,7 @@ class JobRunner:
         self, job: TranscriptionJob, selection: JobSelection, error: Exception
     ) -> JobSelection:
         code = _error_code(error, DiarizationFailureCode.PROVIDER_FAILED.value)
+        _LOG.error("Diarization failed for job %s (%s)", job.id, code, exc_info=error)
         self.selections.record_diarization_error(job.id, code)
         return replace(selection, diarization_error_code=code)
 

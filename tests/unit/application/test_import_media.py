@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
@@ -10,6 +11,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from voz.application import import_media as import_media_module
 from voz.application.import_media import (
     ImportMedia,
     MediaImportOutcomeUncertainError,
@@ -376,7 +378,9 @@ def test_failed_compensation_reports_an_explicit_rollback_error() -> None:
     assert events == ["store", "open", "probe", "persist", "get", "discard"]
 
 
-def test_post_commit_exception_reconciles_equivalent_row_and_keeps_original() -> None:
+def test_post_commit_exception_reconciles_equivalent_row_and_keeps_original(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
     events: list[str] = []
     storage = FakeStorage(events)
     repository = FakeMediaAssetRepository(
@@ -385,15 +389,21 @@ def test_post_commit_exception_reconciles_equivalent_row_and_keeps_original() ->
         commit_before_raise=True,
     )
 
-    result = ImportMedia(
-        media_probe=FakeProbe(audio_probe_result(), events),
-        media_storage=storage,
-        media_assets=repository,
-    ).execute(source=Path("recording.wav"), project_id=uuid4())
+    # Alembic's fileConfig in other tests may have disabled existing loggers.
+    monkeypatch.setattr(import_media_module._LOG, "disabled", False)  # pyright: ignore[reportPrivateUsage]
+
+    with caplog.at_level(logging.WARNING):
+        result = ImportMedia(
+            media_probe=FakeProbe(audio_probe_result(), events),
+            media_storage=storage,
+            media_assets=repository,
+        ).execute(source=Path("recording.wav"), project_id=uuid4())
 
     assert repository.added == result.media_asset
     assert storage.imported
     assert events == ["store", "open", "probe", "persist", "get"]
+    # The swallowed persistence error must leave a trace.
+    assert any(record.exc_info for record in caplog.records)
 
 
 def test_unknown_persistence_outcome_keeps_original_and_raises_typed_error() -> None:

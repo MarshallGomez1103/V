@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from io import BytesIO
@@ -19,6 +20,7 @@ from voz.application.ports.transcription import (
 )
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import ComputePrecision
+from voz.infrastructure.asr import faster_whisper as faster_whisper_module
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
 
 DESCRIPTOR = ModelDescriptor(
@@ -165,10 +167,19 @@ def test_words_are_not_requested_when_the_caller_disables_them(tmp_path: Path) -
     assert segment.words == ()
 
 
-def test_alignment_failure_falls_back_to_a_wordless_pass(tmp_path: Path) -> None:
+def test_alignment_failure_falls_back_to_a_wordless_pass(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     engine = _Engine([_S(0.0, 1.0, " hola")], fail_with_words=True)
+    # Alembic's fileConfig in other tests may have disabled existing loggers.
+    monkeypatch.setattr(faster_whisper_module._logger, "disabled", False)  # pyright: ignore[reportPrivateUsage]
 
-    (segment,) = _run(_provider(tmp_path, engine))
+    with caplog.at_level(logging.WARNING):
+        (segment,) = _run(_provider(tmp_path, engine))
+
+    assert any("without words" in record.getMessage() for record in caplog.records)
 
     assert engine.flags == [True, False]
     assert segment.text == " hola"

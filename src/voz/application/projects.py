@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -17,6 +18,8 @@ from voz.application.ports.repositories import (
 )
 from voz.application.project_glossary import ProjectNotFound
 from voz.domain.entities.project import Project
+
+_LOG = logging.getLogger(__name__)
 
 MAX_PROJECT_NAME_LENGTH = 200
 
@@ -111,6 +114,9 @@ class DeleteProject:
         try:
             self.files.delete_project_files(project_id)
         except Exception as error:
+            # Boundary: any eraser failure becomes a typed error; the API shows
+            # a stable code, so the cause is logged here.
+            _LOG.exception("Could not delete the files of project %s", project_id)
             raise ProjectDeleteFailed(str(project_id)) from error
         self.records.delete_project(project_id)
 

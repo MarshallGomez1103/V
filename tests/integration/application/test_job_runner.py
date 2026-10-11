@@ -303,10 +303,23 @@ def test_missing_derivative_is_prepared_before_transcribing(tmp_path: Path) -> N
     fixture.engine.dispose()
 
 
-def test_provider_failure_persists_stable_code_not_message(tmp_path: Path) -> None:
+def test_provider_failure_persists_stable_code_not_message(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fixture = harness(tmp_path, provider=Provider(fail_on_call=2))
+    # Alembic's fileConfig in other tests may have disabled existing loggers.
+    monkeypatch.setattr(job_runner_module._LOG, "disabled", False)  # pyright: ignore[reportPrivateUsage]
 
-    finished = fixture.runner.run_job(fixture.job.id)
+    with caplog.at_level(logging.ERROR):
+        finished = fixture.runner.run_job(fixture.job.id)
+
+    # Only the code is stored, so the traceback must reach the log.
+    assert any(
+        str(fixture.job.id) in record.getMessage() and record.exc_info
+        for record in caplog.records
+    )
 
     assert finished is not None
     assert finished.state is TranscriptionJobState.FAILED

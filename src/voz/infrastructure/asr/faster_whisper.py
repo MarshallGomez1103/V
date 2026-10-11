@@ -367,6 +367,10 @@ class FasterWhisperProvider:
                     and audio.seekable()
                 ):
                     raise
+                _logger.warning(
+                    "Word timestamps failed (%s); retrying the chunk without words",
+                    type(error).__name__,
+                )
                 self._clear_failure_frames(error)
                 audio.seek(0)
                 segments, language = self._run_engine(
@@ -378,6 +382,8 @@ class FasterWhisperProvider:
             self._clear_failure_frames(error)
             raise
         except Exception as error:
+            # Boundary: third-party engine errors map to typed codes (cause
+            # chained); anything unknown is a retryable PROVIDER_FAILED.
             self._clear_failure_frames(error)
             if isinstance(error, self._invalid_audio_errors):
                 raise TranscriptionError(

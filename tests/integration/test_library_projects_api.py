@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from voz.application import projects as projects_module
 from voz.application.job_runner import transcript_id_for
 from voz.application.library import ListLibrary
 from voz.application.ports.transcription_job_selection import JobSelection
@@ -418,7 +420,7 @@ def test_delete_unknown_project_is_404(env: Env) -> None:
 
 
 def test_delete_keeps_the_project_when_files_cannot_be_removed(
-    env: Env, monkeypatch: pytest.MonkeyPatch
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     project = env.project("P")
     env.asset(project)
@@ -427,10 +429,18 @@ def test_delete_keeps_the_project_when_files_cannot_be_removed(
         raise OSError("disk says no")
 
     monkeypatch.setattr(env.storage, "delete_project_files", fail)
+    # Alembic's fileConfig in other tests may have disabled existing loggers.
+    monkeypatch.setattr(projects_module._LOG, "disabled", False)  # pyright: ignore[reportPrivateUsage]
 
-    response = env.client.delete(f"/api/projects/{project.id}", headers=DELETE)
+    with caplog.at_level(logging.ERROR):
+        response = env.client.delete(f"/api/projects/{project.id}", headers=DELETE)
 
     assert response.status_code == 500
     assert response.json()["detail"]["code"] == "project_delete_failed"
+    # The cause is logged server-side (the API only exposes the stable code).
+    assert any(
+        str(project.id) in record.getMessage() and record.exc_info
+        for record in caplog.records
+    )
     assert SqliteProjectRepository(env.engine).get(project.id) is not None
     assert "disk says no" not in response.text
