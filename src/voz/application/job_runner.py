@@ -150,12 +150,34 @@ class _AnyEventToken:
         return any(event.is_set() for event in self.events)
 
 
+_CANCEL_PATH = frozenset(
+    {TranscriptionJobState.CANCELLING, TranscriptionJobState.CANCELLED}
+)
+
+
+def _confirmed_cancel(
+    jobs: TranscriptionJobRepository, cancel: threading.Event, job: TranscriptionJob
+) -> TranscriptionJob | None:
+    """The persisted CANCELLING that a worker write of ``job`` must not overwrite.
+
+    Cancel wins: once the API confirmed CANCELLING, only CANCELLED may follow it.
+    Callers hold the runner lock, the same one ``JobRunner.cancel`` writes under.
+    """
+    if not cancel.is_set() or job.state in _CANCEL_PATH:
+        return None
+    persisted = jobs.get(job.id)
+    if persisted is None or persisted.state is not TranscriptionJobState.CANCELLING:
+        return None
+    return persisted
+
+
 @dataclass(slots=True)
 class _LockedJobs:
     """Serialize job writes with ``JobRunner.cancel`` so progress never regresses."""
 
     inner: TranscriptionJobRepository
     lock: threading.Lock
+    cancel: threading.Event
 
     def add(self, job: TranscriptionJob) -> None:
         with self.lock:
@@ -163,7 +185,8 @@ class _LockedJobs:
 
     def save(self, job: TranscriptionJob) -> None:
         with self.lock:
-            self.inner.save(job)
+            if _confirmed_cancel(self.inner, self.cancel, job) is None:
+                self.inner.save(job)
 
     def get(self, job_id: UUID) -> TranscriptionJob | None:
         return self.inner.get(job_id)
@@ -182,11 +205,18 @@ class _LockedJobs:
 class _LockedCheckpoints:
     inner: TranscriptionCheckpointStore
     lock: threading.Lock
+    jobs: TranscriptionJobRepository
+    cancel: threading.Event
 
     def commit(
         self, checkpoint: TranscriptionCheckpoint, job: TranscriptionJob
     ) -> None:
         with self.lock:
+            cancelling = _confirmed_cancel(self.jobs, self.cancel, job)
+            if cancelling is not None:
+                # Keep the transcribed chunk; the job keeps its persisted state.
+                checkpoint = replace(checkpoint, job_progress=cancelling.progress)
+                job = cancelling
             self.inner.commit(checkpoint, job)
 
     def list_for_job(self, job_id: UUID) -> Sequence[TranscriptionCheckpoint]:
@@ -411,8 +441,10 @@ class JobRunner:
                     outcome = RecoverableTranscription(
                         provider=self.provider_for(selection),
                         audio_source=audio_source,
-                        checkpoints=_LockedCheckpoints(self.checkpoints, self._lock),
-                        jobs=_LockedJobs(self.jobs, self._lock),
+                        checkpoints=_LockedCheckpoints(
+                            self.checkpoints, self._lock, self.jobs, self._cancel
+                        ),
+                        jobs=_LockedJobs(self.jobs, self._lock, self._cancel),
                         clock=self.clock,
                     ).execute(
                         job=job,
@@ -587,6 +619,8 @@ class JobRunner:
             raise _Stopping
 
     def _advance(self, job: TranscriptionJob) -> TranscriptionJob:
+        if job.state is TranscriptionJobState.CANCELLING:
+            return job  # a cancel won a write race; the loop finishes it
         successor = {
             TranscriptionJobState.QUEUED: TranscriptionJobState.PROBING,
             TranscriptionJobState.PROBING: TranscriptionJobState.PREPROCESSING,
@@ -691,10 +725,15 @@ class JobRunner:
             at=self._not_before(job),
             error_code=code,
         )
-        return self._save(failed)
+        saved = self._save(failed)
+        return saved if saved is failed else self._finish_cancelled(saved)
 
     def _save(self, job: TranscriptionJob) -> TranscriptionJob:
+        """Persist ``job``, or return the persisted CANCELLING it must not replace."""
         with self._lock:
+            cancelling = _confirmed_cancel(self.jobs, self._cancel, job)
+            if cancelling is not None:
+                return cancelling
             self.jobs.save(job)
         return job
 
