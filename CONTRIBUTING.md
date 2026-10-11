@@ -19,8 +19,8 @@ Python package is `voz`, environment variables are `VOZ_*`, and user data lives
 in `voz/` XDG directories. See [ADR-0009](docs/adr/0009-rename-to-v.md). Do
 not rename them as part of an unrelated change.
 
-The command available today is `voz` (for example `uv run voz --no-browser`).
-A `v` alias is planned.
+The command is `v`, with `voz` kept as an alias (for example `uv run voz --no-browser`;
+see [ADR-0009](docs/adr/0009-rename-to-v.md)).
 
 ## 1. Before writing code
 

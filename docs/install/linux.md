@@ -1,36 +1,44 @@
-# Instalación en Linux
+# Installing on Linux
 
-VOZ es una aplicación local: un comando `voz` que arranca un servidor en
-`127.0.0.1` y una interfaz web servida por él. Todavía no hay release pública, así
-que se instala desde un wheel construido a partir del repositorio.
+V (formerly VOZ) is a local application: a command (`voz` today) that starts a
+server on `127.0.0.1` and serves a web interface from it. There is no public
+release yet, so you install it from a wheel built from the repository.
 
-> **Estado de verificación.** Solo Bazzite (Fedora Atomic) se ha verificado. Estos
-> pasos son genéricos y no se han probado en otras distribuciones; si algo falla,
-> abre un issue con la salida de `voz doctor --redact`.
+> **Naming.** The product is now called V; see
+> [ADR-0009](../adr/0009-rename-to-v.md). The data directories are still named
+> `voz/` (nothing on disk is renamed). `v` and `voz` are the same command (`v`
+> since slice V1-02); this document uses `voz`, which works on every install.
 
-## Requisitos
+> **Verification status.** Only Bazzite (Fedora Atomic) has been verified. These
+> steps are generic and have not been tried on other distributions. If something
+> fails, open an issue with the output of `voz doctor --redact`. See also
+> [Troubleshooting](../troubleshooting.md).
 
-- Linux x86-64 con `glibc` y Python **3.12 o superior** (`uv` puede descargarlo).
-- [`uv`](https://docs.astral.sh/uv/) instalado para el usuario.
-- **FFmpeg** (`ffmpeg` y `ffprobe` en el `PATH`) para importar y normalizar audio.
-  Instálalo con el gestor de tu distribución o, en sistemas inmutables, en un
-  contenedor de usuario (Distrobox). Si faltan, `voz` descarga una sola vez una
-  compilación estática fijada y verificada (ver [Windows y macOS](windows-macos.md)); se
-  desactiva con `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
-- Opcional, para transcribir en GPU: una GPU NVIDIA con controlador CUDA 12
-  operativo en el host. Los runtimes cuBLAS/cuDNN llegan como wheels de pip.
+## Requirements
 
-## Construir el wheel
+- Linux x86-64 with `glibc` and Python **3.12 or later** (`uv` can download it).
+- [`uv`](https://docs.astral.sh/uv/) installed for your user.
+- **FFmpeg** (`ffmpeg` and `ffprobe` on the `PATH`) to import and normalize
+  audio. Install it with your distribution's package manager or, on immutable
+  systems, inside a user container (Distrobox). If they are missing, `voz`
+  downloads a pinned, verified static build once (see
+  [Windows and macOS](windows-macos.md)); disable that with
+  `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
+- Optional, to transcribe on the GPU: an NVIDIA GPU with a working CUDA 12
+  driver on the host. The cuBLAS/cuDNN runtimes arrive as pip wheels.
 
-Desde un checkout (requiere `uv`; el bundle web ya va versionado en `src/voz/static`):
+## Build the wheel
+
+From a checkout (requires `uv`; the web bundle is already versioned in
+`src/voz/static`):
 
 ```bash
-git clone <url-del-repositorio> voz && cd voz
+git clone <repository-url> voz && cd voz
 uv build --wheel --out-dir dist
 sha256sum dist/*.whl
 ```
 
-## Instalar
+## Install
 
 ```bash
 uv tool install dist/voz_transcriber-*.whl
@@ -38,112 +46,140 @@ voz --help
 voz doctor
 ```
 
-`uv tool install` crea un entorno aislado y enlaza `voz` en `~/.local/bin`
-(ejecuta `uv tool update-shell` si no está en tu `PATH`). Para arrancar:
+`uv tool install` creates an isolated environment and links `voz` into
+`~/.local/bin` (run `uv tool update-shell` if that directory is not on your
+`PATH`). To start it:
 
 ```bash
-voz                       # http://127.0.0.1:8765 y abre el navegador
+voz                       # http://127.0.0.1:8765, opens your browser
 voz --no-browser --port 9000
 ```
 
-VOZ solo escucha en `127.0.0.1` por defecto; `--host` con otra dirección expone el
-servicio en la red y debe ser una decisión deliberada.
+By default the server listens only on `127.0.0.1`. Passing `--host` with another
+address exposes the service on the network and must be a deliberate decision:
 
-## Faster Whisper local (extra `asr-local`)
+- `voz` prints a warning to stderr whenever the bind address is not loopback:
+  the API, your media and your transcripts become reachable by anyone on that
+  network, and there is no authentication.
+- The server checks the `Host` header of every request (any port is accepted;
+  only the name matters) and answers `400` with the error code
+  `host_not_allowed` when the name is not allowed. Always accepted: `127.0.0.1`,
+  `localhost` and `::1`, the address given with `--host`, and every name passed
+  with the repeatable `--allow-host` option. With a wildcard bind (`0.0.0.0` or
+  `::`), this machine's own host name and IP addresses are accepted too. To reach
+  V under another name, add it explicitly, for example
+  `voz --host 0.0.0.0 --allow-host my-pc.local`.
 
-La transcripción local usa Faster Whisper, que es opcional y aún **experimental**:
+The rationale is in [ADR-0006](../adr/0006-local-first-privacy.md). If you hit
+`host_not_allowed`, see [Troubleshooting](../troubleshooting.md).
+
+## Local Faster Whisper (the `asr-local` extra)
+
+Local transcription uses Faster Whisper, which is optional and still
+**experimental**:
 
 ```bash
 uv tool install --force \
   "voz-transcriber[asr-local] @ ./dist/voz_transcriber-0.1.0-py3-none-any.whl"
 ```
 
-(Ajusta el nombre del archivo a la versión construida. Los wheels CUDA pesan
-cientos de MB: el entorno de la herramienta con el extra ocupa unos 2,6 GB y la
-instalación tardó unos 4 minutos con la caché de `uv` vacía.)
+(Adjust the file name to the version you built. The CUDA wheels weigh hundreds of
+MB: the tool environment with the extra takes about 2.6 GB, and the install took
+about 4 minutes with an empty `uv` cache.)
 
-En Linux el extra incluye `nvidia-cublas-cu12` y `nvidia-cudnn-cu12`, de modo que
-CTranslate2 encuentra CUDA 12 sin tocar el sistema. Esto solo instala la
-dependencia: los pesos del modelo **no** se descargan hasta que eliges y confirmas
-un modelo desde la interfaz. Sin GPU NVIDIA VOZ usa CPU de forma explícita. Comprueba
-el resultado con `voz doctor`.
+On Linux the extra includes `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`, so
+CTranslate2 finds CUDA 12 without touching the system. This only installs the
+dependency: the model weights are **not** downloaded until you choose and confirm
+a model in the interface. Without an NVIDIA GPU, V uses the CPU explicitly. Check
+the result with `voz doctor`.
 
-## Dónde guarda VOZ los datos
+## Where V stores its data
 
-VOZ respeta XDG Base Directory (nunca escribe en el checkout):
+V follows the XDG Base Directory specification (it never writes into the
+checkout). The directory name stays `voz` ([ADR-0009](../adr/0009-rename-to-v.md)).
 
-| Contenido | Ruta |
+| Content | Path |
 | --- | --- |
-| Configuración | `${XDG_CONFIG_HOME:-~/.config}/voz/` |
-| Datos: base SQLite, proyectos, originales, modelos | `${XDG_DATA_HOME:-~/.local/share}/voz/` |
-| Caché | `${XDG_CACHE_HOME:-~/.cache}/voz/` |
-| Estado y logs | `${XDG_STATE_HOME:-~/.local/state}/voz/` |
+| Configuration | `${XDG_CONFIG_HOME:-~/.config}/voz/` |
+| Data: SQLite database, projects, originals, models | `${XDG_DATA_HOME:-~/.local/share}/voz/` |
+| Cache | `${XDG_CACHE_HOME:-~/.cache}/voz/` |
+| State and logs | `${XDG_STATE_HOME:-~/.local/state}/voz/` |
 
-Para probar sin tocar tus datos, exporta esas cuatro variables hacia un directorio
-temporal antes de ejecutar `voz`. Ojo: `uv` también respeta `XDG_CACHE_HOME` y
-`XDG_DATA_HOME`, así que con ellas redirigidas descargará de nuevo su caché de
-paquetes y un CPython gestionado (3.12). Para no repetirlo, exporta además
-`UV_CACHE_DIR` y `UV_PYTHON_INSTALL_DIR` hacia sus ubicaciones reales.
+To try V without touching your data, export those four variables pointing to a
+temporary directory before running `voz`. Note that `uv` also honors
+`XDG_CACHE_HOME` and `XDG_DATA_HOME`, so with them redirected it will download its
+package cache again, plus a managed CPython (3.12). To avoid that, also export
+`UV_CACHE_DIR` and `UV_PYTHON_INSTALL_DIR` pointing to their real locations.
 
-## Actualizar
+## Upgrade
 
-Construye el wheel nuevo y ejecuta `uv tool install --force dist/voz_transcriber-*.whl`.
-**Reinstalar sin el extra lo quita** (verificado: `voz doctor` vuelve a avisar de
-que falta `asr-local`); si lo usas, repite el comando completo de la sección
-anterior. El esquema de la base se migra solo al arrancar y antes de migrar se
-guarda una copia en `~/.local/state/voz/backups/`; aun así, copia
-`~/.local/share/voz/` antes de actualizar si contiene trabajo que no quieres perder.
+Build the new wheel and run `uv tool install --force dist/voz_transcriber-*.whl`.
+**Reinstalling without the extra removes it** (verified: `voz doctor` warns again
+that `asr-local` is missing). If you use it, repeat the full command from the
+previous section. The database schema migrates itself on startup, and a copy is
+saved to `~/.local/state/voz/backups/` before migrating (see
+[Diagnostics](../diagnostics.md#backup-before-migrating)); still, copy
+`~/.local/share/voz/` before upgrading if it holds work you do not want to lose.
 
-## Desinstalar
+## Uninstall
 
 ```bash
 uv tool uninstall voz-transcriber
 ```
 
-Eso no borra tus proyectos ni modelos. Si quieres eliminarlos, revisa el contenido
-de los directorios de la tabla anterior y bórralos tú mismo (contienen tus
-grabaciones y transcripts).
+This does not delete your projects or models. To remove them, check the contents
+of the directories in the table above and delete them yourself (they contain your
+recordings and transcripts).
 
-## Problemas frecuentes
+## Common problems
 
-- `voz: command not found`: añade `~/.local/bin` al `PATH` (`uv tool update-shell`).
-- Puerto ocupado: usa `--port` con otro número; `voz doctor` lo comprueba.
-- Falta FFmpeg: `voz doctor` lo indica; la importación no funcionará hasta instalarlo.
+- `voz: command not found`: add `~/.local/bin` to your `PATH`
+  (`uv tool update-shell`).
+- Port in use: pass `--port` with another number; `voz doctor` checks it.
+- FFmpeg missing: `voz doctor` reports it; importing will not work until it is
+  installed.
 
-## Verificado en Bazzite
+More cases are in [Troubleshooting](../troubleshooting.md).
 
-**Fecha:** 2026-09-30 (S15.10). **Máquina:** Bazzite `bazzite-nvidia-open`
+## Verified on Bazzite
+
+**Date:** 2026-09-30 (S15.10). **Machine:** Bazzite `bazzite-nvidia-open`
 (Fedora 44, kernel 7.2.7), NVIDIA GeForce RTX 4060 Laptop, `uv 0.12.21`,
-FFmpeg 8.1.3 en `/usr/bin`, Python del sistema 3.14.7.
+FFmpeg 8.1.3 in `/usr/bin`, system Python 3.14.7.
 
-Método: checkout limpio (`git clone` del commit `435ed0a`) en un directorio
-temporal y **todas** las variables `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` y `XDG_*`
-apuntando a otro directorio temporal, sin tocar `~/.local`. Los pasos son los de
-este documento, en este orden; red solo hacia PyPI (más la descarga del CPython
-gestionado que hace `uv`, ver la nota de `XDG_*` arriba).
+Method: a clean checkout (`git clone` of commit `435ed0a`) in a temporary
+directory, with **all** of `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` and the `XDG_*`
+variables pointing to another temporary directory, without touching
+`~/.local`. The steps are those of this document, in this order; network access
+only to PyPI (plus the managed CPython download that `uv` performs, see the
+`XDG_*` note above).
 
-| Paso | Comando | Resultado |
+| Step | Command | Result |
 | --- | --- | --- |
-| Construir | `uv build --wheel --out-dir dist` | `voz_transcriber-0.1.0-py3-none-any.whl` |
-| Instalar | `uv tool install dist/voz_transcriber-*.whl` | instala el ejecutable `voz` (unos 11 s) |
-| Ayuda | `voz --help` (desde un cwd fuera del checkout) | muestra `serve` y `doctor` |
-| Diagnóstico | `voz doctor` | 7 ok, 3 avisos (sin modelos, sin `asr-local`, sin detección de GPU), 0 fallos, código 0 |
-| Arrancar | `voz --no-browser --port 9000` | `GET /` 200, `GET /api/health` 200 `{"status":"ok"}`, escucha solo en `127.0.0.1:9000`, SIGINT apaga limpio |
-| Extra | `uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-0.1.0-py3-none-any.whl"` | instala `faster-whisper`, `nvidia-cublas-cu12` y `nvidia-cudnn-cu12` (unos 4 min, 2,6 GB) |
-| Diagnóstico con extra | `voz doctor` | 9 ok, 1 aviso (sin modelos), 0 fallos; `runtime ASR: faster-whisper disponible`; `GPU/CUDA: float16, int8, int8_float16` |
-| Opciones | `GET /api/transcription-options` | lista los modelos Faster Whisper del catálogo; ningún peso se descarga |
-| Actualizar | `uv tool install --force dist/voz_transcriber-*.whl` | funciona, pero **quita el extra** (ver Actualizar) |
-| Desinstalar | `uv tool uninstall voz-transcriber` | quita el ejecutable; `voz.sqlite3` en `XDG_DATA_HOME/voz` permanece, como dice la sección |
-| Script | `scripts/check-install.sh` | `voz --help`, `doctor --json`, `GET /` y `/api/health` 200 en un puerto libre, apagado con código 0 |
+| Build | `uv build --wheel --out-dir dist` | `voz_transcriber-0.1.0-py3-none-any.whl` |
+| Install | `uv tool install dist/voz_transcriber-*.whl` | installs the `voz` executable (about 11 s) |
+| Help | `voz --help` (from a cwd outside the checkout) | shows `serve` and `doctor` |
+| Diagnostics | `voz doctor` | 7 ok, 3 warnings (no models, no `asr-local`, no GPU detection), 0 failures, exit code 0 |
+| Start | `voz --no-browser --port 9000` | `GET /` 200, `GET /api/health` 200 `{"status":"ok"}`, listens only on `127.0.0.1:9000`, SIGINT shuts down cleanly |
+| Extra | `uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-0.1.0-py3-none-any.whl"` | installs `faster-whisper`, `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` (about 4 min, 2.6 GB) |
+| Diagnostics with extra | `voz doctor` | 9 ok, 1 warning (no models), 0 failures; `runtime ASR: faster-whisper disponible`; `GPU/CUDA: float16, int8, int8_float16` |
+| Options | `GET /api/transcription-options` | lists the Faster Whisper models in the catalog; no weights are downloaded |
+| Upgrade | `uv tool install --force dist/voz_transcriber-*.whl` | works, but **removes the extra** (see Upgrade) |
+| Uninstall | `uv tool uninstall voz-transcriber` | removes the executable; `voz.sqlite3` in `XDG_DATA_HOME/voz` remains, as the section says |
+| Script | `scripts/check-install.sh` | `voz --help`, `doctor --json`, `GET /` and `/api/health` 200 on a free port, shutdown with exit code 0 |
 
-Correcciones hechas a la documentación y al código a raíz de esta verificación:
+This verification predates the host-exposure warning, the `Host` header check
+and `--allow-host` described above; those were not part of this run.
 
-- La sección *Actualizar* no decía que reinstalar sin el extra lo elimina.
-- El aviso de `voz doctor` sugería `uv sync --extra asr-local`, que no sirve en
-  una instalación con `uv tool`; ahora remite a este documento.
-- El tamaño del extra y la nota sobre `XDG_*` y `uv` no estaban documentados.
+Fixes made to the documentation and the code as a result of this verification:
 
-No verificado: el extra `diarization` (`sherpa-onnx`) con `uv tool install`, el
-arranque en otras distribuciones y una transcripción real (no se descargó ningún
-modelo, por diseño). Los checks de desarrollo están en
-[setup-bazzite.md](../development/setup-bazzite.md#verificado-en-bazzite).
+- The *Upgrade* section did not say that reinstalling without the extra removes
+  it.
+- The `voz doctor` warning suggested `uv sync --extra asr-local`, which does not
+  work on a `uv tool` install; it now points to this document.
+- The size of the extra and the note about `XDG_*` and `uv` were undocumented.
+
+Not verified: the `diarization` extra (`sherpa-onnx`) with `uv tool install`,
+startup on other distributions, and a real transcription (no model was
+downloaded, by design). The development checks are in
+[setup-bazzite.md](../development/setup-bazzite.md).

@@ -142,12 +142,12 @@ This ADR records a decision; the implementation lands in later slices and is
 | Data directory name | `src/voz/infrastructure/paths.py` (`APPLICATION_DIRECTORY = "voz"`) |
 | Database file name | `src/voz/bootstrap.py` (`DATABASE_FILENAME = "voz.sqlite3"`) |
 | Export format id | `src/voz/application/export/json_canonical.py` (`CANONICAL_FORMAT`) |
-| `v` command, `voz` alias, vlang warning | **planned**, V1-02 |
+| `v` command, `voz` alias, vlang warning | done, V1-02 (`pyproject.toml` `[project.scripts]`, `voz doctor` check `comando v`) |
 | Brand in the UI | **planned**, V1-03 |
 | New launchers and wrappers | **planned**, V1-04 |
 | Desktop entry `Name=V` | **planned**, V1-05 |
 | English README and docs | **planned**, V1-06 to V1-09 |
-| `authors` and project URLs | **planned**, V1-10 and V1-11 |
+| `authors` and project URLs | done, V1-10 and V1-11 (`pyproject.toml`) |
 
 ## Verification
 

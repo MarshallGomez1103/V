@@ -1,66 +1,73 @@
-# Instalación en Windows y macOS
+# Installing on Windows and macOS
 
-> **Estado de verificación.** VOZ solo se ha usado a mano en Linux (Bazzite). El
-> código tiene rutas específicas para Windows y macOS y su CI (`Backend /
-> windows-latest` y `macos-latest`) ejecuta toda la batería de pruebas y arranca el
-> servidor real, pero hasta que alguien lo use en un equipo real **es
-> experimental**. Si algo falla, abre un issue con la salida de `voz doctor --redact`.
+V (formerly VOZ) keeps the `voz` data directory names; `v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs). See [ADR-0009](../adr/0009-rename-to-v.md).
 
-## Requisitos
+> **Verification status.** V has only been used by hand on Linux (Bazzite). The
+> code has Windows- and macOS-specific paths, and its CI (`Backend /
+> windows-latest` and `macos-latest`) runs the whole test suite and starts the
+> real server, but until someone uses it on a real machine it **is experimental**.
+> If something fails, open an issue with the output of `voz doctor --redact`. See
+> also [Troubleshooting](../troubleshooting.md).
 
-- [`uv`](https://docs.astral.sh/uv/) (descarga el Python correcto solo; el
-  repositorio fija Python **3.12** en `.python-version`).
-- Windows 10/11 x86-64, macOS 13 o superior (Apple Silicon; Intel funciona con
+## Requirements
+
+- [`uv`](https://docs.astral.sh/uv/) (it downloads the right Python by itself;
+  the repository pins Python **3.12** in `.python-version`).
+- Windows 10/11 x86-64, or macOS 13 or later (Apple Silicon; Intel works with
   Python 3.12/3.13).
-- Nada más: FFmpeg se obtiene automáticamente (abajo).
+- Nothing else: FFmpeg is obtained automatically (below).
 
-Desde un checkout, el equivalente a "clonar y hacer doble clic" es:
+From a checkout, the equivalent of "clone and double-click" is:
 
 ```bash
 uv run --extra asr-local --extra diarization voz
 ```
 
-## FFmpeg automático
+## Automatic FFmpeg
 
-VOZ necesita `ffmpeg` y `ffprobe`. Si no están en el `PATH`, al arrancar descarga
-**una sola vez** (unos 40-140 MB según el sistema) una compilación estática del
-repositorio `zackees/ffmpeg_bins`, fijada a un commit y verificada con SHA-256, en
-la carpeta de caché de VOZ (`…/cache/ffmpeg/`). No usa el paquete `static-ffmpeg`
-(arrastra `twine` y unas 25 dependencias y descarga sin sumas de comprobación).
-Un FFmpeg ya instalado siempre tiene prioridad. Sin red, `voz doctor` indica cómo
-instalarlo a mano (`winget install ffmpeg`, `brew install ffmpeg`).
-Desactivar la descarga: variable `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
+V needs `ffmpeg` and `ffprobe`. If they are not on the `PATH`, at startup it
+downloads, **once** (about 40-140 MB depending on the system), a static build from
+the `zackees/ffmpeg_bins` repository, pinned to a commit and verified with
+SHA-256, into V's cache folder (`…/cache/ffmpeg/`). It does not use the
+`static-ffmpeg` package (it pulls in `twine` and about 25 dependencies and
+downloads without checksums). An already installed FFmpeg always takes priority.
+Without network access, `voz doctor` tells you how to install it by hand
+(`winget install ffmpeg`, `brew install ffmpeg`). To disable the download, set
+the environment variable `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
 
 ## GPU
 
-- **Windows con NVIDIA**: el extra `asr-local` incluye `nvidia-cublas-cu12` y
-  `nvidia-cudnn-cu12` (unos 1,3 GB de wheels). VOZ registra sus DLL antes de cargar
-  CTranslate2. Si CUDA no carga, VOZ usa la CPU (int8) con un aviso, nunca falla el
-  trabajo. Hace falta el controlador NVIDIA (no el CUDA Toolkit).
-- **macOS**: siempre CPU (int8); no hay CUDA.
+- **Windows with NVIDIA**: the `asr-local` extra includes `nvidia-cublas-cu12`
+  and `nvidia-cudnn-cu12` (about 1.3 GB of wheels). V registers their DLLs before
+  loading CTranslate2. If CUDA does not load, V falls back to the CPU (int8) with
+  a warning and the job never fails because of it. You need the NVIDIA driver
+  (not the CUDA Toolkit).
+- **macOS**: always CPU (int8); there is no CUDA.
 
-## Dónde guarda VOZ los datos
+## Where V stores its data
 
-| Contenido | Windows | macOS |
+| Content | Windows | macOS |
 | --- | --- | --- |
-| Configuración | `%LOCALAPPDATA%\voz\config` | `~/Library/Application Support/voz/config` |
-| Datos (base SQLite, proyectos, modelos) | `%LOCALAPPDATA%\voz\data` | `~/Library/Application Support/voz/data` |
-| Caché (FFmpeg, ondas) | `%LOCALAPPDATA%\voz\cache` | `~/Library/Caches/voz` |
-| Estado y copias de seguridad | `%LOCALAPPDATA%\voz\state` | `~/Library/Application Support/voz/state` |
+| Configuration | `%LOCALAPPDATA%\voz\config` | `~/Library/Application Support/voz/config` |
+| Data (SQLite database, projects, models) | `%LOCALAPPDATA%\voz\data` | `~/Library/Application Support/voz/data` |
+| Cache (FFmpeg, waveforms) | `%LOCALAPPDATA%\voz\cache` | `~/Library/Caches/voz` |
+| State and backups | `%LOCALAPPDATA%\voz\state` | `~/Library/Application Support/voz/state` |
 
-Una variable `XDG_*_HOME` absoluta sustituye la carpeta correspondiente en
-cualquier sistema (útil para pruebas o instalaciones portátiles).
+An absolute `XDG_*_HOME` variable replaces the corresponding folder on any
+system (useful for tests or portable installs).
 
-## Garantías más débiles que en Linux/macOS
+## Guarantees weaker than on Linux/macOS
 
-- **Windows no tiene `dir_fd`.** En Linux y macOS los originales y derivados se
-  abren relativos a un descriptor de directorio sin seguir enlaces simbólicos. En
-  Windows se comprueba cada componente con `lstat` (rechaza enlaces y uniones)
-  antes de usarlo, pero queda una ventana de carrera que `dir_fd` cierra. La
-  escritura sigue siendo atómica (copia a temporal + enlace duro sin reemplazo) y
-  el original, de solo lectura y nunca modificado. Requiere NTFS (enlaces duros).
-- Windows no tiene modos POSIX: el fichero de claves API (`secrets.toml`) se
-  protege con los permisos del perfil de usuario en lugar de `0600`, y no se
-  comprueba el modo al leerlo.
-- `fsync` de directorios no existe en Windows (NTFS lo cubre con su diario).
-- El pico de memoria de `voz bench` no cuenta procesos hijos en Windows.
+- **Windows has no `dir_fd`.** On Linux and macOS, originals and derived files
+  are opened relative to a directory descriptor without following symbolic links.
+  On Windows every path component is checked with `lstat` (rejecting links and
+  junctions) before use, but a race window remains that `dir_fd` closes. Writing
+  is still atomic (copy to a temporary file + hard link without replacement) and
+  the original stays read-only and is never modified. NTFS is required (hard
+  links).
+- Windows has no POSIX modes: the API key file (`secrets.toml`) is protected by
+  the user profile's permissions instead of `0600`, and the mode is not checked
+  when reading it.
+- Directory `fsync` does not exist on Windows (NTFS covers it with its journal).
+- The peak-memory figure of `voz bench` does not count child processes on
+  Windows.
