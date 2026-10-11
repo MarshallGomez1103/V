@@ -15,6 +15,7 @@ que las ilustran están en [docs/architecture](../architecture/README.md).
 | [0006](0006-local-first-privacy.md) | Local-first, loopback por defecto y sin cloud implícito | Aceptada | S16.16 |
 | [0007](0007-local-diarization-sherpa-onnx.md) | Diarización local con sherpa-onnx (sin torch ni token) | Aceptada | S6.04, S6.16 |
 | [0008](0008-word-timestamps.md) | Timestamps de palabra nativos de Faster Whisper, sin WhisperX | Aceptada | S7.01, S7.03, S7.04, S7.08 |
+| [0009](0009-rename-to-v.md) | Renombrar el producto a V con compatibilidad (`v` + alias `voz`, internos sin cambio) | Aceptada | V1-01 |
 
 ## Formato
 
