@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { TranscriptSegment } from '../api/jobs'
@@ -196,6 +196,21 @@ describe('SegmentList', () => {
     // fila 2: [400, 450] frente a un contenedor [0, 100] -> baja 350 px.
     expect(scrollTo).toHaveBeenCalledTimes(1)
     expect(scrollTo).toHaveBeenCalledWith({ top: 167, behavior: 'smooth' })
+  })
+
+  it('V0-06: al medirse las filas del destino, vuelve a alinear el segmento activo', async () => {
+    const scrollTo = scrolls()
+    // Las filas reales miden 200 px, no los 96 de la estimación: tras el primer salto
+    // el destino queda ~100 filas antes si nadie corrige.
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(200)
+    const many = Array.from({ length: 300 }, (_, i) => seg('m' + i, i * 1000, i * 1000 + 900, 'texto ' + i))
+    stubFetch({ segments: many })
+    render(<SegmentList transcriptId="tr-1" currentMs={100_000} />)
+    await screen.findByRole('list')
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenLastCalledWith({ top: 100 * 200 - 25, behavior: 'auto' })
+    })
   })
 
   it.each([

@@ -374,6 +374,17 @@ function TranscriptView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow, activeIndex])
 
+  // V0-06: tras un salto lejano el destino se calculó con alturas estimadas; al
+  // medirse las filas pintadas cambian las posiciones y el activo puede quedar fuera
+  // de la vista. Se realinea (scrollTarget es null si ya se ve, así que converge).
+  useEffect(() => {
+    if (follow && activeIndex >= 0) {
+      scrollToIndex(activeIndex)
+    }
+    // Solo importa cuándo cambian las posiciones medidas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offsets])
+
   const scrollRef = useRef(scrollToIndex)
   useEffect(() => {
     scrollRef.current = scrollToIndex
