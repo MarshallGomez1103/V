@@ -10,6 +10,7 @@ its processable state so that ``recover`` can resume it on the next start.
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 import time
@@ -73,6 +74,8 @@ from voz.domain.entities.transcription_job import (
 )
 from voz.domain.entities.word import Word
 
+_LOG = logging.getLogger(__name__)
+
 DEFAULT_CHUNK_DURATION_MS = 30 * 60 * 1_000
 DEFAULT_OVERLAP_MS = 5_000
 
@@ -90,6 +93,7 @@ class JobRunnerFailureCode(StrEnum):
     MEDIA_ASSET_MISSING = "job_media_asset_missing"
     DURATION_UNKNOWN = "job_media_duration_unknown"
     INTERNAL = "job_internal_error"
+    CRASHED = "job_runner_crashed"
 
 
 class JobNotFound(LookupError):
@@ -318,10 +322,22 @@ class JobRunner:
                 self.run_job(item)
             except Exception:
                 # ponytail: run_job already persisted FAILED when it could; a
-                # persistence outage must not kill the only worker.
-                pass
+                # persistence outage must not kill the only worker. Log it and
+                # try once more to leave the job FAILED; if that fails too the
+                # job stays recoverable. No retry loop until an outage proves it.
+                _LOG.exception("Job runner crashed on job %s", item)
+                if item is not None:
+                    self._mark_crashed(item)
             finally:
                 self._queue.task_done()
+
+    def _mark_crashed(self, job_id: UUID) -> None:
+        try:
+            job = self.jobs.get(job_id)
+            if job is not None and not job.state.is_terminal:
+                self._fail(job, JobRunnerFailureCode.CRASHED.value)
+        except Exception:
+            _LOG.exception("Could not mark job %s as failed", job_id)
 
     def _execute(self, job: TranscriptionJob) -> TranscriptionJob:
         token = _EventToken(self._cancel)

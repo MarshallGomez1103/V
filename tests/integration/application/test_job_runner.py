@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import shutil
 import wave
@@ -18,6 +19,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import Engine
 
+from voz.application import job_runner as job_runner_module
 from voz.application.job_runner import (
     PREPROCESS_END,
     SPEAKERS_END,
@@ -911,4 +913,109 @@ def test_clean_segments_persist_without_quality_hints(tmp_path: Path) -> None:
         transcript_id_for(fixture.job.id)
     )
     assert all(s.quality_flags == () and s.avg_logprob is None for s in segments)
+    fixture.engine.dispose()
+
+
+class _FlakyJobs:
+    """Job repository whose ``save`` fails ``failures`` times, then recovers."""
+
+    def __init__(self, inner: SqliteTranscriptionJobRepository, failures: int) -> None:
+        self.inner = inner
+        self.failures = failures
+        self.victim: UUID | None = None
+
+    def save(self, job: TranscriptionJob) -> None:
+        if job.id == self.victim and self.failures > 0:
+            self.failures -= 1
+            raise OSError("database is locked")
+        self.inner.save(job)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.inner, name)
+
+
+def _second_job(fixture: Harness) -> TranscriptionJob:
+    other = TranscriptionJob.create(
+        job_id=uuid4(),
+        project_id=fixture.job.project_id,
+        media_asset_id=fixture.job.media_asset_id,
+        now=BASE_TIME,
+    )
+    fixture.jobs.add(other)
+    SqliteTranscriptionJobSelectionRepository(fixture.engine).add(
+        JobSelection(
+            job_id=other.id,
+            option_id="option-v1-fixture",
+            model=DESCRIPTOR,
+            execution=None,
+            language=None,
+            created_at=BASE_TIME,
+        )
+    )
+    return other
+
+
+def _run_worker(
+    fixture: Harness, monkeypatch: pytest.MonkeyPatch, *job_ids: UUID
+) -> None:
+    # Alembic's fileConfig in other tests may have disabled existing loggers
+    # (the app's programmatic Alembic config never calls it).
+    monkeypatch.setattr(job_runner_module._LOG, "disabled", False)  # pyright: ignore[reportPrivateUsage]
+    fixture.runner.start()
+    try:
+        for job_id in job_ids:
+            fixture.runner.enqueue(job_id)
+        assert fixture.runner.wait_idle(10.0)
+    finally:
+        fixture.runner.stop()
+
+
+def test_worker_logs_crash_marks_failed_and_continues_with_next_job(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = harness(tmp_path)
+    other = _second_job(fixture)
+    # Two failures: the in-job write and the runner's own FAILED write; the
+    # third write (the worker's last resort) succeeds once the outage is over.
+    flaky = _FlakyJobs(SqliteTranscriptionJobRepository(fixture.engine), 2)
+    flaky.victim = fixture.job.id
+    fixture.runner.jobs = cast(SqliteTranscriptionJobRepository, flaky)
+
+    with caplog.at_level(logging.ERROR):
+        _run_worker(fixture, monkeypatch, fixture.job.id, other.id)
+
+    assert any(
+        str(fixture.job.id) in record.getMessage() and record.exc_info
+        for record in caplog.records
+    )
+    crashed = fixture.persisted()
+    assert crashed.state is TranscriptionJobState.FAILED
+    assert crashed.error_code == "job_runner_crashed"
+    next_job = fixture.jobs.get(other.id)
+    assert next_job is not None
+    assert next_job.state is TranscriptionJobState.COMPLETED
+    fixture.engine.dispose()
+
+
+def test_worker_survives_when_the_failed_mark_cannot_be_written_either(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = harness(tmp_path)
+    other = _second_job(fixture)
+    flaky = _FlakyJobs(SqliteTranscriptionJobRepository(fixture.engine), 10_000)
+    flaky.victim = fixture.job.id
+    fixture.runner.jobs = cast(SqliteTranscriptionJobRepository, flaky)
+
+    with caplog.at_level(logging.ERROR):
+        _run_worker(fixture, monkeypatch, fixture.job.id, other.id)
+
+    assert any(str(fixture.job.id) in record.getMessage() for record in caplog.records)
+    assert not fixture.persisted().state.is_terminal  # stays recoverable
+    next_job = fixture.jobs.get(other.id)
+    assert next_job is not None
+    assert next_job.state is TranscriptionJobState.COMPLETED
     fixture.engine.dispose()
