@@ -78,7 +78,7 @@ def test_health_endpoint_reports_readiness_without_sensitive_paths(
     assert payload == {"status": "ok", "version": __version__}
     assert not any("path" in key.lower() for key in payload)
     assert '<div id="root"></div>' in home
-    assert "VOZ" in home
+    assert "<title>V · " in home
     choices = cast(list[dict[str, object]], options["options"])
     local = [item for item in choices if not item["cloud"]]
     assert {item["model_id"] for item in local} == {
