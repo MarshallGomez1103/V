@@ -1,12 +1,7 @@
 @use '../styles/carbon' as *;
 
 .voz-brand__mark {
-  margin-inline-end: $spacing-03;
   color: $interactive;
 }
 
-.voz-brand__name {
-  @include type-style('productive-heading-03');
-
-  letter-spacing: 0.08em;
-}
+// El nombre ("V") es el propio glifo: el texto queda para lectores de pantalla.

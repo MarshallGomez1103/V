@@ -119,7 +119,7 @@ describe('Library', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar Entrevista' }))
     const dialog = await screen.findByRole('dialog', { name: 'Eliminar «Entrevista»' })
-    expect(within(dialog).getByText(/copia del audio que VOZ guardó/)).toBeDefined()
+    expect(within(dialog).getByText(/copia del audio que V guardó/)).toBeDefined()
     expect(within(dialog).getByText(/Tu archivo original, el que elegiste desde tu equipo, no se toca/)).toBeDefined()
     expect(fetchMock).not.toHaveBeenCalled()
 

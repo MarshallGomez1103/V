@@ -12,8 +12,8 @@ export const transcribe = {
     'Drop your audio or video here, or click to choose a file',
   ],
   'import.formats': [
-    'Audio o video: si FFmpeg lo reconoce, VOZ lo importa.',
-    'Audio or video: if FFmpeg recognizes it, VOZ can import it.',
+    'Audio o video: si FFmpeg lo reconoce, V lo importa.',
+    'Audio or video: if FFmpeg recognizes it, V can import it.',
   ],
   'import.removeFile': ['Quitar archivo', 'Remove file'],
   'import.fileReady': ['Archivo listo · {size}', 'File ready · {size}'],
@@ -80,16 +80,16 @@ export const transcribe = {
   'diar.mode.exact': ['Exacto', 'Exact'],
   'diar.mode.range': ['Rango', 'Range'],
   'diar.mode.auto.hint': [
-    'VOZ decide cuántas personas hay.',
-    'VOZ decides how many people there are.',
+    'V decide cuántas personas hay.',
+    'V decides how many people there are.',
   ],
   'diar.mode.exact.hint': [
     'Úsalo si sabes cuántas personas hablan: suele acertar más.',
     'Use it when you know how many people speak: it is usually more accurate.',
   ],
   'diar.mode.range.hint': [
-    'Indica un mínimo y un máximo y VOZ elige dentro del rango.',
-    'Give a minimum and a maximum and VOZ picks within the range.',
+    'Indica un mínimo y un máximo y V elige dentro del rango.',
+    'Give a minimum and a maximum and V picks within the range.',
   ],
   'diar.exact.label': ['Número de hablantes', 'Number of speakers'],
   'diar.min': ['Mínimo', 'Minimum'],
@@ -127,8 +127,8 @@ export const transcribe = {
     'The speaker model cannot be used here',
   ],
   'diar.model.unavailable.body': [
-    'Esta instalación de VOZ no incluye el componente que lo ejecuta (extra «diarization»). Desactiva «Detectar quién habla» para transcribir.',
-    'This VOZ installation does not include the component that runs it (the "diarization" extra). Turn off "Detect who is speaking" to transcribe.',
+    'Esta instalación de V no incluye el componente que lo ejecuta (extra «diarization»). Desactiva «Detectar quién habla» para transcribir.',
+    'This V installation does not include the component that runs it (the "diarization" extra). Turn off "Detect who is speaking" to transcribe.',
   ],
   'diar.model.error.title': [
     'No se pudo comprobar el modelo de hablantes',
@@ -181,7 +181,7 @@ export const transcribe = {
   'profile.academic.label': ['Académico', 'Academic'],
   'profile.academic.description': [
     'Clases y charlas largas: no arrastra el texto previo, menos reintentos aleatorios y filtra silencios con VAD. Sin medición propia todavía.',
-    'Lectures and long talks: does not carry the previous text, fewer random retries and filters silences with VAD. Not measured by VOZ yet.',
+    'Lectures and long talks: does not carry the previous text, fewer random retries and filters silences with VAD. Not measured by V yet.',
   ],
   'profile.vad.on': ['activado', 'on'],
   'profile.vad.off': ['apagado', 'off'],

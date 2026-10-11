@@ -294,12 +294,12 @@ export const errors = {
     'The key is not valid: use 1 to 512 visible ASCII characters, with no spaces.',
   ],
   'err.provider.secrets_file_insecure': [
-    'El archivo de secretos de VOZ no es seguro (debe ser un archivo normal con permisos 0600). Corrige sus permisos y reintenta.',
-    'The VOZ secrets file is not safe (it must be a regular file with 0600 permissions). Fix its permissions and retry.',
+    'El archivo de secretos de V no es seguro (debe ser un archivo normal con permisos 0600). Corrige sus permisos y reintenta.',
+    'The V secrets file is not safe (it must be a regular file with 0600 permissions). Fix its permissions and retry.',
   ],
   'err.provider.secrets_file_invalid': [
-    'No se pudo leer el archivo de secretos de VOZ. Revísalo o bórralo y reintenta.',
-    'Could not read the VOZ secrets file. Check it or delete it and retry.',
+    'No se pudo leer el archivo de secretos de V. Revísalo o bórralo y reintenta.',
+    'Could not read the V secrets file. Check it or delete it and retry.',
   ],
   'err.provider.secrets_write_failed': [
     'No se pudo guardar la clave en el disco. Revisa los permisos y el espacio.',

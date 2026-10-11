@@ -90,13 +90,13 @@ describe('App', () => {
     stubFetch()
     render(<App />)
 
-    const banner = screen.getByRole('banner', { name: 'VOZ' })
-    expect(within(banner).getByText('VOZ')).toBeDefined()
+    const banner = screen.getByRole('banner', { name: 'V' })
+    expect(within(banner).getByText('V')).toBeDefined()
     for (const name of ['Idioma', 'Ajustes', 'Cerrar servidor']) {
       expect(within(banner).getByRole('button', { name })).toBeDefined()
     }
     const nav = within(banner).getByRole('navigation', {
-      name: 'Secciones de VOZ',
+      name: 'Secciones de V',
     })
     expect(
       within(nav)
@@ -109,13 +109,13 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
   })
 
-  it('el logo de VOZ lleva a Inicio desde cualquier sección', () => {
+  it('el logo de V lleva a Inicio desde cualquier sección', () => {
     stubFetch()
     window.location.hash = '#/modelos'
     render(<App />)
     expect(screen.getByRole('heading', { level: 1, name: 'Modelos' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('link', { name: 'VOZ, ir al inicio' }))
+    fireEvent.click(screen.getByRole('link', { name: 'V, ir al inicio' }))
     expect(screen.getByRole('heading', { level: 1, name: 'Transcripciones' })).toBeDefined()
     expect(window.location.hash).toBe('#/')
   })
@@ -123,7 +123,7 @@ describe('App', () => {
   it('navega entre secciones y refleja la sección en el hash', async () => {
     stubFetch()
     render(<App />)
-    const nav = screen.getByRole('navigation', { name: 'Secciones de VOZ' })
+    const nav = screen.getByRole('navigation', { name: 'Secciones de V' })
 
     fireEvent.click(within(nav).getByRole('link', { name: 'Modelos' }))
     expect(
@@ -141,7 +141,7 @@ describe('App', () => {
   it('Atrás y Adelante del navegador cambian de sección', async () => {
     stubFetch()
     render(<App />)
-    const nav = screen.getByRole('navigation', { name: 'Secciones de VOZ' })
+    const nav = screen.getByRole('navigation', { name: 'Secciones de V' })
     fireEvent.click(within(nav).getByRole('link', { name: 'Modelos' }))
     fireEvent.click(within(nav).getByRole('link', { name: 'Proveedores cloud' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Proveedores cloud' })).toBeDefined()

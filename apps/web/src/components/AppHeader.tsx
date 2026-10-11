@@ -33,16 +33,12 @@ function BrandMark() {
     <svg
       className="voz-brand__mark"
       viewBox="0 0 20 16"
-      width="20"
-      height="16"
+      width="24"
+      height="19"
       aria-hidden="true"
       focusable="false"
     >
-      <rect x="0" y="5" width="2.5" height="6" fill="currentColor" />
-      <rect x="4.5" y="2" width="2.5" height="12" fill="currentColor" />
-      <rect x="9" y="0" width="2.5" height="16" fill="currentColor" />
-      <rect x="13.5" y="2" width="2.5" height="12" fill="currentColor" />
-      <rect x="18" y="5" width="2" height="6" fill="currentColor" />
+      <polygon points="0,0 4,0 10,11 16,0 20,0 12,16 8,16" fill="currentColor" />
     </svg>
   )
 }
@@ -83,7 +79,7 @@ export function AppHeader({
         aria-label={t('nav.home')}
       >
         <BrandMark />
-        <span className="voz-brand__name">{t('app.name')}</span>
+        <span className="voz-brand__name cds--visually-hidden">{t('app.name')}</span>
       </HeaderName>
       <HeaderNavigation aria-label={t('nav.sections')}>
         {NAV_ITEMS.map((item) => (

@@ -52,8 +52,8 @@ export const library = {
   'lib.rename.title': ['Renombrar transcripción', 'Rename transcript'],
   'lib.rename.label': ['Nombre', 'Name'],
   'lib.rename.help': [
-    'Solo cambia el nombre que ves en VOZ y el de los archivos que exportes.',
-    'It only changes the name you see in VOZ and the name of the files you export.',
+    'Solo cambia el nombre que ves en V y el de los archivos que exportes.',
+    'It only changes the name you see in V and the name of the files you export.',
   ],
   'lib.rename.save': ['Guardar nombre', 'Save name'],
   'lib.rename.invalid': [
@@ -62,8 +62,8 @@ export const library = {
   ],
   'lib.delete.title': ['Eliminar «{name}»', 'Delete “{name}”'],
   'lib.delete.body': [
-    'Se borra de VOZ la transcripción con sus hablantes y la copia del audio que VOZ guardó para poder reproducirlo. Tu archivo original, el que elegiste desde tu equipo, no se toca. No se puede deshacer.',
-    'This removes the transcript with its speakers and the copy of the audio that VOZ stored so it could play it. Your original file, the one you picked from your computer, is not touched. This cannot be undone.',
+    'Se borra de V la transcripción con sus hablantes y la copia del audio que V guardó para poder reproducirlo. Tu archivo original, el que elegiste desde tu equipo, no se toca. No se puede deshacer.',
+    'This removes the transcript with its speakers and the copy of the audio that V stored so it could play it. Your original file, the one you picked from your computer, is not touched. This cannot be undone.',
   ],
   'lib.delete.confirm': ['Eliminar para siempre', 'Delete permanently'],
   'lib.delete.error': ['No se pudo eliminar', 'Could not delete'],
@@ -86,12 +86,12 @@ export const library = {
     'A transcription is running in this project. Cancel it or wait for it to finish.',
   ],
   'err.project.http_404': [
-    'Esta versión de VOZ no admite esta acción todavía.',
-    'This version of VOZ does not support this action yet.',
+    'Esta versión de V no admite esta acción todavía.',
+    'This version of V does not support this action yet.',
   ],
   'err.project.http_405': [
-    'Esta versión de VOZ no admite esta acción todavía.',
-    'This version of VOZ does not support this action yet.',
+    'Esta versión de V no admite esta acción todavía.',
+    'This version of V does not support this action yet.',
   ],
 
   // Exportar
@@ -147,8 +147,8 @@ export const library = {
   // Audio
   'audio.vol.label': ['Volumen: {percent} %', 'Volume: {percent} %'],
   'audio.vol.tip': [
-    'Volumen del reproductor de VOZ, de 0 a 300 %. No cambia el volumen de tu equipo ni el archivo.',
-    'Volume of the VOZ player, from 0 to 300 %. It does not change your computer volume or the file.',
+    'Volumen del reproductor de V, de 0 a 300 %. No cambia el volumen de tu equipo ni el archivo.',
+    'Volume of the V player, from 0 to 300 %. It does not change your computer volume or the file.',
   ],
   'audio.vol.warn': [
     'Por encima de 100 % el sonido puede saturarse. Úsalo solo con grabaciones muy bajas.',
@@ -184,8 +184,8 @@ export const library = {
   'spk.recalc': ['Recalcular hablantes', 'Recompute speakers'],
   'spk.recalc.title': ['Recalcular hablantes', 'Recompute speakers'],
   'spk.recalc.body': [
-    'Vuelve a separar quién habla, sin transcribir otra vez. El texto no cambia. Si VOZ reconoce a la misma persona, conserva el nombre que le pusiste.',
-    'Separates who is speaking again without transcribing again. The text does not change. If VOZ recognises the same person, it keeps the name you gave them.',
+    'Vuelve a separar quién habla, sin transcribir otra vez. El texto no cambia. Si V reconoce a la misma persona, conserva el nombre que le pusiste.',
+    'Separates who is speaking again without transcribing again. The text does not change. If V recognises the same person, it keeps the name you gave them.',
   ],
   'spk.recalc.hint': [
     'Si salen más hablantes de los que hay, indica cuántos son o un máximo.',

@@ -41,8 +41,8 @@ export const models = {
   'mm.download.title': ['Descargar {name}', 'Download {name}'],
   'mm.download.confirm': ['Descargar', 'Download'],
   'mm.download.body': [
-    'Se descargarán {size} desde {from}. Es la única vez que VOZ necesita Internet para este modelo: después funciona sin conexión.',
-    '{size} will be downloaded from {from}. This is the only time VOZ needs the Internet for this model: afterwards it works offline.',
+    'Se descargarán {size} desde {from}. Es la única vez que V necesita Internet para este modelo: después funciona sin conexión.',
+    '{size} will be downloaded from {from}. This is the only time V needs the Internet for this model: afterwards it works offline.',
   ],
   'mm.download.lowSpace': [
     'Solo quedan {free} libres: la descarga probablemente falle por falta de espacio.',
@@ -86,7 +86,7 @@ export const models = {
   'mm.speakers.table': ['Modelos de hablantes', 'Speaker models'],
 
   'prov.title': ['Claves de API', 'API keys'],
-  'prov.info.title': ['VOZ es local por defecto.', 'VOZ is local by default.'],
+  'prov.info.title': ['V es local por defecto.', 'V is local by default.'],
   'prov.info.body': [
     'Si añades una clave, podrás elegir un proveedor cloud para una transcripción concreta: tu audio saldrá de este equipo y se factura en tu cuenta del proveedor. Estas opciones son experimentales y nunca se recomiendan ni se eligen solas. La clave se guarda solo en este equipo y nunca se vuelve a mostrar.',
     'If you add a key, you can pick a cloud provider for a specific transcription: your audio will leave this computer and is billed to your provider account. These options are experimental and are never recommended or chosen automatically. The key is stored only on this computer and is never shown again.',

@@ -2,13 +2,13 @@ import type { Catalog } from '../messages'
 
 export const shell = {
   // Estructura general
-  'app.name': ['VOZ', 'VOZ'],
-  'app.title': ['VOZ · Transcripción local', 'VOZ · Local transcription'],
+  'app.name': ['V', 'V'],
+  'app.title': ['V · Voz local', 'V · Local Voice AI'],
   'app.skip': ['Saltar al contenido', 'Skip to content'],
 
-  'nav.sections': ['Secciones de VOZ', 'VOZ sections'],
+  'nav.sections': ['Secciones de V', 'V sections'],
   'nav.menu': ['Menú de secciones', 'Sections menu'],
-  'nav.home': ['VOZ, ir al inicio', 'VOZ, go to the home page'],
+  'nav.home': ['V, ir al inicio', 'V, go to the home page'],
   'nav.transcribir': ['Transcribir', 'Transcribe'],
   'nav.modelos': ['Modelos', 'Models'],
   'nav.proveedores': ['Proveedores cloud', 'Cloud providers'],
@@ -71,8 +71,8 @@ export const shell = {
   'shortcut.create': ['Crear icono en el escritorio', 'Create desktop icon'],
   'shortcut.recreate': ['Volver a crearlo', 'Create it again'],
   'shortcut.help': [
-    'Abre VOZ con un doble clic, sin buscar la carpeta.',
-    'Opens VOZ with a double click, without finding the folder.',
+    'Abre V con un doble clic, sin buscar la carpeta.',
+    'Opens V with a double click, without finding the folder.',
   ],
   'shortcut.exists': [
     'Ya hay un icono en el escritorio.',
@@ -84,7 +84,7 @@ export const shell = {
     'Could not create the icon. Try again.',
   ],
 
-  'down.title': ['VOZ no responde', 'VOZ is not responding'],
+  'down.title': ['V no responde', 'V is not responding'],
   'down.body': [
     'No hay conexión con el servidor local. Si lo cerraste, ábrelo con el archivo Iniciar; esta página se reconecta sola. Tus datos siguen guardados en este equipo.',
     'There is no connection to the local server. If you closed it, open it with the Start file; this page reconnects on its own. Your data is still saved on this computer.',
@@ -93,29 +93,29 @@ export const shell = {
 
   // Cerrar servidor
   'shutdown.button': ['Cerrar servidor', 'Close server'],
-  'shutdown.title': ['¿Cerrar VOZ?', 'Close VOZ?'],
+  'shutdown.title': ['¿Cerrar V?', 'Close V?'],
   'shutdown.body': [
     'El servidor local se apaga y esta pestaña deja de responder. Tus grabaciones y transcripciones quedan guardadas.',
     'The local server shuts down and this tab stops responding. Your recordings and transcripts stay saved.',
   ],
   'shutdown.activeJob': [
-    'Hay una transcripción en curso. Se detendrá y se reanudará al volver a abrir VOZ.',
-    'A transcription is running. It will stop and resume when you open VOZ again.',
+    'Hay una transcripción en curso. Se detendrá y se reanudará al volver a abrir V.',
+    'A transcription is running. It will stop and resume when you open V again.',
   ],
   'shutdown.confirm': ['Cerrar servidor', 'Close server'],
   'shutdown.cancel': ['Cancelar', 'Cancel'],
   'shutdown.closing': ['Cerrando…', 'Closing…'],
   'shutdown.close': ['Cerrar', 'Close'],
   'shutdown.failed': [
-    'No se pudo cerrar desde aquí. Cierra la terminal donde se abrió VOZ (Ctrl+C).',
-    'Could not close it from here. Close the terminal where VOZ was started (Ctrl+C).',
+    'No se pudo cerrar desde aquí. Cierra la terminal donde se abrió V (Ctrl+C).',
+    'Could not close it from here. Close the terminal where V was started (Ctrl+C).',
   ],
-  'closed.title': ['VOZ se cerró', 'VOZ has closed'],
+  'closed.title': ['V se cerró', 'V has closed'],
   'closed.body': [
     'Puedes cerrar esta pestaña. Para volver, abre el archivo Iniciar de la carpeta.',
     'You can close this tab. To come back, open the Start file in the folder.',
   ],
-  'closed.doc': ['VOZ cerrado', 'VOZ closed'],
+  'closed.doc': ['V cerrado', 'V closed'],
 
   // Estado de la API
   'health.offline.title': ['Sin conexión', 'No connection'],
@@ -130,8 +130,8 @@ export const shell = {
   ],
   'health.ok': ['Disponible', 'Available'],
   'health.ok.hint': [
-    'El servidor local de VOZ respondió. Todo corre en este equipo (127.0.0.1).',
-    'The local VOZ server answered. Everything runs on this computer (127.0.0.1).',
+    'El servidor local de V respondió. Todo corre en este equipo (127.0.0.1).',
+    'The local V server answered. Everything runs on this computer (127.0.0.1).',
   ],
   'health.detail': ['API local · 127.0.0.1', 'Local API · 127.0.0.1'],
 

@@ -644,48 +644,48 @@ describe('cerrar el servidor', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar servidor' }))
 
-    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar VOZ?' })
+    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar V?' })
     expect(within(dialog).queryByText(/transcripción en curso/i)).toBeNull()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar servidor' }))
 
-    expect(await screen.findByRole('heading', { name: 'VOZ se cerró' })).toBeDefined()
+    expect(await screen.findByRole('heading', { name: 'V se cerró' })).toBeDefined()
     expect(screen.getByText(/puedes cerrar esta pestaña/i)).toBeDefined()
     expect(screen.getByText(/abre el archivo iniciar de la carpeta/i)).toBeDefined()
     const call = api.calls.find((item) => item.path === '/api/shutdown')
     expect(call?.method).toBe('POST')
     expect(call?.headers['X-VOZ-Action']).toBe('shutdown')
-    expect(document.title).toBe('VOZ cerrado')
+    expect(document.title).toBe('V cerrado')
   })
 
-  it('avisa si hay un trabajo en curso: se reanudará al volver a abrir VOZ', async () => {
+  it('avisa si hay un trabajo en curso: se reanudará al volver a abrir V', async () => {
     api.state.jobs = [job('TRANSCRIBING')]
     render(<App />)
     await screen.findByRole('table', { name: 'Transcripciones guardadas' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar servidor' }))
-    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar VOZ?' })
-    expect(within(dialog).getByText(/se reanudará al volver a abrir voz/i)).toBeDefined()
+    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar V?' })
+    expect(within(dialog).getByText(/se reanudará al volver a abrir V/i)).toBeDefined()
   })
 
   it('cancelar no cierra nada', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar servidor' }))
-    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar VOZ?' })
+    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar V?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
 
     expect(api.calls.some((call) => call.path === '/api/shutdown')).toBe(false)
-    expect(screen.queryByRole('heading', { name: 'VOZ se cerró' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'V se cerró' })).toBeNull()
   })
 
   it('si el servidor rechaza el cierre lo explica y se puede reintentar', async () => {
     api.state.shutdown = 501
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar servidor' }))
-    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar VOZ?' })
+    const dialog = await screen.findByRole('dialog', { name: '¿Cerrar V?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar servidor' }))
 
     expect(await within(dialog).findByText(/no se pudo cerrar desde aquí/i)).toBeDefined()
-    expect(screen.queryByRole('heading', { name: 'VOZ se cerró' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'V se cerró' })).toBeNull()
   })
 })
 
@@ -709,7 +709,7 @@ describe('servidor caído', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000 + 2100)
     })
-    expect(await screen.findByText('VOZ no responde')).toBeDefined()
+    expect(await screen.findByText('V no responde')).toBeDefined()
     expect(screen.getByText(/si lo cerraste, ábrelo con el archivo iniciar/i)).toBeDefined()
 
     down = false
@@ -718,7 +718,7 @@ describe('servidor caído', () => {
       await vi.advanceTimersByTimeAsync(100)
     })
     await waitFor(() => {
-      expect(screen.queryByText('VOZ no responde')).toBeNull()
+      expect(screen.queryByText('V no responde')).toBeNull()
     })
   })
 })
