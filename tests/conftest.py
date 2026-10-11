@@ -6,6 +6,7 @@ import inspect
 import os
 import re
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -39,6 +40,34 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             continue
         if _POSIX_ONLY.search(source):
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def isolated_user_dirs(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Point HOME and every XDG/Windows profile variable at a throwaway directory
+    under pytest's base temp (a sibling of ``tmp_path``, so tests that list
+    ``tmp_path`` never see it).
+
+    Autouse fixtures run before the test body, so tests that ``setenv`` these
+    variables themselves still win. Keeps the owner's real data untouched.
+    """
+    home = tmp_path_factory.mktemp("home")
+    for name, relative in {
+        "HOME": "",
+        "USERPROFILE": "",
+        "APPDATA": "AppData/Roaming",
+        "LOCALAPPDATA": "AppData/Local",
+        "XDG_DATA_HOME": ".local/share",
+        "XDG_CONFIG_HOME": ".config",
+        "XDG_CACHE_HOME": ".cache",
+        "XDG_STATE_HOME": ".local/state",
+    }.items():
+        target = home / relative
+        target.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv(name, str(target))
+    return home
 
 
 @pytest.fixture(autouse=True)
