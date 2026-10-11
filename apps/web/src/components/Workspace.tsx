@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -22,7 +22,6 @@ import { createPlayhead } from '../lib/playhead'
 import type { Sample, Turn } from '../lib/speakerTurns'
 import { AutosaveStatus } from './AutosaveStatus'
 import { Busy } from './Busy'
-import { ExportDialog } from './ExportDialog'
 import { JobScreen } from './JobScreen'
 import { LivePreview } from './LivePreview'
 import { MediaPanel } from './MediaPanel'
@@ -36,6 +35,8 @@ import { SegmentSpeakerSelect } from './SegmentSpeakerSelect'
 import { SpeakerTimeline } from './SpeakerTimeline'
 import { SpeakersPanel } from './SpeakersPanel'
 import { WordText } from './WordText'
+
+const ExportDialog = lazy(() => import('./ExportDialog').then((m) => ({ default: m.ExportDialog })))
 
 interface WorkspaceProps {
   jobId: string
@@ -387,7 +388,13 @@ export function Workspace({
           <PropertiesPanel
             imported={imported}
             job={job}
-            tools={transcriptId && completed ? <ExportDialog transcriptId={transcriptId} /> : null}
+            tools={
+              transcriptId && completed ? (
+                <Suspense fallback={<Busy description={t('common.loading')} />}>
+                  <ExportDialog transcriptId={transcriptId} />
+                </Suspense>
+              ) : null
+            }
           />
           {transcriptId ? (
             <SpeakersPanel

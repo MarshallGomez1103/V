@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Column, Content, Grid, Theme } from '@carbon/react'
 
 import type { JobView } from './api/jobs'
 import type { LibraryItem } from './api/library'
+import { Busy } from './components/Busy'
 import { AppHeader } from './components/AppHeader'
 import { ClosedScreen } from './components/ClosedScreen'
 import { HealthStatus } from './components/HealthStatus'
 import { Library } from './components/Library'
-import { ModelManager } from './components/ModelManager'
 import { NewTranscription } from './components/NewTranscription'
 import type { ImportResult } from './components/NewProjectCard'
-import { ProvidersSettings } from './components/ProvidersSettings'
 import { ServerBanner } from './components/ServerBanner'
-import { Workspace } from './components/Workspace'
 import { useLibrary } from './hooks/useLibrary'
 import { useRoute } from './hooks/useRoute'
 import { useServerStatus } from './hooks/useServerStatus'
@@ -21,6 +19,17 @@ import type { MessageKey } from './i18n/messages'
 import { HOME, type Route } from './lib/navigation'
 import { useAppearance } from './theme/appearance'
 import './App.scss'
+
+// Vistas secundarias: chunks aparte para mantener pequeño el bundle inicial.
+const Workspace = lazy(() =>
+  import('./components/Workspace').then((m) => ({ default: m.Workspace })),
+)
+const ModelManager = lazy(() =>
+  import('./components/ModelManager').then((m) => ({ default: m.ModelManager })),
+)
+const ProvidersSettings = lazy(() =>
+  import('./components/ProvidersSettings').then((m) => ({ default: m.ProvidersSettings })),
+)
 
 type PageName = 'home' | 'nueva' | 'modelos' | 'proveedores'
 
@@ -59,6 +68,17 @@ export function App() {
     key: 0,
     initial: null,
   })
+  // Modelos/Proveedores se montan en la primera visita y luego se conservan ocultos.
+  const [visited, setVisited] = useState({ modelos: false, proveedores: false })
+  if (
+    (route.name === 'modelos' && !visited.modelos) ||
+    (route.name === 'proveedores' && !visited.proveedores)
+  ) {
+    setVisited({
+      modelos: visited.modelos || route.name === 'modelos',
+      proveedores: visited.proveedores || route.name === 'proveedores',
+    })
+  }
   const [modelsVersion, setModelsVersion] = useState(0)
   const refreshModels = useCallback(() => {
     setModelsVersion((version) => version + 1)
@@ -172,26 +192,32 @@ export function App() {
         </div>
 
         {route.name === 'trabajo' ? (
-          <Workspace
-            key={route.jobId}
-            jobId={route.jobId}
-            seed={seed}
-            library={library}
-            onAdjust={adjust}
-            onGoHome={() => {
-              goTo(HOME)
-            }}
-            onOpenModels={() => {
-              goTo({ name: 'modelos' })
-            }}
-          />
+          <Suspense fallback={<Busy description={t('common.loading')} />}>
+            <Workspace
+              key={route.jobId}
+              jobId={route.jobId}
+              seed={seed}
+              library={library}
+              onAdjust={adjust}
+              onGoHome={() => {
+                goTo(HOME)
+              }}
+              onOpenModels={() => {
+                goTo({ name: 'modelos' })
+              }}
+            />
+          </Suspense>
         ) : null}
 
         <div hidden={route.name !== 'modelos'}>
           <Grid narrow className="voz-grid">
             <Column sm={4} md={8} lg={16}>
               <PageHeader page="modelos" />
-              <ModelManager onModelsChanged={refreshModels} />
+              {visited.modelos ? (
+                <Suspense fallback={<Busy description={t('common.loading')} />}>
+                  <ModelManager onModelsChanged={refreshModels} />
+                </Suspense>
+              ) : null}
             </Column>
           </Grid>
         </div>
@@ -200,7 +226,11 @@ export function App() {
           <Grid narrow className="voz-grid">
             <Column sm={4} md={8} lg={16}>
               <PageHeader page="proveedores" />
-              <ProvidersSettings onChanged={refreshModels} />
+              {visited.proveedores ? (
+                <Suspense fallback={<Busy description={t('common.loading')} />}>
+                  <ProvidersSettings onChanged={refreshModels} />
+                </Suspense>
+              ) : null}
             </Column>
           </Grid>
         </div>

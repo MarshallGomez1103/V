@@ -494,7 +494,7 @@ describe('texto visible mientras se procesa', () => {
 
     stream.emit('job', job('COMPLETED', { progress: 1, transcript_id: 't1' }))
     expect(await screen.findByRole('tab', { name: 'Editar' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Exportar' })).toBeDefined()
+    expect(await screen.findByRole('button', { name: 'Exportar' })).toBeDefined()
     await waitFor(() => {
       // Al completar se recargan segmentos y hablantes.
       expect(api.calls.filter((call) => call.path === '/api/transcripts/t1/segments').length).toBeGreaterThanOrEqual(2)
