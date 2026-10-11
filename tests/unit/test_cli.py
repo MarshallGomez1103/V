@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from types import TracebackType
+from typing import cast
 
 import pytest
 from typer.testing import CliRunner
@@ -118,18 +119,37 @@ def test_cli_forwards_host_port_and_no_browser(
 ) -> None:
     received: dict[str, object] = {}
 
-    def fake_run_server(*, host: str, port: int, open_browser: bool) -> None:
-        received.update(host=host, port=port, open_browser=open_browser)
+    def fake_run_server(
+        *, host: str, port: int, open_browser: bool, allow_hosts: tuple[str, ...]
+    ) -> None:
+        received.update(
+            host=host, port=port, open_browser=open_browser, allow_hosts=allow_hosts
+        )
 
     monkeypatch.setattr("voz.interfaces.cli.main.run_server", fake_run_server)
 
     result = CliRunner().invoke(
         cli_app,
-        ["--host", "0.0.0.0", "--port", "9000", "--no-browser"],
+        [
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9000",
+            "--no-browser",
+            "--allow-host",
+            "mi-pc.local",
+            "--allow-host",
+            "otra.local",
+        ],
     )
 
     assert result.exit_code == 0
-    assert received == {"host": "0.0.0.0", "port": 9000, "open_browser": False}
+    assert received == {
+        "host": "0.0.0.0",
+        "port": 9000,
+        "open_browser": False,
+        "allow_hosts": ("mi-pc.local", "otra.local"),
+    }
 
 
 def test_cli_prepares_ffmpeg_before_serving_and_warns_in_spanish_on_failure(
@@ -145,7 +165,7 @@ def test_cli_prepares_ffmpeg_before_serving_and_warns_in_spanish_on_failure(
 
     monkeypatch.setattr("voz.interfaces.cli.main.ensure_ffmpeg", fake_ensure)
 
-    def fake_run_server(*, host: str, port: int, open_browser: bool) -> None:
+    def fake_run_server(**_kwargs: object) -> None:
         order.append("server")
 
     monkeypatch.setattr("voz.interfaces.cli.main.run_server", fake_run_server)
@@ -175,3 +195,112 @@ def test_run_server_reuses_a_running_voz_instead_of_binding_again(
 
     assert opened == ["http://127.0.0.1:8765"]
     assert "VOZ ya está abierto" in capsys.readouterr().out
+
+
+def _not_ready(_url: str) -> bool:
+    return False
+
+
+def _stub_server(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Replace Uvicorn and the app factory; return the kwargs given to the app."""
+    from voz.interfaces.cli import main
+
+    seen: dict[str, object] = {}
+
+    def fake_create_app(**kwargs: object) -> object:
+        seen.update(kwargs)
+        return object()
+
+    class FakeServer:
+        def __init__(self, config: object) -> None: ...
+
+        def run(self) -> None: ...
+
+    monkeypatch.setattr(main, "is_server_ready", _not_ready)
+    monkeypatch.setattr(main, "create_app", fake_create_app)
+    monkeypatch.setattr(main.uvicorn, "Server", FakeServer)
+    return seen
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.20"])
+def test_run_server_warns_on_stderr_when_exposed_beyond_loopback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    host: str,
+) -> None:
+    from voz.interfaces.cli import main
+
+    _stub_server(monkeypatch)
+    monkeypatch.setattr(main, "local_addresses", lambda: ())
+
+    main.run_server(host=host, port=8765, open_browser=False)
+
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert "no authentication" in captured.err
+    assert host in captured.err
+    assert "WARNING" not in captured.out
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.0.1.1", "localhost", "::1"])
+def test_run_server_does_not_warn_on_loopback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    host: str,
+) -> None:
+    from voz.interfaces.cli import main
+
+    _stub_server(monkeypatch)
+
+    main.run_server(host=host, port=8765, open_browser=False)
+
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+    assert "WARNING" not in captured.out
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::"])
+def test_wildcard_bind_allows_this_machines_own_addresses(
+    monkeypatch: pytest.MonkeyPatch, host: str
+) -> None:
+    from voz.interfaces.cli import main
+
+    seen = _stub_server(monkeypatch)
+    monkeypatch.setattr(main, "local_addresses", lambda: ("192.168.1.20", "mi-pc"))
+
+    main.run_server(
+        host=host, port=8765, open_browser=False, allow_hosts=("mi-pc.local",)
+    )
+
+    allowed = cast(tuple[str, ...], seen["allowed_hosts"])
+    assert {"127.0.0.1", "localhost", "::1"} <= set(allowed)
+    assert {"192.168.1.20", "mi-pc", "mi-pc.local"} <= set(allowed)
+
+
+def test_concrete_bind_does_not_add_machine_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from voz.interfaces.cli import main
+
+    seen = _stub_server(monkeypatch)
+    monkeypatch.setattr(main, "local_addresses", lambda: ("10.0.0.5",))
+
+    main.run_server(host="192.168.1.20", port=8765, open_browser=False)
+
+    assert seen["allowed_hosts"] == ("192.168.1.20",)
+
+
+def test_local_addresses_tolerates_resolver_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import socket
+
+    from voz.interfaces.cli import main
+
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise OSError("no resolver")
+
+    monkeypatch.setattr(socket, "gethostname", boom)
+    monkeypatch.setattr(socket, "getaddrinfo", boom)
+
+    assert main.local_addresses() == ()

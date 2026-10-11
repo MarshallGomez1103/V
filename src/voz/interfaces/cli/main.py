@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
+import ipaddress
 import json
+import socket
 import sys
 import threading
 import time
@@ -20,6 +22,7 @@ import uvicorn
 from voz.bootstrap import create_app
 from voz.infrastructure.audio.ffmpeg_tools import ensure_ffmpeg
 from voz.infrastructure.paths import resolve_voz_paths
+from voz.interfaces.api.host_guard import LOOPBACK_HOSTS
 from voz.interfaces.cli.bench import bench_command
 from voz.interfaces.cli.diagnostics_bundle import build_bundle, write_bundle
 from voz.interfaces.cli.doctor import exit_code, render, run_doctor
@@ -61,6 +64,52 @@ def server_url(host: str, port: int) -> str:
     if ":" in connect_host and not connect_host.startswith("["):
         connect_host = f"[{connect_host}]"
     return f"http://{connect_host}:{port}"
+
+
+def is_loopback_host(host: str) -> bool:
+    """Return whether binding ``host`` keeps VOZ reachable only from this machine."""
+    name = host.strip().strip("[]").lower()
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
+def is_wildcard_host(host: str) -> bool:
+    """Return whether ``host`` binds every interface."""
+    return host.strip().strip("[]") in {"0.0.0.0", "::"}
+
+
+def local_addresses() -> tuple[str, ...]:
+    """Best-effort host name and IPs of this machine; empty if the resolver fails."""
+    try:
+        name = socket.gethostname()
+        found: set[str] = {name} if name else set()
+        for info in socket.getaddrinfo(name, None):
+            found.add(str(info[4][0]).partition("%")[0])
+    except OSError:
+        return ()
+    return tuple(sorted(found))
+
+
+def exposure_warning(host: str, port: int) -> str:
+    """Explain what a non-loopback bind exposes (ADR-0006)."""
+    return (
+        f"WARNING: VOZ is listening on {host}:{port}, not only on this machine. "
+        "The API, your media and your transcripts are reachable by anyone on "
+        "that network, and there is no authentication. Use it only on a network "
+        "you trust, or bind to 127.0.0.1 (the default). See ADR-0006."
+    )
+
+
+def allowed_hosts_for(host: str, extra: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Host names the guard accepts; a wildcard bind adds this machine's own."""
+    allowed = [host, *extra]
+    if is_wildcard_host(host):
+        allowed += [*LOOPBACK_HOSTS, *local_addresses()]
+    return tuple(allowed)
 
 
 def is_server_ready(
@@ -124,7 +173,13 @@ def start_browser_opener(base_url: str) -> threading.Thread:
     return opener
 
 
-def run_server(*, host: str, port: int, open_browser: bool) -> None:
+def run_server(
+    *,
+    host: str,
+    port: int,
+    open_browser: bool,
+    allow_hosts: tuple[str, ...] = (),
+) -> None:
     """Run Uvicorn in the foreground and stop cleanly on Ctrl+C."""
     base_url = server_url(host, port)
     # A second double-click finds VOZ already serving: reuse it, don't crash.
@@ -133,6 +188,8 @@ def run_server(*, host: str, port: int, open_browser: bool) -> None:
         if open_browser:
             webbrowser.open(base_url)
         return
+    if not is_loopback_host(host):
+        typer.echo(exposure_warning(host, port), err=True)
     if open_browser:
         start_browser_opener(base_url)
 
@@ -144,7 +201,10 @@ def run_server(*, host: str, port: int, open_browser: bool) -> None:
             server.should_exit = True
 
     config = uvicorn.Config(
-        app=create_app(request_shutdown=stop_server, allowed_hosts=(host,)),
+        app=create_app(
+            request_shutdown=stop_server,
+            allowed_hosts=allowed_hosts_for(host, allow_hosts),
+        ),
         host=host,
         port=port,
         log_level="info",
@@ -166,6 +226,11 @@ PORT_OPTION = typer.Option(
     max=65535,
     help="TCP port for the local server.",
     show_default=True,
+)
+ALLOW_HOST_OPTION = typer.Option(
+    None,
+    "--allow-host",
+    help="Extra Host name to accept, e.g. mi-pc.local. Repeatable.",
 )
 NO_BROWSER_OPTION = typer.Option(
     False,
@@ -195,11 +260,17 @@ def root(
     host: str = HOST_OPTION,
     port: int = PORT_OPTION,
     no_browser: bool = NO_BROWSER_OPTION,
+    allow_host: list[str] | None = ALLOW_HOST_OPTION,
 ) -> None:
     """Start VOZ locally; ``voz`` without a subcommand behaves like ``voz serve``."""
     prepare_ffmpeg()
     if ctx.invoked_subcommand is None:
-        run_server(host=host, port=port, open_browser=not no_browser)
+        run_server(
+            host=host,
+            port=port,
+            open_browser=not no_browser,
+            allow_hosts=tuple(allow_host or ()),
+        )
 
 
 @app.command()
@@ -207,9 +278,15 @@ def serve(
     host: str = HOST_OPTION,
     port: int = PORT_OPTION,
     no_browser: bool = NO_BROWSER_OPTION,
+    allow_host: list[str] | None = ALLOW_HOST_OPTION,
 ) -> None:
     """Start VOZ locally."""
-    run_server(host=host, port=port, open_browser=not no_browser)
+    run_server(
+        host=host,
+        port=port,
+        open_browser=not no_browser,
+        allow_hosts=tuple(allow_host or ()),
+    )
 
 
 @app.command()
