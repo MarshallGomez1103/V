@@ -1,7 +1,7 @@
 {
-  "name": "VOZ",
-  "short_name": "VOZ",
-  "description": "Transcripción local de grabaciones largas.",
+  "name": "V — Local Voice AI",
+  "short_name": "V",
+  "description": "IA de voz local: transcribe grabaciones largas en tu equipo.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
