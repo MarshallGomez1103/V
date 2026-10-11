@@ -118,7 +118,11 @@ from voz.infrastructure.diarization.sherpa import (
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
-from voz.infrastructure.model_registry import ManagedModelCatalog, RoutingModelStore
+from voz.infrastructure.model_registry import (
+    DIARIZATION_DESCRIPTOR,
+    ManagedModelCatalog,
+    RoutingModelStore,
+)
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
@@ -393,6 +397,14 @@ def create_app(
             )
         return diarization_engines[0]
 
+    def drop_diarization_engine(descriptor: ModelDescriptor) -> None:
+        # The cached engine points at the files RemoveModel just deleted.
+        if descriptor.provider_id != DIARIZATION_DESCRIPTOR.provider_id:
+            return
+        for diarization_engine in diarization_engines:
+            diarization_engine.close()
+        diarization_engines.clear()
+
     def release_asr(selection: JobSelection) -> None:
         # S6.15/S14.07: free ASR memory before diarization; recreated lazily.
         runtime = runtimes.pop(selection.model, None)
@@ -571,7 +583,13 @@ def create_app(
                 disk_space=disk_space,
                 external=buzz_cache,
             ),
-            RemoveModel(managed_catalog, managed_store, jobs, selections),
+            RemoveModel(
+                managed_catalog,
+                managed_store,
+                jobs,
+                selections,
+                on_removed=drop_diarization_engine,
+            ),
         )
     )
     application.include_router(create_model_tasks_router(model_tasks))

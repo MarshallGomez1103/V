@@ -15,6 +15,7 @@ from voz.application.model_manager import (
     ModelManagementError,
     RemoveModel,
 )
+from voz.application.ports.diarization import DiarizationOptions
 from voz.application.ports.disk_space import DiskLocation
 from voz.application.ports.external_models import ExternalModelCandidate
 from voz.application.ports.transcription_job_selection import JobSelection
@@ -303,3 +304,100 @@ def test_diarization_entry_reports_kind_and_missing_runtime() -> None:
         False,
     )
     assert (item.source, item.revision, item.profile) == (None, None, None)
+
+
+DIAR = ModelDescriptor(
+    provider_id="diarization",
+    model_id="sherpa-default",
+    display_name="Hablantes",
+    capabilities=frozenset({ModelCapability.DIARIZATION}),
+)
+DIAR_KEY = "diarization:sherpa-default"
+
+
+class CatalogWithDiarization:
+    def entries(self) -> tuple[Entry, ...]:
+        return (
+            Entry(TINY, (Item(10),)),
+            Entry(BASE, (Item(100),)),
+            Entry(DIAR, (Item(7),), kind="diarization"),
+        )
+
+
+def job_wanting_speakers(
+    selections: Selections, *, error_code: str | None = None
+) -> TranscriptionJob:
+    job = running_job(selections, TINY)  # the ASR model is a different one
+    selections.items[job.id] = replace(
+        selections.items[job.id],
+        diarization=DiarizationOptions(),
+        diarization_error_code=error_code,
+    )
+    return job
+
+
+def diarization_remover(
+    store: Store,
+    *jobs: TranscriptionJob,
+    selections: Selections,
+    on_removed: object = None,
+) -> RemoveModel:
+    return RemoveModel(
+        CatalogWithDiarization(),
+        store,
+        Jobs(*jobs),
+        selections,
+        on_removed=on_removed,  # type: ignore[arg-type]
+    )
+
+
+def test_remove_refuses_diarization_models_while_a_job_wants_speakers() -> None:
+    selections = Selections()
+    store = Store(DIAR)
+    job = job_wanting_speakers(selections)
+
+    with pytest.raises(ModelManagementError) as raised:
+        diarization_remover(store, job, selections=selections).execute(
+            DIAR_KEY, DIAR_KEY
+        )
+
+    assert raised.value.code == "model_in_use"
+    assert store.removed == []
+
+
+def test_remove_diarization_models_ignores_jobs_without_speakers() -> None:
+    selections = Selections()
+    store = Store(DIAR)
+    plain = running_job(selections, TINY)  # diarization disabled
+    gave_up = job_wanting_speakers(selections, error_code="diarization_failed")
+    removed: list[ModelDescriptor] = []
+
+    result = diarization_remover(
+        store, plain, gave_up, selections=selections, on_removed=removed.append
+    ).execute(DIAR_KEY, DIAR_KEY)
+
+    assert (result.key, store.removed) == (DIAR_KEY, [DIAR])
+    assert removed == [DIAR]
+
+
+def test_asr_removal_is_not_blocked_by_a_job_that_only_wants_speakers() -> None:
+    selections = Selections()
+    store = Store(BASE)
+    job = job_wanting_speakers(selections)  # uses TINY, BASE is unrelated
+
+    result = diarization_remover(store, job, selections=selections).execute(
+        "base", "base"
+    )
+
+    assert result.model_id == "base"
+
+
+def test_failed_removal_does_not_notify_the_listener() -> None:
+    removed: list[ModelDescriptor] = []
+
+    with pytest.raises(ModelManagementError):
+        diarization_remover(
+            Store(DIAR, fail=True), selections=Selections(), on_removed=removed.append
+        ).execute(DIAR_KEY, DIAR_KEY)
+
+    assert removed == []

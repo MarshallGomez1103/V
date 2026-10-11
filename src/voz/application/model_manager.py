@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -205,6 +205,8 @@ class RemoveModel:
     store: ModelStore
     jobs: RecoverableJobs
     selections: SelectionLookup
+    on_removed: Callable[[ModelDescriptor], None] | None = None
+    """Called after a successful delete, e.g. to drop an engine cached on its files."""
 
     def execute(self, model_id: str, confirm: str | None) -> RemovedModel:
         """Delete the pinned install after exact-id confirmation and an in-use check.
@@ -218,26 +220,27 @@ class RemoveModel:
                 "Repeat the exact model id to confirm deletion.",
             )
         key = normalize_key(model_id)
-        descriptor = next(
+        entry = next(
             (
-                entry.descriptor
-                for entry in self.catalog.entries()
-                if model_key(entry.descriptor) == key
+                item
+                for item in self.catalog.entries()
+                if model_key(item.descriptor) == key
             ),
             None,
         )
-        if descriptor is None or not self.store.is_installed(descriptor):
+        if entry is None or not self.store.is_installed(entry.descriptor):
             raise ModelManagementError(
                 ModelManagementFailureCode.NOT_INSTALLED,
                 "The model is not installed.",
             )
+        descriptor = entry.descriptor
         # ponytail: a job created between this check and remove() is not guarded.
         for job in self.jobs.list_recoverable():
             selection = self.selections.get(job.id)
-            if (
-                selection is not None
-                and selection.model.identity == descriptor.identity
-                and selection.model.provenance == descriptor.provenance
+            if selection is not None and (
+                _uses_asr_model(selection, descriptor)
+                if entry.kind != "diarization"
+                else _wants_speakers(selection)
             ):
                 raise ModelManagementError(
                     ModelManagementFailureCode.IN_USE,
@@ -250,7 +253,23 @@ class RemoveModel:
                 ModelManagementFailureCode.REMOVE_FAILED,
                 "The model could not be removed.",
             ) from error
+        if self.on_removed is not None:
+            self.on_removed(descriptor)
         return RemovedModel(key, descriptor.model_id, freed)
+
+
+def _uses_asr_model(selection: JobSelection, descriptor: ModelDescriptor) -> bool:
+    return (
+        selection.model.identity == descriptor.identity
+        and selection.model.provenance == descriptor.provenance
+    )
+
+
+def _wants_speakers(selection: JobSelection) -> bool:
+    """Diarization requested and not already given up on (a recorded error is final)."""
+    return (
+        selection.diarization is not None and selection.diarization_error_code is None
+    )
 
 
 __all__ = [
