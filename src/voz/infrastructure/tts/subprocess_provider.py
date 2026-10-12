@@ -19,7 +19,7 @@ import queue
 import subprocess
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Final
@@ -103,6 +103,12 @@ class TtsModelManifest:
             raise ValueError("voice ids must be unique")
 
 
+type ManifestSource = (
+    Mapping[str, TtsModelManifest] | Callable[[str], TtsModelManifest | None]
+)
+"""A frozen ``{model_id: manifest}`` or a live lookup by ``model_id``."""
+
+
 def _error(code: SynthesisFailureCode) -> SynthesisError:
     return SynthesisError(code, _MESSAGES[code])
 
@@ -139,7 +145,9 @@ class SubprocessSynthesisProvider:
 
     ``argv`` is the full child command (``[sys.executable, "-m", module]``);
     ``manifests`` maps ``ModelDescriptor.model_id`` to its installed files and
-    voices. Safe to call from several threads: each call owns its child.
+    voices: a mapping is copied once, a lookup callable (``store.manifest``) is
+    asked on every call, so installs and deletes show up live. Safe to call
+    from several threads: each call owns its child.
     """
 
     def __init__(
@@ -147,7 +155,7 @@ class SubprocessSynthesisProvider:
         *,
         info: SynthesisProviderInfo,
         argv: Sequence[str],
-        manifests: Mapping[str, TtsModelManifest],
+        manifests: ManifestSource,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         num_threads: int | None = None,
     ) -> None:
@@ -157,7 +165,9 @@ class SubprocessSynthesisProvider:
             raise ValueError("timeout_seconds must be positive")
         self._info = info
         self._argv = tuple(argv)
-        self._manifests = dict(manifests)
+        self._lookup: Callable[[str], TtsModelManifest | None] = (
+            manifests if callable(manifests) else dict(manifests).get
+        )
         self._timeout = timeout_seconds
         self._threads = default_tts_threads() if num_threads is None else num_threads
         self._lock = threading.Lock()
@@ -184,7 +194,7 @@ class SubprocessSynthesisProvider:
         )
 
     def _manifest(self, model: ModelDescriptor) -> TtsModelManifest:
-        manifest = self._manifests.get(model.model_id)
+        manifest = self._lookup(model.model_id)
         if (
             model.provider_id != self._info.provider_id
             or not model.supports(ModelCapability.SYNTHESIS)
@@ -332,4 +342,9 @@ def _raise_if_cancelled(cancellation: SynthesisCancellationToken | None) -> None
         raise _error(_Code.CANCELLED)
 
 
-__all__ = ["SubprocessSynthesisProvider", "TtsModelManifest", "default_tts_threads"]
+__all__ = [
+    "ManifestSource",
+    "SubprocessSynthesisProvider",
+    "TtsModelManifest",
+    "default_tts_threads",
+]

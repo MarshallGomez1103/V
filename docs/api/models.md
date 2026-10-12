@@ -179,8 +179,9 @@ extract, or a missing expected file, is rejected as
 archive is executed. An interrupted download resumes from its `.part` file.
 `installed` is true when the install manifest matches the pinned digest and the
 model files have the recorded sizes; `DELETE` removes the whole model directory
-(and any partial download) and returns the freed bytes. Deleting a speech synthesis model is not yet blocked by
-synthesis jobs that are still running.
+(and any partial download) and returns the freed bytes. Deleting a speech
+synthesis model while a synthesis job with it is queued, running or persisting
+answers 409 `model_in_use`.
 
 ## `DELETE /api/models/{key}?confirm=<key>`
 
@@ -193,7 +194,7 @@ authentication.
 | 200 | (body) | `{ "key": "faster-whisper:tiny", "model_id": "tiny", "freed_bytes": 77010000 }` |
 | 400 | `model_delete_unconfirmed` | `confirm` is missing or does not match the id in the path. Evaluated first, without touching the disk. |
 | 404 | `model_not_installed` | The id is not in the catalog or is not installed. |
-| 409 | `model_in_use` | A non-terminal job (queued, in progress or cancelling) has a selection with that model and revision, or, for a diarization model, asked for speakers. Finish or cancel the job and retry. |
+| 409 | `model_in_use` | A non-terminal job (queued, in progress or cancelling) has a selection with that model and revision, or, for a diarization model, asked for speakers; for a speech synthesis model, a synthesis job with it is queued, running or persisting. Finish or cancel the job and retry. |
 | 500 | `model_remove_failed` | I/O error while deleting; message without paths. |
 
 Errors have the shape `{"detail": {"code", "message"}}`. Completed, failed or

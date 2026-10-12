@@ -139,7 +139,9 @@ def test_options_hide_models_that_are_not_installed(tmp_path: Path) -> None:
         assert response.json()["detail"]["code"] == "synthesis_model_not_installed"
 
 
-def test_default_app_has_no_synthesis_engines(tmp_path: Path) -> None:
+def test_default_app_has_no_synthesis_models_until_one_is_installed(
+    tmp_path: Path,
+) -> None:
     for name in ("data", "state"):
         (tmp_path / name).mkdir()
     paths = VozPaths(
@@ -147,7 +149,9 @@ def test_default_app_has_no_synthesis_engines(tmp_path: Path) -> None:
     )
     with TestClient(create_app(paths=paths)) as client:
         options = client.get("/api/synthesis/options").json()
-        assert options["providers"] == [] and options["models"] == []
+        # Only the real sherpa-onnx engine, and only when its runtime exists.
+        assert {p["provider_id"] for p in options["providers"]} <= {"sherpa-onnx-tts"}
+        assert options["models"] == []
         response = client.post("/api/synthesis", json=_body())
         assert response.status_code == 404
         assert response.json()["detail"]["code"] == "synthesis_provider_not_found"

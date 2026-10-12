@@ -294,3 +294,49 @@ def test_manifest_and_constructor_reject_bad_values() -> None:
         SubprocessSynthesisProvider(
             info=info, argv=["x"], manifests={}, timeout_seconds=0
         )
+
+
+def test_a_lookup_source_sees_installs_and_deletes_after_construction(
+    harness: Harness,
+) -> None:
+    manifest = harness_manifest(harness)
+    installed: dict[str, TtsModelManifest] = {}
+    provider = SubprocessSynthesisProvider(
+        info=harness.provider.describe(),
+        argv=[sys.executable, str(WORKER)],
+        manifests=installed.get,  # what the composition root passes: store.manifest
+    )
+    try:
+        with pytest.raises(SynthesisError) as missing:
+            provider.voices(descriptor())
+        assert missing.value.code is Code.MODEL_NOT_INSTALLED
+
+        installed["m1"] = manifest  # installed after the engine was built
+        assert [voice.id for voice in provider.voices(descriptor())] == ["0", "1"]
+        audio = provider.synthesize("hola", model=descriptor(), voice_id="0")
+        assert audio.frame_count > 0
+
+        del installed["m1"]  # deleted from the Model Manager
+        with pytest.raises(SynthesisError) as removed:
+            provider.synthesize("hola", model=descriptor(), voice_id="0")
+        assert removed.value.code is Code.MODEL_NOT_INSTALLED
+    finally:
+        provider.close()
+
+
+def test_a_mapping_source_is_copied_at_construction(harness: Harness) -> None:
+    manifests = {"m1": harness_manifest(harness)}
+    provider = SubprocessSynthesisProvider(
+        info=harness.provider.describe(), argv=["x"], manifests=manifests
+    )
+    manifests.clear()
+
+    assert [voice.id for voice in provider.voices(descriptor())] == ["0", "1"]
+
+
+def harness_manifest(harness: Harness) -> TtsModelManifest:
+    return TtsModelManifest(
+        family="fake",
+        files={"model": harness.model_file, "pid_out": harness.pid_file},
+        voices=(Voice("0", "Zero", ("es",)), Voice("1", "One", ("en", "es"))),
+    )

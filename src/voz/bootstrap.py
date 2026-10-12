@@ -53,7 +53,6 @@ from voz.application.ports.transcription import (
     TranscriptionResult,
 )
 from voz.application.ports.transcription_job_selection import JobSelection
-from voz.application.ports.transcription_options import ModelRegistration
 from voz.application.prepare_inference_audio import PrepareInferenceAudio
 from voz.application.project_glossary import ProjectGlossary
 from voz.application.projects import (
@@ -169,6 +168,9 @@ from voz.infrastructure.persistence.transcription_job_selections import (
 )
 from voz.infrastructure.secrets import ProviderSecrets
 from voz.infrastructure.synthesis_storage import FileSystemSynthesisStorage
+from voz.infrastructure.tts.installed_models import InstalledTtsModels
+from voz.infrastructure.tts.model_store import TtsModelStore
+from voz.infrastructure.tts.sherpa_provider import sherpa_tts_provider
 from voz.interfaces.api.desktop_shortcut import create_desktop_shortcut_router
 from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
@@ -228,13 +230,6 @@ class LocalAsrRuntime:
             checkpoints=SqliteTranscriptionCheckpointStore(engine),
             jobs=SqliteTranscriptionJobRepository(engine),
         )
-
-
-class NoSynthesisModels:
-    """Synthesis catalog until the TTS model catalog is wired (V4-03)."""
-
-    def list_models(self) -> tuple[ModelRegistration, ...]:
-        return ()
 
 
 ASR_IDLE_SECONDS = 60.0
@@ -318,8 +313,9 @@ def create_app(
     ``Host`` (any port) or one of ``allowed_hosts`` (the explicit bind host);
     anything else gets 400 ``host_not_allowed`` (DNS rebinding, ADR-0006).
     ``synthesis_providers``/``synthesis_catalog`` replace the TTS engines and
-    their installed models (tests pass the fake engine); by default there are
-    none yet.
+    their installed models (tests pass the fake engine); by default they are
+    the sherpa-onnx engine (when ``sherpa_onnx`` is importable) and the models
+    installed in the TTS store, both read live after an install or delete.
     """
     resolved_paths = resolve_voz_paths() if paths is None else paths
     owns_engine = engine is None
@@ -349,12 +345,18 @@ def create_app(
     )
     whisper_cpp_probe = WhisperCppRuntimeProbe()
     diarization_store = DiarizationModelStore(data_root=resolved_paths.data)
+    tts_store = TtsModelStore(data_root=resolved_paths.data)
+
+    def sherpa_available() -> bool:  # diarization and TTS share the runtime
+        return find_spec("sherpa_onnx") is not None
+
     # The Model Manager lists every local engine under namespaced keys.
     managed_catalog = ManagedModelCatalog(
         whisper_cpp_available=lambda: whisper_cpp_probe.availability().available,
-        diarization_runtime_available=lambda: find_spec("sherpa_onnx") is not None,
+        diarization_runtime_available=sherpa_available,
+        tts_runtime_available=sherpa_available,
     )
-    managed_store = RoutingModelStore(model_store, diarization_store)
+    managed_store = RoutingModelStore(model_store, diarization_store, tts_store)
     model_catalog = FasterWhisperModelCatalog()
     buzz_cache = BuzzModelCache()
     model_tasks = ModelTaskRunner(
@@ -524,11 +526,16 @@ def create_app(
 
     desktop_shortcut = LocalDesktopShortcut(state_directory=resolved_paths.state)
 
-    # ponytail: no real TTS engine nor model catalog yet; sherpa-onnx (V4-02)
-    # and its catalog (V4-03) plug in here in their own slice.
-    synthesis_registry = SynthesisProviderRegistry(synthesis_providers or ())
+    if synthesis_providers is None:
+        # The engine asks the store per call: installs and deletes are live.
+        synthesis_providers = (
+            (sherpa_tts_provider(tts_store.manifest),) if sherpa_available() else ()
+        )
+    synthesis_registry = SynthesisProviderRegistry(synthesis_providers)
     tts_catalog = (
-        NoSynthesisModels() if synthesis_catalog is None else synthesis_catalog
+        InstalledTtsModels(tts_store)
+        if synthesis_catalog is None
+        else synthesis_catalog
     )
     synthesis_jobs = SqliteSynthesisJobRepository(resolved_engine)
     synthesized_audio = SqliteSynthesizedAudioRepository(resolved_engine)
@@ -691,6 +698,7 @@ def create_app(
                 selections,
                 on_removed=drop_diarization_engine,
                 admission=admission,
+                synthesis_jobs=synthesis_jobs,
             ),
         )
     )

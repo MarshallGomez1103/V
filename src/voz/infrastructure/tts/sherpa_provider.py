@@ -1,15 +1,15 @@
 """sherpa-onnx TTS engine: a ``SubprocessSynthesisProvider`` over ``sherpa_worker``.
 
 The server never imports ``sherpa_onnx``; each chunk runs in a child (ADR-0010).
-Manifests come from the catalog (V4-03); ``manifest_from_dir`` builds one from
-an extracted release tarball, reading voices from the ONNX metadata in-process
-(a bounded protobuf scan, no native code).
+Manifests come live from the store (``TtsModelStore.manifest``, V4-03);
+``manifest_from_dir`` builds one from an extracted release tarball, reading
+voices from the ONNX metadata in-process (a bounded protobuf scan, no native
+code).
 """
 
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
@@ -20,6 +20,7 @@ from voz.application.ports.speech_synthesis import (
 from voz.infrastructure.tts import families
 from voz.infrastructure.tts.subprocess_provider import (
     DEFAULT_TIMEOUT_SECONDS,
+    ManifestSource,
     SubprocessSynthesisProvider,
     TtsModelManifest,
 )
@@ -44,7 +45,7 @@ def sherpa_tts_info() -> SynthesisProviderInfo:
 
 
 def sherpa_tts_provider(
-    manifests: Mapping[str, TtsModelManifest],
+    manifests: ManifestSource,
     *,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     num_threads: int | None = None,

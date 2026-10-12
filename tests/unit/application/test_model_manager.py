@@ -26,6 +26,8 @@ from voz.domain.entities.processing_profile import (
     ProcessingProfile,
     ProcessingProfileName,
 )
+from voz.domain.entities.synthesis_job import SynthesisJob, SynthesisJobState
+from voz.domain.entities.synthesis_request import SynthesisRequest
 from voz.domain.entities.transcription_job import (
     TranscriptionJob,
     TranscriptionJobState,
@@ -402,3 +404,97 @@ def test_failed_removal_does_not_notify_the_listener() -> None:
         ).execute(DIAR_KEY, DIAR_KEY)
 
     assert removed == []
+
+
+VOICE = ModelDescriptor(
+    provider_id="sherpa-onnx-tts",
+    model_id="piper-es",
+    display_name="Piper es",
+    capabilities=frozenset({ModelCapability.SYNTHESIS, ModelCapability.CPU}),
+)
+VOICE_KEY = "sherpa-onnx-tts:piper-es"
+
+
+class CatalogWithVoice:
+    def entries(self) -> tuple[Entry, ...]:
+        return (Entry(TINY, (Item(10),)), Entry(VOICE, (Item(7),), kind="tts"))
+
+
+class SynthesisJobs:
+    def __init__(self, *jobs: SynthesisJob) -> None:
+        self.jobs = jobs
+
+    def list_recoverable(self) -> Sequence[SynthesisJob]:
+        return self.jobs
+
+
+def synthesis_job(
+    model_id: str = "piper-es",
+    state: SynthesisJobState = SynthesisJobState.QUEUED,
+) -> SynthesisJob:
+    job = SynthesisJob.create(
+        job_id=uuid4(),
+        request=SynthesisRequest(
+            text="hola",
+            provider_id="sherpa-onnx-tts",
+            model_id=model_id,
+            voice_id="0",
+        ),
+        chunks_total=1,
+        now=NOW,
+    )
+    if state is not SynthesisJobState.QUEUED:
+        job = replace(job, state=state, chunks_done=1, started_at=NOW)
+    return job
+
+
+@pytest.mark.parametrize(
+    "state",
+    [SynthesisJobState.QUEUED, SynthesisJobState.RUNNING, SynthesisJobState.PERSISTING],
+)
+def test_remove_refuses_a_tts_model_while_a_synthesis_uses_it(
+    state: SynthesisJobState,
+) -> None:
+    store = Store(VOICE)
+    job = synthesis_job(state=state)
+    assert job.state is state
+
+    with pytest.raises(ModelManagementError) as raised:
+        RemoveModel(
+            CatalogWithVoice(),
+            store,
+            Jobs(),
+            Selections(),
+            synthesis_jobs=SynthesisJobs(job),
+        ).execute(VOICE_KEY, VOICE_KEY)
+
+    assert raised.value.code == "model_in_use"
+    assert store.removed == []
+
+
+def test_remove_tts_model_ignores_other_models_and_cancelling_syntheses() -> None:
+    store = Store(VOICE)
+    jobs = SynthesisJobs(
+        synthesis_job("another-voice"),
+        synthesis_job(state=SynthesisJobState.CANCELLING),
+    )
+
+    result = RemoveModel(
+        CatalogWithVoice(), store, Jobs(), Selections(), synthesis_jobs=jobs
+    ).execute(VOICE_KEY, VOICE_KEY)
+
+    assert (result.key, store.removed) == (VOICE_KEY, [VOICE])
+
+
+def test_asr_removal_is_not_blocked_by_an_active_synthesis() -> None:
+    store = Store(TINY)
+
+    result = RemoveModel(
+        CatalogWithVoice(),
+        store,
+        Jobs(),
+        Selections(),
+        synthesis_jobs=SynthesisJobs(synthesis_job()),
+    ).execute("tiny", "tiny")
+
+    assert result.model_id == "tiny"

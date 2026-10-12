@@ -18,9 +18,10 @@ class ModelCapability(StrEnum):
     """Capabilities that VOZ may use without knowing provider internals.
 
     Values are persisted (manifests) and serialized (``GET /api/models``): never
-    rename one, only add. ``synthesis``, ``alignment`` and ``wake_word`` are part
-    of the vocabulary (ADR-0010 section 8) but no engine implements them yet, so
-    no catalog entry may declare them (see ``ENGINE_CAPABILITIES``).
+    rename one, only add. A catalog entry may declare only what its engine
+    implements (``ENGINE_CAPABILITIES``): ``synthesis`` is the sherpa-onnx TTS
+    engine's (V4); ``alignment`` and ``wake_word`` are vocabulary only (ADR-0010
+    section 8), no engine implements them yet.
     """
 
     TRANSCRIPTION = "transcription"

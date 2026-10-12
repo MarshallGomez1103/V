@@ -13,6 +13,7 @@ from voz.application.ports.disk_space import DiskLocation, DiskSpacePort
 from voz.application.ports.external_models import ExternalModelSource
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.synthesis_job import SynthesisJob
 from voz.domain.entities.transcription_job import TranscriptionJob
 
 
@@ -34,7 +35,7 @@ class CatalogItem(Protocol):
     def multilingual(self) -> bool: ...
     @property
     def kind(self) -> str:
-        """``asr`` or ``diarization``."""
+        """``asr``, ``diarization`` or ``tts``."""
         ...
 
     @property
@@ -61,6 +62,12 @@ class RecoverableJobs(Protocol):
     """Subset of ``TranscriptionJobRepository``: jobs that have not finished."""
 
     def list_recoverable(self) -> Sequence[TranscriptionJob]: ...
+
+
+class RecoverableSynthesisJobs(Protocol):
+    """Subset of ``SynthesisJobRepository``: synthesis jobs not finished."""
+
+    def list_recoverable(self) -> Sequence[SynthesisJob]: ...
 
 
 class SelectionLookup(Protocol):
@@ -216,6 +223,8 @@ class RemoveModel:
     """Called after a successful delete, e.g. to drop an engine cached on its files."""
     admission: AdmissionGate = field(default_factory=AdmissionGate)
     """Shared with job creation; the default is a private gate."""
+    synthesis_jobs: RecoverableSynthesisJobs | None = None
+    """Speech synthesis jobs; one still rendering with a model blocks its delete."""
 
     def execute(self, model_id: str, confirm: str | None) -> RemovedModel:
         """Delete the pinned install after exact-id confirmation and an in-use check.
@@ -252,10 +261,14 @@ class RemoveModel:
                     if entry.kind != "diarization"
                     else _wants_speakers(selection)
                 ):
-                    raise ModelManagementError(
-                        ModelManagementFailureCode.IN_USE,
-                        "The model is used by a job that has not finished.",
-                    )
+                    raise _in_use()
+            if self.synthesis_jobs is not None and any(
+                job.state.is_processable
+                and (job.request.provider_id, job.request.model_id)
+                == descriptor.identity
+                for job in self.synthesis_jobs.list_recoverable()
+            ):
+                raise _in_use()
             try:
                 freed = self.store.remove(descriptor)
             except OSError as error:
@@ -266,6 +279,13 @@ class RemoveModel:
         if self.on_removed is not None:
             self.on_removed(descriptor)
         return RemovedModel(key, descriptor.model_id, freed)
+
+
+def _in_use() -> ModelManagementError:
+    return ModelManagementError(
+        ModelManagementFailureCode.IN_USE,
+        "The model is used by a job that has not finished.",
+    )
 
 
 def _uses_asr_model(selection: JobSelection, descriptor: ModelDescriptor) -> bool:
@@ -292,6 +312,7 @@ __all__ = [
     "ModelManagementFailureCode",
     "ModelStatus",
     "ModelStore",
+    "RecoverableSynthesisJobs",
     "RemoveModel",
     "RemovedModel",
 ]

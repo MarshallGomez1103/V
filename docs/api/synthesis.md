@@ -119,8 +119,11 @@ action (see [README.md](README.md)).
 
 ## Engines
 
-The engine list is composed at startup. This build ships no real engine yet:
-the sherpa-onnx engine and its model catalog are wired in a later step, so
-`providers` and `models` are empty and `POST` answers
-`synthesis_provider_not_found`. Tests use a deterministic fake engine
-(`src/voz/infrastructure/tts/fake.py`).
+The engine list is composed at startup: the local sherpa-onnx engine
+(`provider_id` `sherpa-onnx-tts`) is registered when the `sherpa_onnx` runtime
+is importable; otherwise `providers` is empty and `POST` answers
+`synthesis_provider_not_found`. `models` are the speech synthesis models
+installed from the Model Manager ([models.md](models.md)); both the list and
+the engine read the model store on every request, so a model installed or
+deleted there appears or disappears without a restart. Tests use a
+deterministic fake engine (`src/voz/infrastructure/tts/fake.py`).
