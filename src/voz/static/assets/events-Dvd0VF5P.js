@@ -1,0 +1,1 @@
+var e=e=>(t,...n)=>{for(let r of e){if(t.defaultPrevented)break;typeof r==`function`&&r(t,...n)}};export{e as t};
