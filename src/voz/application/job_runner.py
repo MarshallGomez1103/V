@@ -27,6 +27,7 @@ from voz.application.chunked_transcription import (
     ChunkProgress,
     merge_transcription_language,
 )
+from voz.application.compute_slot import ComputeKind, ComputeSlot, SlotWaitCancelled
 from voz.application.ports.diarization import (
     DiarizationError,
     DiarizationFailureCode,
@@ -249,6 +250,8 @@ class JobRunner:
     """Free the ASR engine before diarizing (S6.15/S14.07); must be idempotent."""
     chunk_duration_ms: int = DEFAULT_CHUNK_DURATION_MS
     overlap_ms: int = DEFAULT_OVERLAP_MS
+    compute_slot: ComputeSlot = field(default_factory=ComputeSlot)
+    """Shared with synthesis (V3-03); the default is a private slot."""
     _queue: queue.Queue[UUID | None] = field(
         default_factory=queue.Queue[UUID | None], repr=False
     )
@@ -339,7 +342,16 @@ class JobRunner:
             self._current = job_id
             self._cancel.clear()
         try:
-            return self._execute(job)
+            wait = _AnyEventToken((self._cancel, self._stopping))
+            try:
+                with self.compute_slot.hold(
+                    ComputeKind.TRANSCRIPTION, job_id, cancellation=wait
+                ):
+                    return self._execute(job)
+            except SlotWaitCancelled:
+                # Cancel or shutdown is set: this finishes CANCELLED or leaves the
+                # job resumable before any heavy work starts.
+                return self._execute(job)
         finally:
             with self._lock:
                 self._current = None
