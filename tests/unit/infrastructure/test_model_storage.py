@@ -225,3 +225,42 @@ def test_concurrent_installers_reuse_the_winning_snapshot(tmp_path: Path) -> Non
     assert len({item.installed_at for item in installations}) == 1
     assert download_calls == 2
     assert all(store.is_installed(descriptor) for store in stores)
+
+
+def _write_manifest(store: FileSystemModelStore, **extra: object) -> ModelDescriptor:
+    descriptor = _descriptor()
+    directory = store._directory_for(descriptor)  # pyright: ignore[reportPrivateUsage]
+    directory.mkdir(parents=True)
+    (directory / ".voz-model.json").write_text(
+        json.dumps(
+            {
+                "provider_id": descriptor.provider_id,
+                "model_id": descriptor.model_id,
+                "display_name": descriptor.display_name,
+                "source": descriptor.source,
+                "revision": descriptor.revision,
+                "installed_at": "2026-01-01T00:00:00+00:00",
+                **extra,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return descriptor
+
+
+def test_legacy_manifest_without_capabilities_still_reads(tmp_path: Path) -> None:
+    store = FileSystemModelStore(data_root=tmp_path / "d", cache_root=tmp_path / "c")
+    descriptor = _write_manifest(store)  # pre-V6-01: no "capabilities" key
+
+    assert store.is_installed(descriptor)
+    (registered,) = store.registered_descriptors()
+    assert registered.identity == descriptor.identity
+    assert registered.capabilities == frozenset({ModelCapability.TRANSCRIPTION})
+
+
+def test_manifest_capabilities_never_come_from_disk(tmp_path: Path) -> None:
+    store = FileSystemModelStore(data_root=tmp_path / "d", cache_root=tmp_path / "c")
+    _write_manifest(store, capabilities=["synthesis", "wake_word", "unknown"])
+
+    (registered,) = store.registered_descriptors()
+    assert registered.capabilities == frozenset({ModelCapability.TRANSCRIPTION})

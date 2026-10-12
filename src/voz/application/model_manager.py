@@ -103,6 +103,9 @@ class ModelStatus:
     revision: str | None
     license: str
     multilingual: bool
+    capabilities: tuple[str, ...]
+    """``ModelCapability`` values the model declares, sorted (vocabulary in
+    ``docs/api/models.md``)."""
     profile: str | None
     size_bytes: int
     installed: bool
@@ -167,6 +170,9 @@ class ListModels:
                     revision=descriptor.revision,
                     license=entry.license,
                     multilingual=entry.multilingual,
+                    capabilities=tuple(
+                        sorted(c.value for c in descriptor.capabilities)
+                    ),
                     profile=None
                     if descriptor.profile is None
                     else descriptor.profile.name.value,

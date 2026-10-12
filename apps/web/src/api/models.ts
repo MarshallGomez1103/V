@@ -27,6 +27,8 @@ export interface ModelView {
   revision: string | null
   license: string
   multilingual: boolean
+  /** Capacidades declaradas (transcription, synthesis, diarization...); V6-03 las usará. */
+  capabilities?: string[]
   profile: string | null
   size_bytes: number
   installed: boolean
@@ -116,6 +118,9 @@ function isModelView(value: unknown): value is ModelView {
     isNullableString(value.revision) &&
     typeof value.license === 'string' &&
     typeof value.multilingual === 'boolean' &&
+    (value.capabilities === undefined ||
+      (Array.isArray(value.capabilities) &&
+        value.capabilities.every((item) => typeof item === 'string'))) &&
     isNullableString(value.profile) &&
     typeof value.size_bytes === 'number' &&
     typeof value.installed === 'boolean' &&

@@ -15,12 +15,21 @@ _IMMUTABLE_REVISION = re.compile(r"[0-9a-f]{40}", re.ASCII)
 
 
 class ModelCapability(StrEnum):
-    """Capabilities that VOZ may use without knowing provider internals."""
+    """Capabilities that VOZ may use without knowing provider internals.
+
+    Values are persisted (manifests) and serialized (``GET /api/models``): never
+    rename one, only add. ``synthesis``, ``alignment`` and ``wake_word`` are part
+    of the vocabulary (ADR-0010 section 8) but no engine implements them yet, so
+    no catalog entry may declare them (see ``ENGINE_CAPABILITIES``).
+    """
 
     TRANSCRIPTION = "transcription"
     TRANSLATION = "translation"
     WORD_TIMESTAMPS = "word_timestamps"
     DIARIZATION = "diarization"
+    SYNTHESIS = "synthesis"
+    ALIGNMENT = "alignment"
+    WAKE_WORD = "wake_word"
     LANGUAGE_DETECTION = "language_detection"
     REALTIME = "realtime"
     GPU = "gpu"

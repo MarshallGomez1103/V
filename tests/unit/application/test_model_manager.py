@@ -164,6 +164,7 @@ def test_list_reports_catalog_state_sizes_disk_and_external_origins() -> None:
     assert (tiny.size_bytes, tiny.installed, tiny.disk_bytes) == (15, True, 1000)
     assert [item.origin for item in tiny.external] == ["hf-cache"]
     assert (base.size_bytes, base.installed, base.disk_bytes) == (100, False, None)
+    assert tiny.capabilities == tuple(sorted(c.value for c in TINY.capabilities))
     assert [item.origin for item in base.external] == ["buzz"]
     assert (result.disk.models_bytes, result.disk.free_bytes) == (1000, 777)
 

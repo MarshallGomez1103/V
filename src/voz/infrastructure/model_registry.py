@@ -7,7 +7,7 @@ Models are addressed by ``"<provider_id>:<model_id>"`` (``model_keys``).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from voz.application.ports.model_installation import (
@@ -28,6 +28,48 @@ from voz.infrastructure.model_storage import FileSystemModelStore
 DIARIZATION_PROVIDER_ID = "diarization"
 WHISPER_CPP_REQUIRES = "whisper-cli"
 DIARIZATION_REQUIRES = "diarization"  # the optional ``diarization`` extra
+
+_CPU = ModelCapability.CPU
+_GPU = ModelCapability.GPU
+
+# Invariant (ADR-0010 section 8): a catalog entry may only declare capabilities
+# that the engine registered for its provider really implements. Add the entry
+# for a new engine (TTS, wake word, aligner) in the same change that registers it.
+# ``word_timestamps`` is native to both ASR engines (ADR-0008), so ``alignment``
+# stays undeclared: it needs a separate ``AlignmentProvider`` that does not exist.
+ENGINE_CAPABILITIES: Mapping[str, frozenset[ModelCapability]] = {
+    "faster-whisper": frozenset(
+        {
+            ModelCapability.TRANSCRIPTION,
+            ModelCapability.TRANSLATION,
+            ModelCapability.LANGUAGE_DETECTION,
+            ModelCapability.WORD_TIMESTAMPS,
+            _CPU,
+            _GPU,
+        }
+    ),
+    "whisper-cpp": frozenset(
+        {
+            ModelCapability.TRANSCRIPTION,
+            ModelCapability.LANGUAGE_DETECTION,
+            ModelCapability.WORD_TIMESTAMPS,
+            _CPU,
+            _GPU,
+        }
+    ),
+    "diarization": frozenset({ModelCapability.DIARIZATION, _CPU}),
+}
+
+
+def undeclarable_capabilities(
+    descriptor: ModelDescriptor,
+) -> frozenset[ModelCapability]:
+    """Capabilities the descriptor declares without an engine behind them."""
+
+    return descriptor.capabilities - ENGINE_CAPABILITIES.get(
+        descriptor.provider_id, frozenset()
+    )
+
 
 # ponytail: no upstream commit to pin (release assets, verified by SHA-256), so
 # the descriptor carries no source/revision and is never matched to external caches.
@@ -158,7 +200,9 @@ class RoutingModelStore:
 
 __all__ = [
     "DIARIZATION_DESCRIPTOR",
+    "ENGINE_CAPABILITIES",
     "ManagedModel",
     "ManagedModelCatalog",
     "RoutingModelStore",
+    "undeclarable_capabilities",
 ]

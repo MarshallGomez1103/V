@@ -96,6 +96,18 @@ describe('api/models', () => {
     await expect(getModels()).resolves.toEqual(payload)
   })
 
+  it('getModels acepta capabilities opcionales y las valida', async () => {
+    const disk = { models_bytes: 0, free_bytes: null }
+    const withCaps = { ...MODEL, capabilities: ['transcription', 'cpu'] }
+    stubFetch(jsonResponse(200, { models: [withCaps], disk }))
+    await expect(getModels()).resolves.toEqual({ models: [withCaps], disk })
+
+    stubFetch(
+      jsonResponse(200, { models: [{ ...MODEL, capabilities: [1] }], disk }),
+    )
+    await expect(getModels()).rejects.toMatchObject({ code: 'invalid_response' })
+  })
+
   it('getModels rechaza un formato inesperado', async () => {
     stubFetch(jsonResponse(200, { models: [{ model_id: 1 }], disk: {} }))
 

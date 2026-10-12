@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from voz.application.model_keys import model_key
 from voz.application.ports.model_installation import CancelCheck, ProgressCallback
+from voz.domain.entities.model_descriptor import ModelCapability
 from voz.infrastructure.diarization.models import (
     EMBEDDING_FILE,
     EMBEDDING_MODEL,
@@ -17,8 +19,10 @@ from voz.infrastructure.diarization.models import (
 )
 from voz.infrastructure.model_registry import (
     DIARIZATION_DESCRIPTOR,
+    ENGINE_CAPABILITIES,
     ManagedModelCatalog,
     RoutingModelStore,
+    undeclarable_capabilities,
 )
 from voz.infrastructure.model_storage import FileSystemModelStore
 
@@ -134,3 +138,51 @@ def test_routing_store_sends_diarization_downloads_to_its_own_store(
     )
 
     assert calls == [(True, True)]
+
+
+def test_no_entry_declares_a_capability_without_an_engine_behind_it() -> None:
+    entries = catalog(cpp=True).entries()
+
+    assert {e.descriptor.provider_id for e in entries} <= set(ENGINE_CAPABILITIES)
+    assert [
+        (model_key(e.descriptor), sorted(undeclarable_capabilities(e.descriptor)))
+        for e in entries
+        if undeclarable_capabilities(e.descriptor)
+    ] == []
+
+
+def test_capabilities_without_an_engine_are_not_implemented_by_any_provider() -> None:
+    implemented = {c for caps in ENGINE_CAPABILITIES.values() for c in caps}
+
+    # No TTS, wake-word or standalone aligner engine is registered yet (ADR-0010).
+    assert not implemented & {
+        ModelCapability.SYNTHESIS,
+        ModelCapability.WAKE_WORD,
+        ModelCapability.ALIGNMENT,
+    }
+
+
+def test_the_invariant_rejects_an_undeclarable_capability() -> None:
+    fake = replace(
+        DIARIZATION_DESCRIPTOR,
+        capabilities=frozenset({ModelCapability.SYNTHESIS, ModelCapability.CPU}),
+    )
+
+    assert undeclarable_capabilities(fake) == {ModelCapability.SYNTHESIS}
+    assert undeclarable_capabilities(replace(fake, provider_id="unregistered")) == set(
+        fake.capabilities
+    )
+
+
+def test_catalog_entries_declare_the_capabilities_of_their_family() -> None:
+    by_provider = {
+        e.descriptor.provider_id: e.descriptor.capabilities
+        for e in catalog(cpp=True).entries()
+    }
+
+    assert ModelCapability.TRANSCRIPTION in by_provider["faster-whisper"]
+    assert ModelCapability.TRANSCRIPTION in by_provider["whisper-cpp"]
+    assert ModelCapability.DIARIZATION in by_provider["diarization"]
+    assert ModelCapability.TRANSCRIPTION not in by_provider["diarization"]
+    # Word timings are native (ADR-0008), not a separate aligner.
+    assert all(ModelCapability.ALIGNMENT not in c for c in by_provider.values())

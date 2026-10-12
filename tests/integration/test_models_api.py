@@ -207,6 +207,7 @@ def test_get_models_serializes_the_documented_contract_without_paths() -> None:
         "revision": "a" * 40,
         "license": "MIT",
         "multilingual": True,
+        "capabilities": ["transcription"],
         "profile": "quality",
         "size_bytes": 15,
         "installed": True,

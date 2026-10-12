@@ -44,6 +44,7 @@ HTTP 200. One entry for every catalog model, installed or not.
       "revision": "d90ca5fe260221311c53c58e660288d3deb8d356",
       "license": "MIT",
       "multilingual": true,
+      "capabilities": ["cpu", "gpu", "language_detection", "transcription", "translation", "word_timestamps"],
       "profile": "fast",
       "size_bytes": 77003619,
       "installed": true,
@@ -69,6 +70,7 @@ HTTP 200. One entry for every catalog model, installed or not.
 | `runtime_available` | `false` if that runtime is missing: the model is listed but the UI does not offer to install it ("requires the diarization extra"). whisper.cpp is not even listed without `whisper-cli`. |
 | `model_id` | Identifier within the provider; for faster-whisper, the same as in `/api/transcription-options`. |
 | `source`, `revision` | Pinned provenance (40-character commit SHA). `null` for diarization: its artifacts are release assets verified by SHA-256. |
+| `capabilities` | Sorted list of capability strings the model declares (vocabulary below). Always present; never empty. |
 | `profile` | `fast` or `quality`; `null` for diarization. |
 | `size_bytes` | Sum of the catalog's expected files (what would be downloaded). |
 | `installed` | `true` if there is a valid V manifest for exactly that source and revision. A different revision installed earlier does not count. |
@@ -97,6 +99,35 @@ The speaker models are the `diarization:sherpa-default` entry
 `installed` is false, offer the download
 (`POST /api/models/diarization:sherpa-default/install`); otherwise
 `POST /api/jobs` answers 409 `diarization_models_missing`.
+
+### Capability vocabulary
+
+Values are stable (persisted and serialized): new ones are only added.
+
+| Value | Meaning | Declared today by |
+| --- | --- | --- |
+| `transcription` | Speech to text | faster-whisper, whisper.cpp |
+| `translation` | Translate to English while transcribing | faster-whisper |
+| `language_detection` | Detects the spoken language | faster-whisper, whisper.cpp |
+| `word_timestamps` | Native per-word timings in the transcript (ADR-0008) | faster-whisper, whisper.cpp |
+| `diarization` | Speaker separation | `diarization:sherpa-default` |
+| `cpu`, `gpu` | Hardware the engine can run on | ASR models; `cpu` also diarization |
+| `synthesis` | Text to speech | none yet |
+| `alignment` | Forced alignment by a standalone aligner | none (words are native) |
+| `wake_word` | Wake-word detection | none yet |
+| `realtime` | Streaming recognition | none yet |
+
+`synthesis`, `alignment` and `wake_word` exist in the vocabulary (ADR-0010
+section 8) but no engine implements them, so no catalog entry can declare them:
+`ENGINE_CAPABILITIES` in `src/voz/infrastructure/model_registry.py` maps every
+provider to the capabilities its engine implements, and a test fails if an entry
+declares anything outside that map. `alignment` is deliberately not declared by
+the ASR models: their word timings come from the engine itself, not from an
+`AlignmentProvider`.
+
+Capabilities are not read from `.voz-model.json` manifests: they always come
+from the trusted catalog, so manifests written before V6-01 (which have no
+`capabilities` key) and manifests with arbitrary values keep working.
 
 ## `DELETE /api/models/{key}?confirm=<key>`
 
