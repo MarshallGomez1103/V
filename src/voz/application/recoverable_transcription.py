@@ -40,7 +40,7 @@ from voz.domain.entities.transcription_job import (
 
 @dataclass(frozen=True, slots=True)
 class RecoverableTranscriptionOutcome:
-    """Current durable result and job snapshot, complete or cancelled."""
+    """Current durable result and job snapshot: complete, cancelled or stopped."""
 
     result: TranscriptionResult
     job: TranscriptionJob
@@ -50,6 +50,21 @@ class RecoverableTranscriptionOutcome:
     @property
     def cancelled(self) -> bool:
         return self.job.state is TranscriptionJobState.CANCELLED
+
+    @property
+    def stopped(self) -> bool:
+        """Shutdown interrupted it; the job stays TRANSCRIBING for ``recover``."""
+        return not self.cancelled and self.completed_chunks < self.total_chunks
+
+
+@dataclass(frozen=True, slots=True)
+class _EitherToken:
+    """What the engine sees: the user's cancel or the server's shutdown."""
+
+    tokens: tuple[TranscriptionCancellationToken, ...]
+
+    def is_cancelled(self) -> bool:
+        return any(token.is_cancelled() for token in self.tokens)
 
 
 @dataclass(slots=True)
@@ -74,6 +89,7 @@ class RecoverableTranscription:
         overlap_ms: int = 5_000,
         on_progress: ChunkProgressCallback | None = None,
         cancellation: TranscriptionCancellationToken | None = None,
+        shutdown: TranscriptionCancellationToken | None = None,
         progress_range: tuple[float, float] = (0.0, 1.0),
     ) -> RecoverableTranscriptionOutcome:
         """Transcribe the missing chunks.
@@ -83,6 +99,10 @@ class RecoverableTranscription:
         atomic checkpoint per chunk, ``stage_progress`` (chunks done plus the position
         inside the current one) is saved
         while a chunk is decoded, at most twice per second.
+
+        ``cancellation`` is the user's cancel (the job ends CANCELLED);
+        ``shutdown`` stops between or inside chunks without touching the job
+        state, so the outcome is ``stopped`` and the job stays resumable.
         """
         if job.state is not TranscriptionJobState.TRANSCRIBING:
             raise ValueError("recoverable transcription requires a TRANSCRIBING job")
@@ -105,6 +125,28 @@ class RecoverableTranscription:
             language = merge_transcription_language(language, checkpoint.language)
 
         current_job = job
+        engine_token = (
+            cancellation
+            if shutdown is None
+            else shutdown
+            if cancellation is None
+            else _EitherToken((cancellation, shutdown))
+        )
+
+        def interrupted(done: int) -> RecoverableTranscriptionOutcome | None:
+            """User cancel wins over shutdown; ``None`` means keep going."""
+            if self._is_cancelled(cancellation):
+                return self._cancelled_outcome(
+                    current_job, output, language, done, len(chunks)
+                )
+            if self._is_cancelled(shutdown):
+                return RecoverableTranscriptionOutcome(
+                    result=TranscriptionResult(tuple(output), language),
+                    job=current_job,
+                    completed_chunks=done,
+                    total_chunks=len(chunks),
+                )
+            return None
 
         def publish(stage: float) -> None:
             """Throttled in-chunk progress; the checkpoint covers chunk ends."""
@@ -128,14 +170,9 @@ class RecoverableTranscription:
             return on_position
 
         for chunk in chunks[len(existing) :]:
-            if self._is_cancelled(cancellation):
-                return self._cancelled_outcome(
-                    current_job,
-                    output,
-                    language,
-                    len(existing),
-                    len(chunks),
-                )
+            stop = interrupted(len(existing))
+            if stop is not None:
+                return stop
             try:
                 with self.audio_source.open(chunk.clip) as audio:
                     local_result = self.provider.transcribe(
@@ -145,11 +182,14 @@ class RecoverableTranscription:
                             clip=None,
                             on_position=position_callback(chunk, len(existing)),
                         ),
-                        cancellation=cancellation,
+                        cancellation=engine_token,
                     )
             except TranscriptionError as error:
                 if error.code is not TranscriptionFailureCode.CANCELLED:
                     raise
+                stop = interrupted(len(existing))
+                if stop is not None:
+                    return stop
                 return self._cancelled_outcome(
                     current_job,
                     output,

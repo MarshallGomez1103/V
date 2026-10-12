@@ -5,7 +5,8 @@ pipeline states, delegates the only heavy stage to ``RecoverableTranscription``
 (which keeps atomic chunk checkpoints), and persists a stable ``error_code`` on
 failure. Cancellation is requested from any thread through ``cancel``; the
 worker honours it between recoverable units. Shutdown leaves a running job in
-its processable state so that ``recover`` can resume it on the next start.
+its processable state so that ``recover`` can resume it on the next start;
+shutdown reaches the in-flight chunk or normalization through its token.
 """
 
 from __future__ import annotations
@@ -371,6 +372,9 @@ class JobRunner:
 
     def _execute(self, job: TranscriptionJob) -> TranscriptionJob:
         token = _EventToken(self._cancel)
+        shutdown = _EventToken(self._stopping)
+        # Long work (normalization, a chunk) must also see shutdown, not just cancel.
+        stop = _AnyEventToken((self._cancel, self._stopping))
         try:
             if job.state is TranscriptionJobState.CANCELLING:
                 return self._save(
@@ -429,7 +433,7 @@ class JobRunner:
                         self.audio_preparer.prepare(
                             project_id=job.project_id,
                             media_asset_id=job.media_asset_id,
-                            cancellation=token,
+                            cancellation=stop,
                             on_progress=lambda sample, throttle=throttle: report(
                                 sample.processed_ms / sample.total_ms,
                                 0.0,
@@ -460,11 +464,14 @@ class JobRunner:
                         overlap_ms=self.overlap_ms,
                         on_progress=self._on_progress,
                         cancellation=token,
+                        shutdown=shutdown,
                         progress_range=(PREPROCESS_END, transcribe_end),
                     )
                     job = outcome.job
                     if outcome.cancelled:
                         return job
+                    if outcome.stopped:
+                        raise _Stopping
                     result = outcome.result
                 elif job.state is TranscriptionJobState.ALIGNING:
                     # The text is final here: show it before the speakers exist.
@@ -512,6 +519,10 @@ class JobRunner:
             job = self._latest(job)
             if token.is_cancelled() or job.state is TranscriptionJobState.CANCELLING:
                 return self._finish_cancelled(job)
+            if self._stopping.is_set():
+                # Shutdown interrupted the work (e.g. normalization): resumable.
+                _LOG.info("Job %s left resumable on shutdown (%s)", job.id, error)
+                return job
             code = _error_code(error)
             _LOG.error("Job %s failed (%s)", job.id, code, exc_info=error)
             return self._fail(job, code)
@@ -542,7 +553,7 @@ class JobRunner:
                 self.audio_preparer.prepare(
                     project_id=job.project_id,
                     media_asset_id=job.media_asset_id,
-                    cancellation=token,
+                    cancellation=stop,
                 )
             with audio_source.open() as audio:
                 result = provider.diarize(
