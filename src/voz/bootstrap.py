@@ -4,7 +4,7 @@ Framework and infrastructure wiring belongs here so that the domain remains
 independent of transport concerns.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from importlib.util import find_spec
@@ -25,6 +25,7 @@ from voz.application.asr_device_selection import (
     select_execution,
 )
 from voz.application.assign_speakers import AssignProviderSpeakers, AssignSpeakers
+from voz.application.compute_slot import ComputeSlot
 from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.edit_segment import EditSegmentText
 from voz.application.estimate_cloud_cost import EstimateCloudTranscription
@@ -42,6 +43,7 @@ from voz.application.ports.diarization import (
     DiarizationFailureCode,
     DiarizationProvider,
 )
+from voz.application.ports.speech_synthesis import SpeechSynthesisProvider
 from voz.application.ports.transcription import (
     TranscriptionCancellationToken,
     TranscriptionError,
@@ -51,6 +53,7 @@ from voz.application.ports.transcription import (
     TranscriptionResult,
 )
 from voz.application.ports.transcription_job_selection import JobSelection
+from voz.application.ports.transcription_options import ModelRegistration
 from voz.application.prepare_inference_audio import PrepareInferenceAudio
 from voz.application.project_glossary import ProjectGlossary
 from voz.application.projects import (
@@ -67,6 +70,14 @@ from voz.application.speakers import (
     MergeSpeakers,
     UpdateSpeaker,
 )
+from voz.application.synthesis import (
+    CreateSynthesisJob,
+    DeleteSynthesisResult,
+    ListSynthesisHistory,
+    SynthesisModelCatalog,
+)
+from voz.application.synthesis.runner import SynthesisRunner
+from voz.application.synthesis_provider_registry import SynthesisProviderRegistry
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
 )
@@ -146,6 +157,10 @@ from voz.infrastructure.persistence.repositories import (
     SqliteTranscriptionJobRepository,
     SqliteTranscriptRepository,
 )
+from voz.infrastructure.persistence.synthesis import (
+    SqliteSynthesisJobRepository,
+    SqliteSynthesizedAudioRepository,
+)
 from voz.infrastructure.persistence.transcription_checkpoints import (
     SqliteTranscriptionCheckpointStore,
 )
@@ -153,6 +168,7 @@ from voz.infrastructure.persistence.transcription_job_selections import (
     SqliteTranscriptionJobSelectionRepository,
 )
 from voz.infrastructure.secrets import ProviderSecrets
+from voz.infrastructure.synthesis_storage import FileSystemSynthesisStorage
 from voz.interfaces.api.desktop_shortcut import create_desktop_shortcut_router
 from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
@@ -171,6 +187,7 @@ from voz.interfaces.api.quality_profiles import create_quality_profiles_router
 from voz.interfaces.api.segments import create_segments_router
 from voz.interfaces.api.shutdown import create_shutdown_router
 from voz.interfaces.api.speakers import create_speakers_router
+from voz.interfaces.api.synthesis import create_synthesis_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
 from voz.interfaces.api.waveform import create_waveform_router
 
@@ -211,6 +228,13 @@ class LocalAsrRuntime:
             checkpoints=SqliteTranscriptionCheckpointStore(engine),
             jobs=SqliteTranscriptionJobRepository(engine),
         )
+
+
+class NoSynthesisModels:
+    """Synthesis catalog until the TTS model catalog is wired (V4-03)."""
+
+    def list_models(self) -> tuple[ModelRegistration, ...]:
+        return ()
 
 
 ASR_IDLE_SECONDS = 60.0
@@ -281,6 +305,8 @@ def create_app(
     engine: Engine | None = None,
     request_shutdown: Callable[[], None] | None = None,
     allowed_hosts: Iterable[str] = (),
+    synthesis_providers: Sequence[SpeechSynthesisProvider] | None = None,
+    synthesis_catalog: SynthesisModelCatalog | None = None,
 ) -> FastAPI:
     """Build the local VOZ HTTP application.
 
@@ -291,6 +317,9 @@ def create_app(
     without it that endpoint answers 501. Requests must carry a loopback
     ``Host`` (any port) or one of ``allowed_hosts`` (the explicit bind host);
     anything else gets 400 ``host_not_allowed`` (DNS rebinding, ADR-0006).
+    ``synthesis_providers``/``synthesis_catalog`` replace the TTS engines and
+    their installed models (tests pass the fake engine); by default there are
+    none yet.
     """
     resolved_paths = resolve_voz_paths() if paths is None else paths
     owns_engine = engine is None
@@ -452,7 +481,10 @@ def create_app(
         # S6.15/S14.07: free ASR memory before diarization; recreated lazily.
         runtimes.release()
 
+    # One slot for every heavy job in the process: ASR, diarization and TTS.
+    compute_slot = ComputeSlot()
     runner = JobRunner(
+        compute_slot=compute_slot,
         jobs=jobs,
         selections=selections,
         media_assets=media_assets,
@@ -492,6 +524,25 @@ def create_app(
 
     desktop_shortcut = LocalDesktopShortcut(state_directory=resolved_paths.state)
 
+    # ponytail: no real TTS engine nor model catalog yet; sherpa-onnx (V4-02)
+    # and its catalog (V4-03) plug in here in their own slice.
+    synthesis_registry = SynthesisProviderRegistry(synthesis_providers or ())
+    tts_catalog = (
+        NoSynthesisModels() if synthesis_catalog is None else synthesis_catalog
+    )
+    synthesis_jobs = SqliteSynthesisJobRepository(resolved_engine)
+    synthesized_audio = SqliteSynthesizedAudioRepository(resolved_engine)
+    synthesis_storage = FileSystemSynthesisStorage(resolved_paths.data)
+    synthesis_runner = SynthesisRunner(
+        jobs=synthesis_jobs,
+        audio=synthesized_audio,
+        storage=synthesis_storage,
+        providers=synthesis_registry,
+        catalog=tts_catalog,
+        compute_slot=compute_slot,
+        release_other_runtimes=runtimes.release,
+    )
+
     class Lifespan:
         """Migrate on startup and dispose an owned engine on shutdown."""
 
@@ -502,6 +553,8 @@ def create_app(
             upgrade_to_head(resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY)
             runner.recover()
             runner.start()
+            synthesis_runner.recover()
+            synthesis_runner.start()
             # Re-point a broken or pre-V shortcut; never creates one (V1-05).
             desktop_shortcut.refresh()
             model_tasks.start()
@@ -514,6 +567,8 @@ def create_app(
         ) -> None:
             model_tasks.stop()
             runner.stop()
+            synthesis_runner.stop()
+            synthesis_registry.close_all()
             runtimes.close()
             for diarization_engine in diarization_engines:
                 diarization_engine.close()
@@ -654,6 +709,30 @@ def create_app(
     application.include_router(
         create_export_router(
             ExportTranscript(transcripts, segments, speakers, projects, media_assets)
+        )
+    )
+    application.include_router(
+        create_synthesis_router(
+            providers=synthesis_registry,
+            catalog=tts_catalog,
+            create=CreateSynthesisJob(
+                synthesis_registry,
+                tts_catalog,
+                synthesis_jobs,
+                synthesized_audio,
+                admission=admission,
+            ),
+            history=ListSynthesisHistory(synthesis_jobs, synthesized_audio),
+            delete=DeleteSynthesisResult(
+                synthesis_jobs,
+                synthesized_audio,
+                synthesis_storage,
+                admission=admission,
+            ),
+            jobs=synthesis_jobs,
+            audio=synthesized_audio,
+            storage=synthesis_storage,
+            runner=synthesis_runner,
         )
     )
     if STATIC_DIRECTORY.is_dir():

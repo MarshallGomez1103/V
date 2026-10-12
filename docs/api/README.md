@@ -33,7 +33,8 @@ semantics.
 - **Dates** are ISO 8601 with a time zone. Identifiers are canonical UUID
   strings.
 - **Destructive or side-effecting actions** (`POST /api/shutdown`,
-  `POST /api/desktop-shortcut`, `DELETE /api/projects/{id}`) require the custom
+  `POST /api/desktop-shortcut`, `DELETE /api/projects/{id}`,
+  `DELETE /api/synthesis/{id}`) require the custom
   header `X-VOZ-Action: <action>`. A custom header forces a cross-origin page
   through a CORS preflight, which the server never grants.
 - **No cloud calls** unless the user explicitly selects a cloud provider for a
@@ -53,6 +54,7 @@ semantics.
 | Waveform peaks | [waveform.md](waveform.md) |
 | Model manager and background install tasks | [models.md](models.md) |
 | Cloud provider keys and cost estimates | [providers.md](providers.md) |
+| Speech synthesis: options, jobs, progress, audio, history | [synthesis.md](synthesis.md) |
 
 `GET /api/health` returns `{"status": "ok", "version": "<version>"}` and works as a
 readiness probe (`scripts/check-install.sh` uses it).
