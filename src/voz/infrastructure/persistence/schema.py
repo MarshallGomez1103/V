@@ -7,6 +7,7 @@ from sqlalchemy import (
     Column,
     Float,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
@@ -289,6 +290,58 @@ project_glossaries = Table(
     Column("updated_at", String(40), nullable=False),
 )
 
+# Speech synthesis (migration 0009, ADR-0010). The request columns are a flat copy
+# of ``SynthesisRequest`` so a finished job stays reproducible and listable.
+synthesis_jobs = Table(
+    "synthesis_jobs",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("state", String(32), nullable=False),
+    Column("chunks_done", Integer, nullable=False),
+    Column("chunks_total", Integer, nullable=False),
+    Column("created_at", String(40), nullable=False),
+    Column("updated_at", String(40), nullable=False),
+    Column("started_at", String(40), nullable=True),
+    Column("error_code", Text, nullable=True),
+    Column("text", Text, nullable=False),
+    Column("provider_id", Text, nullable=False),
+    Column("model_id", Text, nullable=False),
+    Column("model_revision", Text, nullable=True),
+    Column("voice_id", Text, nullable=False),
+    Column("language", Text, nullable=True),
+    Column("speed", Float(), nullable=False),
+    Column("output_format", String(32), nullable=False),
+    CheckConstraint("chunks_total >= 1", name="chunks_total_positive"),
+    CheckConstraint(
+        "chunks_done >= 0 AND chunks_done <= chunks_total",
+        name="chunks_done_bounded",
+    ),
+    # Serves the history (newest first) and the restart recovery scan.
+    Index("ix_synthesis_jobs_state_created_at", "state", "created_at"),
+)
+
+synthesized_audio = Table(
+    "synthesized_audio",
+    metadata,
+    Column(
+        "job_id",
+        String(36),
+        ForeignKey("synthesis_jobs.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # Relative to V's synthesis storage; never an absolute host path.
+    Column("relative_path", Text, nullable=False),
+    Column("duration_ms", BigInteger, nullable=False),
+    Column("sample_rate", Integer, nullable=False),
+    Column("chunk_count", Integer, nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("sha256", String(64), nullable=False),
+    CheckConstraint("duration_ms > 0", name="duration_ms_positive"),
+    CheckConstraint("sample_rate > 0", name="sample_rate_positive"),
+    CheckConstraint("chunk_count > 0", name="chunk_count_positive"),
+    CheckConstraint("size_bytes > 0", name="size_bytes_positive"),
+)
+
 __all__ = [
     "media_assets",
     "metadata",
@@ -297,6 +350,8 @@ __all__ = [
     "segments",
     "speaker_turns",
     "speakers",
+    "synthesis_jobs",
+    "synthesized_audio",
     "transcription_checkpoints",
     "transcription_job_selections",
     "transcription_jobs",
