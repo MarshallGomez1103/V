@@ -179,6 +179,20 @@ def test_any_change_of_the_request_is_not_reused(
     assert len(jobs.items) == 2
 
 
+def test_reuse_does_not_depend_on_how_much_history_followed_it(
+    create: CreateSynthesisJob, jobs: MemoryJobs, audio: MemoryAudio
+) -> None:
+    first = create.execute(**BASE)
+    _complete(jobs, audio, first)
+    for number in range(600):  # far beyond the old newest-500 scan
+        create.execute(**_args({"text": f"Unrelated {number}."}))
+
+    again = create.execute(**BASE)
+
+    assert again.reused
+    assert again.job.id == first.job.id
+
+
 def test_failed_job_or_missing_audio_is_not_reused(
     create: CreateSynthesisJob, jobs: MemoryJobs, audio: MemoryAudio
 ) -> None:

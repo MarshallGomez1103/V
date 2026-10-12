@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from voz.domain.entities.synthesis_job import SynthesisJob
+from voz.domain.entities.synthesis_job import SynthesisJob, SynthesisJobState
 from voz.domain.entities.synthesized_audio import SynthesizedAudio
 
 
@@ -28,6 +28,12 @@ class SynthesisJobRepository(Protocol):
 
     def list_recent(self, limit: int) -> Sequence[SynthesisJob]:
         """Return up to ``limit`` jobs, newest first."""
+        ...
+
+    def find_by_hash(
+        self, request_hash: str, states: Collection[SynthesisJobState]
+    ) -> SynthesisJob | None:
+        """Return the newest job with this request hash in any of ``states``."""
         ...
 
     def list_recoverable(self) -> Sequence[SynthesisJob]:

@@ -17,6 +17,7 @@ from voz.application.ports.synthesis_repositories import (
     SynthesisJobRepository,
     SynthesizedAudioRepository,
 )
+from voz.application.synthesis.create_synthesis_job import request_hash
 from voz.domain.entities.synthesis_job import SynthesisJob, SynthesisJobState
 from voz.domain.entities.synthesis_request import SynthesisRequest
 from voz.domain.entities.synthesized_audio import SynthesizedAudio
@@ -221,6 +222,75 @@ def test_list_recent_rejects_a_non_positive_limit(
 ) -> None:
     with pytest.raises(ValueError, match="positive"):
         jobs.list_recent(limit)
+
+
+def test_request_hash_is_stored_with_the_job(
+    engine: Engine, jobs: SqliteSynthesisJobRepository
+) -> None:
+    job = _job()
+    jobs.add(job)
+
+    with engine.connect() as connection:
+        stored = connection.exec_driver_sql(
+            "SELECT request_hash FROM synthesis_jobs"
+        ).scalar_one()
+    assert stored == request_hash(REQUEST)
+
+
+def test_find_by_hash_returns_the_newest_job_in_the_given_states(
+    jobs: SqliteSynthesisJobRepository,
+) -> None:
+    def at(minutes: int) -> datetime:
+        return NOW + timedelta(minutes=minutes)
+
+    def done(created: datetime) -> SynthesisJob:
+        return (
+            _job(at=created)
+            .transition_to(SynthesisJobState.RUNNING, at=created)
+            .with_chunks_done(4, at=created)
+            .transition_to(SynthesisJobState.PERSISTING, at=created)
+            .transition_to(SynthesisJobState.COMPLETED, at=created)
+        )
+
+    old, new = done(at(1)), done(at(5))
+    queued = _job(at=at(9))
+    other = _job(at=at(11), request=SynthesisRequest("Otro texto", "p", "m", "v"))
+    for job in (old, new, queued, other):
+        jobs.add(job)
+    digest = request_hash(REQUEST)
+
+    assert jobs.find_by_hash(digest, [SynthesisJobState.COMPLETED]) == new
+    assert jobs.find_by_hash(digest, {SynthesisJobState.QUEUED}) == queued
+    assert (
+        jobs.find_by_hash(
+            digest, (SynthesisJobState.COMPLETED, SynthesisJobState.QUEUED)
+        )
+        == queued
+    )
+    assert jobs.find_by_hash(digest, [SynthesisJobState.FAILED]) is None
+    assert jobs.find_by_hash(digest, []) is None
+    assert (
+        jobs.find_by_hash(request_hash(other.request), [SynthesisJobState.QUEUED])
+        == other
+    )
+    assert jobs.find_by_hash("0" * 64, [SynthesisJobState.QUEUED]) is None
+
+
+def test_find_by_hash_follows_saved_state_and_deleted_jobs(
+    jobs: SqliteSynthesisJobRepository,
+) -> None:
+    job = _job()
+    jobs.add(job)
+    digest = request_hash(REQUEST)
+    running = job.transition_to(
+        SynthesisJobState.RUNNING, at=NOW + timedelta(seconds=1)
+    )
+    jobs.save(running)
+
+    assert jobs.find_by_hash(digest, [SynthesisJobState.QUEUED]) is None
+    assert jobs.find_by_hash(digest, [SynthesisJobState.RUNNING]) == running
+    jobs.delete(job.id)
+    assert jobs.find_by_hash(digest, [SynthesisJobState.RUNNING]) is None
 
 
 def test_list_recoverable_returns_only_non_terminal_jobs_oldest_first(

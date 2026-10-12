@@ -78,7 +78,7 @@ def test_upgrade_keeps_legacy_data_and_backs_up_the_0008_database(
 
     upgrade_to_head(engine, backups)
 
-    assert current_revision(engine) == head_revision() == "0009_synthesis"
+    assert current_revision(engine) == head_revision() == "0010_synthesis_request_hash"
     assert set(inspect(engine).get_table_names()) >= SYNTHESIS_TABLES
     with engine.connect() as connection:
         assert connection.exec_driver_sql("SELECT id FROM projects").all() == [("p1",)]
@@ -132,8 +132,8 @@ def test_history_index_exists_and_checks_reject_impossible_rows(
     _migrate(engine, "upgrade", "head")
 
     indexes = inspect(engine).get_indexes("synthesis_jobs")
-    assert [(i["name"], i["column_names"]) for i in indexes] == [
-        ("ix_synthesis_jobs_state_created_at", ["state", "created_at"])
+    assert ("ix_synthesis_jobs_state_created_at", ["state", "created_at"]) in [
+        (i["name"], i["column_names"]) for i in indexes
     ]
     with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.exec_driver_sql(INSERT_JOB, ("zero", 0))  # chunks_total >= 1

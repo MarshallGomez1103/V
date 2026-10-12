@@ -38,13 +38,6 @@ from voz.domain.entities.synthesis_request import (
 )
 from voz.domain.entities.synthesized_audio import SynthesizedAudio
 
-# ponytail: reuse is found by scanning the newest jobs because the repository
-# port has no lookup by request hash. Ceiling: results older than this many jobs
-# are re-synthesized instead of reused. A later persistence slice should add a
-# nullable indexed `request_hash` column to `synthesis_jobs` and a
-# `find_completed_by_hash` method, then this scan can go.
-REUSE_SCAN_LIMIT = 500
-
 
 class SynthesisModelCatalog(Protocol):
     """Registered models; the transcription catalog satisfies it structurally."""
@@ -151,16 +144,14 @@ class CreateSynthesisJob:
 
     def _find_existing(self, request: SynthesisRequest) -> CreatedSynthesis | None:
         wanted = request_hash(request)
-        in_progress: SynthesisJob | None = None
-        for job in self.jobs.list_recent(REUSE_SCAN_LIMIT):  # newest first
-            if request_hash(job.request) != wanted:
-                continue
-            if job.state is SynthesisJobState.COMPLETED:
-                stored = self.audio.get_by_job(job.id)
-                if stored is not None:
-                    return CreatedSynthesis(job, stored, reused=True)
-            elif job.state.is_processable and in_progress is None:
-                in_progress = job
+        done = self.jobs.find_by_hash(wanted, (SynthesisJobState.COMPLETED,))
+        if done is not None:
+            stored = self.audio.get_by_job(done.id)
+            if stored is not None:
+                return CreatedSynthesis(done, stored, reused=True)
+        in_progress = self.jobs.find_by_hash(
+            wanted, tuple(state for state in SynthesisJobState if state.is_processable)
+        )
         return (
             None if in_progress is None else CreatedSynthesis(in_progress, None, True)
         )
@@ -224,7 +215,6 @@ class CreateSynthesisJob:
 
 
 __all__ = [
-    "REUSE_SCAN_LIMIT",
     "CreateSynthesisJob",
     "CreatedSynthesis",
     "SynthesisModelCatalog",

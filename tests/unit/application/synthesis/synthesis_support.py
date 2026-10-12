@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import BinaryIO
 from uuid import UUID
@@ -12,7 +12,10 @@ from voz.application.ports.transcription_options import (
     InstallationStatus,
     ModelRegistration,
 )
-from voz.domain.entities.synthesis_job import SynthesisJob
+from voz.application.synthesis.create_synthesis_job import (
+    request_hash as hash_request,
+)
+from voz.domain.entities.synthesis_job import SynthesisJob, SynthesisJobState
 from voz.domain.entities.synthesized_audio import SynthesizedAudio
 from voz.infrastructure.tts.fake import fake_tts_descriptor
 
@@ -37,6 +40,16 @@ class MemoryJobs:
     def list_recent(self, limit: int) -> Sequence[SynthesisJob]:
         newest = sorted(self.items.values(), key=lambda j: j.created_at, reverse=True)
         return newest[:limit]
+
+    def find_by_hash(
+        self, request_hash: str, states: Collection[SynthesisJobState]
+    ) -> SynthesisJob | None:
+        matches = [
+            job
+            for job in self.items.values()
+            if job.state in states and hash_request(job.request) == request_hash
+        ]
+        return max(matches, key=lambda job: job.created_at, default=None)
 
     def list_recoverable(self) -> Sequence[SynthesisJob]:
         return [j for j in self.items.values() if not j.state.is_terminal]

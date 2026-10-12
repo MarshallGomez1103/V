@@ -311,6 +311,9 @@ synthesis_jobs = Table(
     Column("language", Text, nullable=True),
     Column("speed", Float(), nullable=False),
     Column("output_format", String(32), nullable=False),
+    # Identity of the rendered audio (migration 0010); NULL only for legacy rows
+    # whose request no longer validates.
+    Column("request_hash", String(64), nullable=True),
     CheckConstraint("chunks_total >= 1", name="chunks_total_positive"),
     CheckConstraint(
         "chunks_done >= 0 AND chunks_done <= chunks_total",
@@ -318,6 +321,8 @@ synthesis_jobs = Table(
     ),
     # Serves the history (newest first) and the restart recovery scan.
     Index("ix_synthesis_jobs_state_created_at", "state", "created_at"),
+    # Serves the reuse lookup of an identical request.
+    Index("ix_synthesis_jobs_request_hash_state", "request_hash", "state"),
 )
 
 synthesized_audio = Table(

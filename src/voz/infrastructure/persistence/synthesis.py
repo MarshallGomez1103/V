@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import Engine, RowMapping, delete, insert, select, update
 
+from voz.application.synthesis.create_synthesis_job import (
+    request_hash as hash_request,
+)
 from voz.domain.entities.synthesis_job import SynthesisJob, SynthesisJobState
 from voz.domain.entities.synthesis_request import (
     SynthesisOutputFormat,
@@ -52,6 +55,7 @@ def _job_values(job: SynthesisJob) -> dict[str, object]:
         "language": request.language,
         "speed": request.speed,
         "output_format": request.output_format.value,
+        "request_hash": hash_request(request),
     }
 
 
@@ -154,6 +158,27 @@ class SqliteSynthesisJobRepository:
                 .all()
             )
         return tuple(_job_from_row(row) for row in rows)
+
+    def find_by_hash(
+        self, request_hash: str, states: Collection[SynthesisJobState]
+    ) -> SynthesisJob | None:
+        with self._engine.connect() as connection:
+            row = (
+                connection.execute(
+                    select(synthesis_jobs)
+                    .where(
+                        synthesis_jobs.c.request_hash == request_hash,
+                        synthesis_jobs.c.state.in_([state.value for state in states]),
+                    )
+                    .order_by(
+                        synthesis_jobs.c.created_at.desc(), synthesis_jobs.c.id.desc()
+                    )
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return None if row is None else _job_from_row(row)
 
     def list_recoverable(self) -> Sequence[SynthesisJob]:
         terminal = tuple(
