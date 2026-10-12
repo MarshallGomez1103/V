@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import {
   Button,
   DataTable,
@@ -20,18 +20,23 @@ import { ErrorFilled, TrashCan } from '@carbon/icons-react'
 import { isAbortError } from '../api/errors'
 import {
   cancelModelTask,
+  capabilityLabels,
   deleteModel,
   getModels,
   installModel,
   messageForModelError,
+  MODEL_GROUPS,
+  modelGroup,
   ModelApiError,
   type InstallMethod,
+  type ModelGroup,
   type ModelsPayload,
   type ModelView,
   type TaskView,
 } from '../api/models'
 import { isActiveTask, useModelTasks } from '../hooks/useModelTasks'
 import { translate, useI18n, type Translate } from '../i18n/i18n'
+import type { MessageKey } from '../i18n/messages'
 import { formatBytes } from '../lib/formatBytes'
 import { compareModelIds } from '../lib/modelOrder'
 import { Busy } from './Busy'
@@ -53,6 +58,24 @@ type LoadState =
 type DialogState =
   | { kind: 'download'; model: ModelView }
   | { kind: 'delete'; model: ModelView }
+
+/** Título, descripción opcional y nombre accesible de la tabla de cada sección. */
+const GROUP_TEXT: Record<
+  ModelGroup,
+  { title: MessageKey; description: MessageKey | null; table: MessageKey }
+> = {
+  transcription: { title: 'mm.group.transcription', description: null, table: 'mm.engines' },
+  diarization: {
+    title: 'mm.group.diarization',
+    description: 'mm.speakers.desc',
+    table: 'mm.speakers.table',
+  },
+  synthesis: {
+    title: 'mm.group.synthesis',
+    description: 'mm.group.synthesis.desc',
+    table: 'mm.group.synthesis.table',
+  },
+}
 
 const RECOMMENDED_KEY = 'faster-whisper:turbo'
 
@@ -134,6 +157,14 @@ function DownloadDialog({
   const insufficient = freeBytes !== null && freeBytes < model.size_bytes
   const from =
     model.kind === 'diarization' ? 'GitHub' : 'HuggingFace (' + String(model.source) + ')'
+  const capabilities = capabilityLabels(model, t)
+  const source =
+    model.source === null
+      ? t('mm.download.release')
+      : model.source +
+        (model.revision === null
+          ? ''
+          : ' · ' + t('mm.download.revision', { rev: model.revision.slice(0, 7) }))
   return (
     <Modal
       open
@@ -146,6 +177,23 @@ function DownloadDialog({
       onRequestSubmit={onConfirm}
     >
       <p>{t('mm.download.body', { size: formatBytes(model.size_bytes), from })}</p>
+      <dl className="voz-model-facts">
+        <div>
+          <dt>{t('mm.download.license')}</dt>
+          <dd>{model.license}</dd>
+        </div>
+        <div>
+          <dt>{t('mm.download.source')}</dt>
+          <dd>{source}</dd>
+        </div>
+        {capabilities.length > 0 ? (
+          <div>
+            <dt>{t('mm.download.capabilities')}</dt>
+            <dd>{capabilities.join(' · ')}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <p className="voz-model__sub">{t('mm.download.licenseNote')}</p>
       {insufficient ? (
         <Notice
           kind="warning"
@@ -269,6 +317,8 @@ function StatusTag({ model }: { model: ModelView }) {
 
 function NameCell({ model, task, notice }: Pick<ModelCellProps, 'model' | 'task' | 'notice'>) {
   const { t } = useI18n()
+  // La capacidad principal ya da nombre a la sección: aquí solo lo que añade.
+  const capabilities = capabilityLabels(model, t, modelGroup(model))
   const failure =
     !model.installed && task?.state === 'failed'
       ? messageForModelError(task.error_code ?? 'model_task_failed')
@@ -289,6 +339,11 @@ function NameCell({ model, task, notice }: Pick<ModelCellProps, 'model' | 'task'
         <span className="voz-model__sub">
           {t('mm.requires', { what: requiresLabel(model.requires, t) }) +
             (!model.installed && missingRuntime ? t('mm.requires.blocked') : '')}
+        </span>
+      ) : null}
+      {capabilities.length > 0 ? (
+        <span className="voz-model__sub">
+          {t('mm.cap.list', { list: capabilities.join(' · ') })}
         </span>
       ) : null}
       {failure ? (
@@ -516,6 +571,28 @@ function ModelTable({
   )
 }
 
+function ModelGroupSection({
+  titleId,
+  title,
+  description,
+  children,
+}: {
+  titleId: string
+  title: string
+  description: string | null
+  children: ReactNode
+}) {
+  return (
+    <section aria-labelledby={titleId} className="voz-models__group">
+      <h2 id={titleId} className="voz-section-title">
+        {title}
+      </h2>
+      {description === null ? null : <p className="voz-section-description">{description}</p>}
+      {children}
+    </section>
+  )
+}
+
 export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const { t } = useI18n()
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
@@ -523,8 +600,7 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set())
   const [notices, setNotices] = useState<Record<string, string>>({})
-  const headingId = useId()
-  const speakersId = useId()
+  const idBase = useId()
   const onModelsChangedRef = useRef(onModelsChanged)
 
   useEffect(() => {
@@ -602,8 +678,10 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const latest = latestByModel(tasks)
   const polling = tasks.some(isActiveTask)
   const models = state.phase === 'ready' ? state.payload.models : []
-  const asr = models.filter((m) => m.kind !== 'diarization').sort(compareModels)
-  const speakers = models.filter((m) => m.kind === 'diarization')
+  const groups = MODEL_GROUPS.map((group) => ({
+    group,
+    list: models.filter((m) => modelGroup(m) === group).sort(compareModels),
+  })).filter(({ list }) => list.length > 0)
 
   const renderTable = (label: string, list: ModelView[]) => (
     <ModelTable
@@ -626,11 +704,7 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   )
 
   return (
-    <section className="voz-models" aria-labelledby={headingId}>
-      <h2 id={headingId} className="voz-section-title">
-        {t('mm.engines')}
-      </h2>
-
+    <section className="voz-models" aria-label={t('mm.title')}>
       {state.phase === 'loading' ? (
         <div aria-live="polite">
           <Busy description={t('opt.loading')} />
@@ -660,16 +734,20 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
               title={t('mm.tasks.error')}
             />
           ) : null}
-          {asr.length > 0 ? renderTable(t('mm.engines'), asr) : null}
-          {speakers.length > 0 ? (
-            <section aria-labelledby={speakersId} className="voz-models__speakers">
-              <h2 id={speakersId} className="voz-section-title">
-                {t('spk.title')}
-              </h2>
-              <p className="voz-section-description">{t('mm.speakers.desc')}</p>
-              {renderTable(t('mm.speakers.table'), speakers)}
-            </section>
-          ) : null}
+          {groups.map(({ group, list }) => (
+            <ModelGroupSection
+              key={group}
+              titleId={idBase + group}
+              title={t(GROUP_TEXT[group].title)}
+              description={
+                GROUP_TEXT[group].description === null
+                  ? null
+                  : t(GROUP_TEXT[group].description)
+              }
+            >
+              {renderTable(t(GROUP_TEXT[group].table), list)}
+            </ModelGroupSection>
+          ))}
         </>
       )}
 

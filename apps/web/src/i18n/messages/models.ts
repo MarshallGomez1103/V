@@ -2,6 +2,27 @@ import type { Catalog } from '../messages'
 
 export const models = {
   'mm.engines': ['Motores de transcripción', 'Transcription engines'],
+  'mm.title': ['Modelos', 'Models'],
+  'mm.group.transcription': ['Transcripción', 'Transcription'],
+  'mm.group.diarization': ['Hablantes', 'Speakers'],
+  'mm.group.synthesis': ['Síntesis de voz', 'Speech synthesis'],
+  'mm.group.synthesis.table': ['Modelos de síntesis de voz', 'Speech synthesis models'],
+  'mm.group.synthesis.desc': [
+    'Modelos que convierten texto en voz. Funcionan sin conexión una vez instalados.',
+    'Models that turn text into speech. They work offline once installed.',
+  ],
+  'mm.cap.transcription': ['Transcripción', 'Transcription'],
+  'mm.cap.diarization': ['Separación de hablantes', 'Speaker separation'],
+  'mm.cap.word_timestamps': ['Tiempos por palabra', 'Word timestamps'],
+  'mm.cap.translation': ['Traducción al inglés', 'Translation to English'],
+  'mm.cap.language_detection': ['Detección de idioma', 'Language detection'],
+  'mm.cap.cpu': ['CPU', 'CPU'],
+  'mm.cap.gpu': ['GPU', 'GPU'],
+  'mm.cap.synthesis': ['Síntesis de voz', 'Speech synthesis'],
+  'mm.cap.alignment': ['Alineación forzada', 'Forced alignment'],
+  'mm.cap.wake_word': ['Palabra de activación', 'Wake word'],
+  'mm.cap.realtime': ['Tiempo real', 'Real time'],
+  'mm.cap.list': ['Capacidades: {list}', 'Capabilities: {list}'],
   'mm.requires': ['Requiere {what}', 'Requires {what}'],
   'mm.requires.diarization': ['el extra «diarization»', 'the "diarization" extra'],
   'mm.requires.blocked': [
@@ -43,6 +64,18 @@ export const models = {
   'mm.download.body': [
     'Se descargarán {size} desde {from}. Es la única vez que V necesita Internet para este modelo: después funciona sin conexión.',
     '{size} will be downloaded from {from}. This is the only time V needs the Internet for this model: afterwards it works offline.',
+  ],
+  'mm.download.license': ['Licencia', 'License'],
+  'mm.download.source': ['Fuente', 'Source'],
+  'mm.download.capabilities': ['Capacidades', 'Capabilities'],
+  'mm.download.release': [
+    'Archivos de la versión publicada en GitHub, verificados con SHA-256',
+    'Release files published on GitHub, verified with SHA-256',
+  ],
+  'mm.download.revision': ['revisión {rev}', 'revision {rev}'],
+  'mm.download.licenseNote': [
+    'La licencia indica cómo puedes usar este modelo. Léela antes de descargarlo.',
+    'The license says how you may use this model. Read it before downloading.',
   ],
   'mm.download.lowSpace': [
     'Solo quedan {free} libres: la descarga probablemente falle por falta de espacio.',

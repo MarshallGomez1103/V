@@ -2,15 +2,16 @@
  * Cliente tipado del gestor de modelos (docs/api/models.md): consulta, borrado,
  * instalación (descarga/importación) y tareas. Nunca rutas del host.
  */
-import { MESSAGES } from '../i18n/messages'
-import { translate, translateCode } from '../i18n/i18n'
+import { MESSAGES, type MessageKey } from '../i18n/messages'
+import { translate, translateCode, type Translate } from '../i18n/i18n'
 import { readErrorCode } from './errors'
 
 export interface ExternalSource {
   origin: string
 }
 
-export type ModelKind = 'asr' | 'diarization'
+/** `asr` y `diarization` hoy; el backend lo declara como texto libre (síntesis llegará con otro valor). */
+export type ModelKind = string
 
 export interface ModelView {
   /** Clave de la API: "<provider_id>:<model_id>" (los ids sueltos chocan entre proveedores). */
@@ -27,7 +28,7 @@ export interface ModelView {
   revision: string | null
   license: string
   multilingual: boolean
-  /** Capacidades declaradas (transcription, synthesis, diarization...); V6-03 las usará. */
+  /** Capacidades declaradas (transcription, synthesis, diarization...); siempre vienen en la API actual. */
   capabilities?: string[]
   profile: string | null
   size_bytes: number
@@ -69,6 +70,68 @@ export interface TaskView {
 
 export type InstallMethod = 'download' | 'import'
 
+/** Sección del Model Manager a la que pertenece un modelo, según su capacidad principal. */
+export type ModelGroup = 'transcription' | 'diarization' | 'synthesis'
+
+/** Orden de las secciones; una sección sin modelos no se muestra. */
+export const MODEL_GROUPS: readonly ModelGroup[] = [
+  'transcription',
+  'diarization',
+  'synthesis',
+]
+
+/**
+ * Capacidad principal: la que decide la sección. `transcription` gana si hay duda y es
+ * también el destino de un modelo sin capacidades (respuesta anterior a V6-01).
+ */
+export function modelGroup(model: ModelView): ModelGroup {
+  const capabilities = model.capabilities ?? []
+  if (capabilities.includes('transcription')) {
+    return 'transcription'
+  }
+  if (model.kind === 'diarization' || capabilities.includes('diarization')) {
+    return 'diarization'
+  }
+  return capabilities.includes('synthesis') ? 'synthesis' : 'transcription'
+}
+
+/** Capacidades conocidas en el orden en que se muestran: funciones primero, hardware al final. */
+const CAPABILITY_ORDER: readonly string[] = [
+  'transcription',
+  'diarization',
+  'synthesis',
+  'translation',
+  'language_detection',
+  'word_timestamps',
+  'alignment',
+  'wake_word',
+  'realtime',
+  'cpu',
+  'gpu',
+]
+
+/** Etiqueta legible de una capacidad; una desconocida (vocabulario nuevo del backend) se muestra tal cual. */
+export function capabilityLabel(capability: string, t: Translate): string {
+  const key = 'mm.cap.' + capability
+  return Object.hasOwn(MESSAGES, key) ? t(key as MessageKey) : capability
+}
+
+/** Capacidades ordenadas y traducidas; `omit` quita la que ya da nombre a la sección. */
+export function capabilityLabels(
+  model: ModelView,
+  t: Translate,
+  omit?: string,
+): string[] {
+  const rank = (capability: string) => {
+    const index = CAPABILITY_ORDER.indexOf(capability)
+    return index === -1 ? CAPABILITY_ORDER.length : index
+  }
+  return (model.capabilities ?? [])
+    .filter((capability) => capability !== omit)
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((capability) => capabilityLabel(capability, t))
+}
+
 export class ModelApiError extends Error {
   readonly code: string
   readonly status: number | null
@@ -109,7 +172,7 @@ function isModelView(value: unknown): value is ModelView {
     isRecord(value) &&
     typeof value.key === 'string' &&
     typeof value.provider_id === 'string' &&
-    (value.kind === 'asr' || value.kind === 'diarization') &&
+    typeof value.kind === 'string' &&
     isNullableString(value.requires) &&
     typeof value.runtime_available === 'boolean' &&
     typeof value.model_id === 'string' &&

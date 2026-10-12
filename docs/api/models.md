@@ -65,7 +65,7 @@ HTTP 200. One entry for every catalog model, installed or not.
 | Field | Meaning |
 | --- | --- |
 | `key`, `provider_id` | The API key (see above) and the provider. |
-| `kind` | `asr` or `diarization`. The UI groups "Speakers" separately. |
+| `kind` | Free-form family string (`asr`, `diarization` today; speech synthesis will add its own). Clients must not reject unknown values; group by `capabilities` instead. |
 | `requires` | Runtime the model needs in order to be used: `whisper-cli` (whisper.cpp), `diarization` (optional extra with sherpa-onnx) or `null`. |
 | `runtime_available` | `false` if that runtime is missing: the model is listed but the UI does not offer to install it ("requires the diarization extra"). whisper.cpp is not even listed without `whisper-cli`. |
 | `model_id` | Identifier within the provider; for faster-whisper, the same as in `/api/transcription-options`. |
@@ -99,6 +99,19 @@ The speaker models are the `diarization:sherpa-default` entry
 `installed` is false, offer the download
 (`POST /api/models/diarization:sherpa-default/install`); otherwise
 `POST /api/jobs` answers 409 `diarization_models_missing`.
+
+### Grouping and license in the UI (V6-03)
+
+`license`, `source`, `revision` and `capabilities` are the whole contract the
+Model Manager needs; V6-03 added no fields. The web client derives the section of
+each model from its **primary capability**, in this order: `transcription` ->
+Transcription; `diarization` (or `kind: "diarization"`) -> Speakers; `synthesis`
+-> Speech synthesis. A model without recognizable capabilities (a response from
+before V6-01) falls into Transcription. A section with no models is not shown.
+The license, a short `source@revision` (first 7 characters of the SHA) and the
+readable capabilities are shown in the download confirmation dialog, before
+anything is installed. `source` and `revision` are `null` for release-asset
+models (diarization); the dialog then says the files are verified with SHA-256.
 
 ### Capability vocabulary
 

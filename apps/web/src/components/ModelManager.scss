@@ -17,8 +17,33 @@
   }
 }
 
-.voz-models__speakers {
-  margin-block-start: $spacing-06;
+.voz-models__group {
+  display: grid;
+  gap: $spacing-04;
+  margin-block-start: $spacing-05;
+}
+
+.voz-model-facts {
+  display: grid;
+  gap: $spacing-03;
+  margin: $spacing-04 0;
+  padding: $spacing-04;
+  border: 1px solid $border-subtle-01;
+  border-inline-start: 4px solid $border-interactive;
+  background: $layer-02;
+
+  dt {
+    @include type-style('label-01');
+
+    color: $text-secondary;
+  }
+
+  dd {
+    @include type-style('body-compact-01');
+
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
 }
 
 .voz-model {

@@ -6,9 +6,14 @@ import {
   getModels,
   installModel,
   listModelTasks,
+  capabilityLabel,
+  capabilityLabels,
   messageForModelError,
+  modelGroup,
   ModelApiError,
+  type ModelView,
 } from './models'
+import { translateIn } from '../i18n/i18n'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -108,6 +113,13 @@ describe('api/models', () => {
     await expect(getModels()).rejects.toMatchObject({ code: 'invalid_response' })
   })
 
+  it('getModels acepta un kind nuevo (síntesis) sin invalidar la lista', async () => {
+    const disk = { models_bytes: 0, free_bytes: null }
+    const voice = { ...MODEL, kind: 'tts', capabilities: ['synthesis'] }
+    stubFetch(jsonResponse(200, { models: [voice], disk }))
+    await expect(getModels()).resolves.toEqual({ models: [voice], disk })
+  })
+
   it('getModels rechaza un formato inesperado', async () => {
     stubFetch(jsonResponse(200, { models: [{ model_id: 1 }], disk: {} }))
 
@@ -195,5 +207,66 @@ describe('api/models', () => {
     )
     expect(messageForModelError('algo_raro')).toMatch(/algo_raro/)
     expect(messageForModelError('constructor')).toMatch(/constructor/)
+  })
+})
+
+describe('agrupación y etiquetas de capacidades', () => {
+  const view = (patch: Partial<ModelView>): ModelView => ({
+    ...(MODEL as ModelView),
+    ...patch,
+  })
+
+  it('la capacidad principal decide la sección', () => {
+    expect(modelGroup(view({ capabilities: ['cpu', 'transcription'] }))).toBe('transcription')
+    expect(modelGroup(view({ kind: 'diarization', capabilities: ['cpu', 'diarization'] }))).toBe(
+      'diarization',
+    )
+    expect(modelGroup(view({ kind: 'tts', capabilities: ['cpu', 'synthesis'] }))).toBe('synthesis')
+  })
+
+  it('sin capacidades o con vocabulario desconocido cae en transcripción; diarización por kind', () => {
+    expect(modelGroup(view({}))).toBe('transcription')
+    expect(modelGroup(view({ capabilities: ['wake_word'] }))).toBe('transcription')
+    expect(modelGroup(view({ kind: 'diarization' }))).toBe('diarization')
+  })
+
+  const es = (key: Parameters<typeof translateIn>[1]) => translateIn('es', key)
+  const en = (key: Parameters<typeof translateIn>[1]) => translateIn('en', key)
+
+  it('etiqueta cada capacidad del vocabulario en es y en', () => {
+    const vocabulary = [
+      'transcription',
+      'diarization',
+      'word_timestamps',
+      'translation',
+      'language_detection',
+      'cpu',
+      'gpu',
+      'synthesis',
+      'alignment',
+      'wake_word',
+      'realtime',
+    ]
+    for (const capability of vocabulary) {
+      expect(capabilityLabel(capability, es)).not.toBe(capability.replace('_', ' '))
+      expect(capabilityLabel(capability, es)).not.toMatch(/^mm\./)
+      expect(capabilityLabel(capability, en)).not.toMatch(/^mm\./)
+    }
+    expect(capabilityLabel('synthesis', es)).toBe('Síntesis de voz')
+    expect(capabilityLabel('word_timestamps', en)).toBe('Word timestamps')
+  })
+
+  it('una capacidad desconocida se muestra tal cual', () => {
+    expect(capabilityLabel('telepathy', es)).toBe('telepathy')
+  })
+
+  it('ordena funciones antes que hardware y omite la principal', () => {
+    const model = view({ capabilities: ['gpu', 'cpu', 'translation', 'transcription', 'zeta'] })
+    expect(capabilityLabels(model, es, 'transcription')).toEqual([
+      'Traducción al inglés',
+      'CPU',
+      'GPU',
+      'zeta',
+    ])
   })
 })

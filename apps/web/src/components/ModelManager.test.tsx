@@ -6,9 +6,10 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ModelView, TaskView } from '../api/models'
+import { setLang } from '../i18n/i18n'
 import { ModelManager } from './ModelManager'
 
 beforeAll(() => {
@@ -127,7 +128,7 @@ describe('ModelManager', () => {
     render(<ModelManager />)
 
     expect(
-      await screen.findByRole('heading', { level: 2, name: 'Motores de transcripción' }),
+      await screen.findByRole('heading', { level: 2, name: 'Transcripción' }),
     ).toBeDefined()
     expect(
       screen
@@ -628,15 +629,181 @@ describe('ModelManager', () => {
     })
 
     it('en inglés traduce encabezados, estados y acciones', async () => {
-      const { setLang } = await import('../i18n/i18n')
       setLang('en')
       stubApi(models([model({ model_id: 'tiny' })]), tasks([]))
       render(<ModelManager />)
 
-      expect(await screen.findByRole('heading', { level: 2, name: 'Transcription engines' })).toBeDefined()
+      expect(await screen.findByRole('heading', { level: 2, name: 'Transcription' })).toBeDefined()
       expect(screen.getByRole('columnheader', { name: /Status/ })).toBeDefined()
       expect(screen.getByRole('button', { name: 'Not installed' })).toBeDefined()
       expect(screen.getByRole('button', { name: /Download \(1.6\sGB\)/ })).toBeDefined()
+    })
+  })
+  describe('secciones por capacidad y licencia antes de descargar', () => {
+    beforeEach(() => {
+      setLang('es')
+    })
+
+    const speakerModel = () =>
+      model({
+        key: 'diarization:sherpa-default',
+        provider_id: 'diarization',
+        kind: 'diarization',
+        requires: 'diarization',
+        model_id: 'sherpa-default',
+        display_name: 'Separación de hablantes (sherpa-onnx)',
+        source: null,
+        revision: null,
+        profile: null,
+        capabilities: ['cpu', 'diarization'],
+        license: 'MIT (pyannote segmentation) · CC-BY-4.0 (WeSpeaker, VoxCeleb-trained)',
+        size_bytes: 33_488_994,
+      })
+    const asr = (id: string) => model({ model_id: id, capabilities: ['transcription', 'cpu'] })
+    const voiceModel = () =>
+      model({
+        key: 'sherpa-tts:kitten',
+        provider_id: 'sherpa-tts',
+        kind: 'tts',
+        model_id: 'kitten',
+        display_name: 'Kitten TTS',
+        source: 'org/kitten-tts',
+        revision: '0123456789abcdef0123456789abcdef01234567',
+        profile: null,
+        capabilities: ['cpu', 'synthesis'],
+        license: 'Apache-2.0',
+        size_bytes: 25_000_000,
+      })
+
+    it('agrupa por capacidad principal y no muestra secciones vacías', async () => {
+      stubApi(models([speakerModel(), asr('turbo')]), tasks([]))
+
+      render(<ModelManager />)
+
+      await screen.findByRole('heading', { level: 2, name: 'Transcripción' })
+      const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+      expect(headings).toEqual(['Transcripción', 'Hablantes'])
+      expect(screen.queryByRole('heading', { name: 'Síntesis de voz' })).toBeNull()
+      const transcription = screen.getByRole('region', { name: 'Transcripción' })
+      const speakers = screen.getByRole('region', { name: 'Hablantes' })
+      expect(within(transcription).getAllByRole('row')).toHaveLength(2)
+      expect(within(speakers).getAllByRole('row')).toHaveLength(2)
+    })
+
+    it('muestra la sección de síntesis cuando hay modelos con synthesis', async () => {
+      stubApi(models([voiceModel(), asr('turbo')]), tasks([]))
+
+      render(<ModelManager />)
+
+      const section = await screen.findByRole('region', { name: 'Síntesis de voz' })
+      expect(within(section).getAllByRole('row')).toHaveLength(2)
+      expect(within(section).getByText('Kitten TTS')).toBeDefined()
+      expect(
+        within(screen.getByRole('region', { name: 'Transcripción' })).queryByText('Kitten TTS'),
+      ).toBeNull()
+      expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+        'Transcripción',
+        'Síntesis de voz',
+      ])
+    })
+
+    it('lista las capacidades legibles en cada fila, sin repetir la principal', async () => {
+      stubApi(
+        models([
+          model({
+            model_id: 'turbo',
+            capabilities: [
+              'gpu',
+              'word_timestamps',
+              'transcription',
+              'translation',
+              'language_detection',
+              'cpu',
+            ],
+          }),
+        ]),
+        tasks([]),
+      )
+
+      render(<ModelManager />)
+
+      const [row] = (await screen.findAllByRole('row')).slice(1) as [HTMLElement]
+      expect(row.textContent).toContain(
+        'Capacidades: Traducción al inglés · Detección de idioma · Tiempos por palabra · CPU · GPU',
+      )
+      expect(row.textContent).not.toMatch(/Capacidades: Transcripción/)
+    })
+
+    it('un modelo sin capacidades (respuesta antigua) sigue en Transcripción', async () => {
+      stubApi(models([model({ model_id: 'tiny' }), model({ model_id: 'base' })]), tasks([]))
+
+      render(<ModelManager />)
+
+      const section = await screen.findByRole('region', { name: 'Transcripción' })
+      expect(within(section).getAllByRole('row')).toHaveLength(3)
+      expect(section.textContent).not.toMatch(/Capacidades/)
+    })
+
+    it('el diálogo de descarga muestra licencia, fuente corta y capacidades antes de instalar', async () => {
+      const fetchMock = stubApi(
+        models([
+          model({
+            model_id: 'turbo',
+            license: 'MIT',
+            revision: 'd90ca5fe260221311c53c58e660288d3deb8d356',
+            capabilities: ['transcription', 'translation', 'cpu', 'gpu'],
+          }),
+        ]),
+        tasks([]),
+      )
+
+      render(<ModelManager />)
+      fireEvent.click(await screen.findByRole('button', { name: /descargar \(1,6\sGB\)/i }))
+
+      const dialog = await screen.findByRole('dialog', { name: /descargar faster whisper turbo/i })
+      const facts = within(dialog)
+      expect(facts.getByText('Licencia').nextElementSibling?.textContent).toBe('MIT')
+      expect(facts.getByText('Fuente').nextElementSibling?.textContent).toBe(
+        'Systran/faster-whisper-turbo · revisión d90ca5f',
+      )
+      expect(facts.getByText('Capacidades').nextElementSibling?.textContent).toBe(
+        'Transcripción · Traducción al inglés · CPU · GPU',
+      )
+      expect(dialog.textContent).toMatch(/1,6\sGB/)
+      expect(dialog.textContent).toMatch(/Léela antes de descargarlo/)
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+    })
+
+    it('para hablantes explica la fuente verificada y no inventa revisión', async () => {
+      stubApi(models([speakerModel()]), tasks([]))
+
+      render(<ModelManager />)
+      fireEvent.click(await screen.findByRole('button', { name: /descargar \(33\sMB\)/i }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Licencia').nextElementSibling?.textContent).toMatch(
+        /CC-BY-4\.0/,
+      )
+      expect(within(dialog).getByText('Fuente').nextElementSibling?.textContent).toMatch(
+        /SHA-256/,
+      )
+      expect(dialog.textContent).not.toMatch(/revisión/)
+    })
+
+    it('en inglés traduce secciones, capacidades y datos del diálogo', async () => {
+      setLang('en')
+      stubApi(models([voiceModel()]), tasks([]))
+
+      render(<ModelManager />)
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Speech synthesis' })).toBeDefined()
+      fireEvent.click(screen.getByRole('button', { name: /Download/ }))
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('License').nextElementSibling?.textContent).toBe('Apache-2.0')
+      expect(within(dialog).getByText('Capabilities').nextElementSibling?.textContent).toBe(
+        'Speech synthesis · CPU',
+      )
+      expect(dialog.textContent).toMatch(/revision 0123456/)
     })
   })
 })
