@@ -135,3 +135,36 @@ def test_sdist_has_what_a_rebuild_needs(sdist_names: set[str]) -> None:
     assert not any(
         "__pycache__" in name or name.endswith(".pyc") for name in sdist_names
     )
+
+
+@pytest.mark.parametrize(
+    ("environment", "installs_cuda"),
+    [
+        ({"sys_platform": "linux", "platform_machine": "x86_64"}, True),
+        ({"sys_platform": "win32", "platform_machine": "AMD64"}, True),
+        ({"sys_platform": "linux", "platform_machine": "aarch64"}, False),
+        ({"sys_platform": "win32", "platform_machine": "ARM64"}, False),
+        ({"sys_platform": "darwin", "platform_machine": "arm64"}, False),
+        ({"sys_platform": "darwin", "platform_machine": "x86_64"}, False),
+    ],
+)
+def test_cuda_wheels_only_install_on_x86_64(
+    environment: dict[str, str], installs_cuda: bool
+) -> None:
+    """V9-01a: ARM boards must not pull ~1.35 GB of nvidia-*-cu12 wheels."""
+    markers = pytest.importorskip("packaging.requirements")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
+    cuda = [
+        markers.Requirement(spec)
+        for spec in project["optional-dependencies"]["asr-local"]
+        if spec.startswith("nvidia-")
+    ]
+    assert {requirement.name for requirement in cuda} == {
+        "nvidia-cublas-cu12",
+        "nvidia-cudnn-cu12",
+    }
+    for requirement in cuda:
+        assert requirement.marker is not None
+        assert requirement.marker.evaluate({**environment, "extra": "asr-local"}) is (
+            installs_cuda
+        )

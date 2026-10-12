@@ -24,9 +24,11 @@ asr-local = [
   # CTranslate2 loads CUDA 12 cuBLAS/cuDNN 9 at runtime; the pip wheels avoid
   # touching the host (immutable on Bazzite, no CUDA Toolkit on Windows). VOZ
   # preloads them explicitly (.so on Linux, DLL folders on Windows). macOS has no
-  # CUDA: it always runs on CPU (int8).
-  "nvidia-cublas-cu12>=12.4,<13; sys_platform == 'linux' or sys_platform == 'win32'",
-  "nvidia-cudnn-cu12>=9.1,<10; sys_platform == 'linux' or sys_platform == 'win32'",
+  # CUDA: it always runs on CPU (int8). The markers are x86-64 only: aarch64
+  # wheels exist but weigh ~1.35 GB and boards (Raspberry Pi...) have no NVIDIA
+  # GPU, so ARM installs skip them and run on CPU (int8).
+  "nvidia-cublas-cu12>=12.4,<13; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
+  "nvidia-cudnn-cu12>=9.1,<10; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]
 # Local speaker diarization without torch or gated tokens (ADR-0007):
 # pyannote segmentation-3.0 and speaker embeddings as ONNX via sherpa-onnx.

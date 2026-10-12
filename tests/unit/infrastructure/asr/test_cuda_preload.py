@@ -195,3 +195,64 @@ def test_cpu_load_errors_are_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> N
         faster_whisper._default_engine_factory(  # pyright: ignore[reportPrivateUsage]
             "m", device="cpu", compute_type="int8", local_files_only=True
         )
+
+
+def _without_nvidia_wheels(monkeypatch: pytest.MonkeyPatch, fake: _Whisper) -> None:
+    """aarch64 installs skip nvidia-*-cu12: every nvidia import fails."""
+    real_import = importlib.import_module
+
+    def fake_import(name: str, *args: Any) -> object:
+        if name == "faster_whisper":
+            return SimpleNamespace(WhisperModel=fake.WhisperModel)
+        if name.startswith("nvidia"):
+            raise ImportError(name)
+        return real_import(name, *args)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+
+
+def test_preload_without_nvidia_wheels_does_not_raise_on_linux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _without_nvidia_wheels(monkeypatch, _Whisper(fail_cuda=True))
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    assert faster_whisper._nvidia_package_roots() == []  # pyright: ignore[reportPrivateUsage]
+    assert faster_whisper._preload_cuda_libraries() is True  # pyright: ignore[reportPrivateUsage]
+
+
+def test_preload_without_nvidia_wheels_reports_false_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _without_nvidia_wheels(monkeypatch, _Whisper(fail_cuda=True))
+
+    def fail(name: str) -> None:
+        raise OSError(name)
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(ctypes, "WinDLL", fail, raising=False)
+    monkeypatch.setattr(faster_whisper, "_dll_directory_handles", [])
+
+    assert faster_whisper._preload_cuda_libraries() is False  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_cuda_request_without_nvidia_wheels_ends_on_cpu_int8(
+    platform: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _Whisper(fail_cuda=True)  # no CUDA runtime on the host either
+    _without_nvidia_wheels(monkeypatch, fake)
+
+    def no_dll(name: str) -> None:
+        raise OSError(name)
+
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(ctypes, "WinDLL", no_dll, raising=False)
+    monkeypatch.setattr(faster_whisper, "_dll_directory_handles", [])
+
+    engine = faster_whisper._default_engine_factory(  # pyright: ignore[reportPrivateUsage]
+        "m", device="cuda", compute_type="float16", local_files_only=True
+    )
+
+    assert engine == "engine"
+    assert fake.calls[-1] == ("cpu", "int8")
