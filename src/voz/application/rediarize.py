@@ -9,11 +9,12 @@ overlap, see ``assign_speakers``) are kept; manual segment reassignments are not
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
+from voz.application.admission import AdmissionGate
 from voz.application.job_runner import TRANSCRIBE_END_WITH_SPEAKERS, transcript_id_for
 from voz.application.ports.diarization import DiarizationOptions
 from voz.application.ports.diarization_availability import DiarizationAvailability
@@ -56,11 +57,20 @@ class RediarizeTranscript:
     selections: TranscriptionJobSelectionRepository
     availability: DiarizationAvailability
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    admission: AdmissionGate = field(default_factory=AdmissionGate)
+    """Shared with job creation; the default is a private gate."""
 
     def execute(
         self, transcript_id: UUID, options: DiarizationOptions
     ) -> Rediarization:
-        """Reopen the owning job; the caller enqueues it on the runner.
+        """Reopen the owning job; the caller enqueues it on the runner."""
+        with self.admission.hold():
+            return self._reopen(transcript_id, options)
+
+    def _reopen(
+        self, transcript_id: UUID, options: DiarizationOptions
+    ) -> Rediarization:
+        """The active-job check and the reopening are atomic under the gate.
 
         # ponytail: selection and job are two writes; a crash between them leaves
         # the new options on a finished job, which is harmless.

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import UUID
 
+from voz.application.admission import AdmissionGate
 from voz.application.model_keys import model_key, normalize_key
 from voz.application.ports.disk_space import DiskLocation, DiskSpacePort
 from voz.application.ports.external_models import ExternalModelSource
@@ -207,6 +208,8 @@ class RemoveModel:
     selections: SelectionLookup
     on_removed: Callable[[ModelDescriptor], None] | None = None
     """Called after a successful delete, e.g. to drop an engine cached on its files."""
+    admission: AdmissionGate = field(default_factory=AdmissionGate)
+    """Shared with job creation; the default is a private gate."""
 
     def execute(self, model_id: str, confirm: str | None) -> RemovedModel:
         """Delete the pinned install after exact-id confirmation and an in-use check.
@@ -234,25 +237,26 @@ class RemoveModel:
                 "The model is not installed.",
             )
         descriptor = entry.descriptor
-        # ponytail: a job created between this check and remove() is not guarded.
-        for job in self.jobs.list_recoverable():
-            selection = self.selections.get(job.id)
-            if selection is not None and (
-                _uses_asr_model(selection, descriptor)
-                if entry.kind != "diarization"
-                else _wants_speakers(selection)
-            ):
+        # The in-use check and the delete are atomic against job creation.
+        with self.admission.hold():
+            for job in self.jobs.list_recoverable():
+                selection = self.selections.get(job.id)
+                if selection is not None and (
+                    _uses_asr_model(selection, descriptor)
+                    if entry.kind != "diarization"
+                    else _wants_speakers(selection)
+                ):
+                    raise ModelManagementError(
+                        ModelManagementFailureCode.IN_USE,
+                        "The model is used by a job that has not finished.",
+                    )
+            try:
+                freed = self.store.remove(descriptor)
+            except OSError as error:
                 raise ModelManagementError(
-                    ModelManagementFailureCode.IN_USE,
-                    "The model is used by a job that has not finished.",
-                )
-        try:
-            freed = self.store.remove(descriptor)
-        except OSError as error:
-            raise ModelManagementError(
-                ModelManagementFailureCode.REMOVE_FAILED,
-                "The model could not be removed.",
-            ) from error
+                    ModelManagementFailureCode.REMOVE_FAILED,
+                    "The model could not be removed.",
+                ) from error
         if self.on_removed is not None:
             self.on_removed(descriptor)
         return RemovedModel(key, descriptor.model_id, freed)

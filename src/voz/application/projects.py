@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import unicodedata
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from uuid import UUID
 
+from voz.application.admission import AdmissionGate
 from voz.application.ports.project_deletion import (
     ProjectFileEraser,
     ProjectRecordEraser,
@@ -95,16 +96,22 @@ class DeleteProject:
     Files go first: if that fails the project stays intact and the delete can be
     retried (it is idempotent); the rows are removed only once no file is left.
 
-    # ponytail: a job created between the busy check and the delete is not
-    # prevented; VOZ is single-user and the UI blocks it.
+    The busy check and the delete hold the admission gate, so a job cannot be
+    created in between (it would find the project gone, or this one busy).
     """
 
     projects: ProjectRepository
     jobs: TranscriptionJobRepository
     files: ProjectFileEraser
     records: ProjectRecordEraser
+    admission: AdmissionGate = field(default_factory=AdmissionGate)
+    """Shared with job creation; the default is a private gate."""
 
     def execute(self, project_id: UUID) -> None:
+        with self.admission.hold():
+            self._delete(project_id)
+
+    def _delete(self, project_id: UUID) -> None:
         if self.projects.get(project_id) is None:
             raise ProjectNotFound(str(project_id))
         if any(

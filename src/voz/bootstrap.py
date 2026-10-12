@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine
 
 from voz import __version__
+from voz.application.admission import AdmissionGate
 from voz.application.asr_device_selection import (
     ExecutionDecision,
     HardwareCapabilities,
@@ -300,6 +301,8 @@ def create_app(
     )
 
     projects = SqliteProjectRepository(resolved_engine)
+    # One gate for every check-then-act on active jobs (V0-09c).
+    admission = AdmissionGate()
     glossaries = SqliteProjectGlossaryRepository(resolved_engine)
     media_assets = SqliteMediaAssetRepository(resolved_engine)
     jobs = SqliteTranscriptionJobRepository(resolved_engine)
@@ -543,7 +546,9 @@ def create_app(
                 projects, glossaries, providers=("faster-whisper", "elevenlabs")
             ),
             rename=RenameProject(projects),
-            delete=DeleteProject(projects, jobs, media_storage, projects),
+            delete=DeleteProject(
+                projects, jobs, media_storage, projects, admission=admission
+            ),
         )
     )
     application.include_router(
@@ -573,6 +578,7 @@ def create_app(
                 diarization_availability=diarization_availability,
                 glossaries=glossaries,
                 job_writer=jobs,
+                admission=admission,
             ),
             jobs,
             selections,
@@ -582,7 +588,11 @@ def create_app(
             SqliteSpeakerTurnRepository(resolved_engine),
             checkpoints=SqliteTranscriptionCheckpointStore(resolved_engine),
             rediarize=RediarizeTranscript(
-                transcripts, jobs, selections, diarization_availability
+                transcripts,
+                jobs,
+                selections,
+                diarization_availability,
+                admission=admission,
             ),
         )
     )
@@ -625,6 +635,7 @@ def create_app(
                 jobs,
                 selections,
                 on_removed=drop_diarization_engine,
+                admission=admission,
             ),
         )
     )

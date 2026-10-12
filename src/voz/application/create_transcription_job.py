@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from voz.application.admission import AdmissionGate
 from voz.application.asr_device_selection import ComputeDevice
 from voz.application.get_transcription_options import (
     BlockingReason,
@@ -96,6 +97,8 @@ class CreateTranscriptionJob:
     """Writes job and selection in one transaction; ``None`` falls back to two."""
     id_factory: Callable[[], UUID] = uuid4
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    admission: AdmissionGate = field(default_factory=AdmissionGate)
+    """Shared with project/model deletion; the default is a private gate."""
 
     def execute(
         self,
@@ -107,6 +110,29 @@ class CreateTranscriptionJob:
         diarization: DiarizationOptions | None = None,
         profile: str | None = None,
         prompt: str | None = None,
+    ) -> CreatedJob:
+        """Validate and persist under the admission gate, so every check holds."""
+        with self.admission.hold():
+            return self._create(
+                project_id=project_id,
+                media_asset_id=media_asset_id,
+                option_id=option_id,
+                language=language,
+                diarization=diarization,
+                profile=profile,
+                prompt=prompt,
+            )
+
+    def _create(
+        self,
+        *,
+        project_id: UUID,
+        media_asset_id: UUID,
+        option_id: str,
+        language: str | None,
+        diarization: DiarizationOptions | None,
+        profile: str | None,
+        prompt: str | None,
     ) -> CreatedJob:
         if self.projects.get(project_id) is None:
             raise CreateJobError(
