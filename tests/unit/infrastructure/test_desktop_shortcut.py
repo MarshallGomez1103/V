@@ -13,7 +13,11 @@ from voz.application.ports.desktop_shortcut import (
     DesktopShortcut,
     DesktopShortcutError,
 )
-from voz.infrastructure.desktop_shortcut import LocalDesktopShortcut
+from voz.infrastructure.desktop_shortcut import (
+    LAUNCHERS,
+    LocalDesktopShortcut,
+    checkout_root,
+)
 
 
 class _Run:
@@ -32,7 +36,7 @@ def _checkout(tmp_path: Path) -> Path:
     root = tmp_path / "Voz App"  # a space and no ASCII-only luck
     (root / "packaging" / "icons").mkdir(parents=True)
     (root / "pyproject.toml").write_text("[project]\n")
-    for name in ("Iniciar-Linux.sh", "Iniciar-Mac.command", "Iniciar-Windows.bat"):
+    for name in ("start-v-linux.sh", "Start-V-macOS.command", "Start-V-Windows.bat"):
         (root / name).write_text("#!/bin/sh\n")
     for name in ("voz.png", "voz.ico"):
         (root / "packaging" / "icons" / name).write_bytes(b"icon")
@@ -68,7 +72,7 @@ def test_linux_creates_desktop_and_menu_entries_for_the_launcher(
     for entry in (desktop / "voz.desktop", data / "applications" / "voz.desktop"):
         text = entry.read_text(encoding="utf-8")
         assert "Name=VOZ" in text
-        assert f'Exec="{root}/Iniciar-Linux.sh"' in text
+        assert f'Exec="{root}/start-v-linux.sh"' in text
         assert f"Icon={root}/packaging/icons/voz.png" in text
         assert f"Path={root}" in text
         assert "Terminal=true" in text
@@ -94,7 +98,7 @@ def test_exec_line_escapes_special_characters(tmp_path: Path) -> None:
     root = tmp_path / 'a"b$c%d'
     (root / "packaging" / "icons").mkdir(parents=True)
     (root / "pyproject.toml").write_text("")
-    (root / "Iniciar-Linux.sh").write_text("")
+    (root / "start-v-linux.sh").write_text("")
     (root / "packaging" / "icons" / "voz.png").write_bytes(b"x")
     shortcut = LocalDesktopShortcut(
         state_directory=tmp_path / "state",
@@ -112,7 +116,7 @@ def test_exec_line_escapes_special_characters(tmp_path: Path) -> None:
         for line in (desktop / "voz.desktop").read_text(encoding="utf-8").splitlines()
         if line.startswith("Exec=")
     )
-    assert exec_line.endswith('a\\"b\\$c%%d/Iniciar-Linux.sh"')
+    assert exec_line.endswith('a\\"b\\$c%%d/start-v-linux.sh"')
 
 
 def test_linux_marks_the_desktop_file_as_trusted_when_gio_exists(
@@ -144,7 +148,7 @@ def test_macos_builds_a_minimal_app_that_opens_the_launcher(tmp_path: Path) -> N
 
     app = desktop / "VOZ.app" / "Contents"
     script = (app / "MacOS" / "voz").read_text(encoding="utf-8")
-    assert "open" in script and "Iniciar-Mac.command" in script
+    assert "open" in script and "Start-V-macOS.command" in script
     assert (app / "MacOS" / "voz").stat().st_mode & 0o111
     with (app / "Info.plist").open("rb") as plist:
         info = plistlib.load(plist)
@@ -170,7 +174,7 @@ def test_windows_asks_powershell_for_a_lnk_to_the_bat_launcher(
     env = kwargs["env"]
     assert isinstance(env, dict)
     root = tmp_path / "Voz App"
-    assert env["VOZ_LAUNCHER"] == str(root / "Iniciar-Windows.bat")
+    assert env["VOZ_LAUNCHER"] == str(root / "Start-V-Windows.bat")
     assert env["VOZ_ICON"] == str(root / "packaging" / "icons" / "voz.ico")
     assert shortcut.exists()
 
@@ -209,3 +213,23 @@ def test_location_hides_the_home_directory(
 
     assert shortcut.create() == "~/Escritorio/voz.desktop"
     assert shortcut.location() == "~/Escritorio/voz.desktop"
+
+
+def test_real_launchers_exist_and_old_names_delegate_to_them() -> None:
+    root = checkout_root()
+    assert set(LAUNCHERS.values()) == {
+        "start-v-linux.sh",
+        "Start-V-macOS.command",
+        "Start-V-Windows.bat",
+    }
+    for name in LAUNCHERS.values():
+        assert (root / name).is_file(), name
+        if not name.endswith(".bat"):
+            assert os.access(root / name, os.X_OK), name
+    for old, new in (
+        ("Iniciar-Linux.sh", "start-v-linux.sh"),
+        ("Iniciar-Mac.command", "Start-V-macOS.command"),
+        ("Iniciar-Windows.bat", "Start-V-Windows.bat"),
+    ):
+        text = (root / old).read_text()
+        assert "DEPRECATED" in text and new in text, old

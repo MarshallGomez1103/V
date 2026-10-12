@@ -49,9 +49,9 @@ again. ([README](../README.md))
 The launcher installs `uv` the first time and needs an internet connection. If it
 reports that it could not install it, check your connection and open the file
 again. Any other failure ends with "Algo falló" (something failed): read the
-message above it, then open the launcher again. (The launchers are currently
-named `Iniciar-Windows.bat`, `Iniciar-Mac.command` and `Iniciar-Linux.sh`;
-renaming them is planned in slice V1-04.)
+message above it, then open the launcher again. (The launchers are
+`Start-V-Windows.bat`, `Start-V-macOS.command` and `start-v-linux.sh`; the old
+`Iniciar-*` names still work as deprecated wrappers for one release.)
 
 ## Requests rejected with 400 `host_not_allowed`
 

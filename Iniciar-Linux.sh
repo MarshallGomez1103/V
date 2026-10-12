@@ -1,3 +1,3 @@
 #!/bin/sh
-# VOZ. Es el mismo arranque que el de Mac.
-exec sh "$(dirname "$0")/Iniciar-Mac.command" "$@"
+# DEPRECATED: use start-v-linux.sh. This wrapper stays for one release.
+exec sh "$(dirname "$0")/start-v-linux.sh" "$@"

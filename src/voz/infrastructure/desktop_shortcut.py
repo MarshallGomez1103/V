@@ -2,7 +2,7 @@
 
 A ``.desktop`` file (Linux), a ``.lnk`` (Windows) or a minimal ``.app`` (macOS).
 
-It points at the ``Iniciar-*`` launcher of the checkout and uses the icon in
+It points at the ``Start-V-*`` launcher of the checkout and uses the icon in
 ``packaging/icons``. Only the standard library and what each system ships
 (PowerShell, ``sips``, ``gio``). When VOZ is installed as a wheel there is no
 checkout, so the feature reports ``supported = False``.
@@ -24,9 +24,9 @@ from voz.application.ports.desktop_shortcut import DesktopShortcutError
 NAME = "VOZ"
 MARKER_FILENAME = "desktop-shortcut.txt"
 LAUNCHERS = {
-    "linux": "Iniciar-Linux.sh",
-    "darwin": "Iniciar-Mac.command",
-    "win32": "Iniciar-Windows.bat",
+    "linux": "start-v-linux.sh",
+    "darwin": "Start-V-macOS.command",
+    "win32": "Start-V-Windows.bat",
 }
 ICONS = {"linux": "voz.png", "darwin": "voz.png", "win32": "voz.ico"}
 Run = Callable[..., "subprocess.CompletedProcess[str]"]

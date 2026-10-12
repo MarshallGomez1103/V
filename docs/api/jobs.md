@@ -178,7 +178,7 @@ the client must assume the API stops answering.
 ### Desktop icon (`/api/desktop-shortcut`)
 
 Creates a shortcut on the desktop and in the application menu that runs the
-`Iniciar-*` launcher in the project folder, with the icon from `packaging/icons/`
+`Start-V-*` launcher in the project folder (V1-04; shortcuts created before point to the deprecated `Iniciar-*` wrappers, which still work), with the icon from `packaging/icons/`
 (`voz.png`, `voz.ico`, `voz.svg`, derived from `favicon.svg`). It uses only the
 standard library and what each system ships.
 
@@ -195,7 +195,7 @@ answers 201 with the same body as `GET`. 409 `desktop_shortcut_unsupported`; 500
 desktop (`xdg-user-dir DESKTOP`) and in `$XDG_DATA_HOME/applications`, with
 `gio set … metadata::trusted` if `gio` exists. Windows: `VOZ.lnk` via PowerShell
 (honors a desktop moved by OneDrive). macOS: a minimal `VOZ.app` that opens
-`Iniciar-Mac.command` in Terminal (`.icns` icon via `sips`, if available). The
+`Start-V-macOS.command` in Terminal (`.icns` icon via `sips`, if available). The
 record of where it was placed lives in `<state>/desktop-shortcut.txt`, never in
 the code folder.
 
