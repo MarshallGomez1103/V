@@ -1,0 +1,63 @@
+@use '../styles/carbon' as *;
+
+.voz-speak {
+  display: grid;
+  gap: $spacing-05;
+  align-content: start;
+}
+
+// El Grid reparte las columnas; los dos paneles de la fila miden lo mismo de alto.
+.voz-speak.voz-grid {
+  align-items: stretch;
+}
+
+.voz-speak.voz-grid > .cds--css-grid-column {
+  align-content: stretch;
+}
+
+.voz-speak.voz-grid > .cds--css-grid-column > .cds--layer-one,
+.voz-speak.voz-grid > .cds--css-grid-column > .cds--layer-two {
+  display: grid;
+}
+
+.voz-speak.voz-grid .voz-panel {
+  box-sizing: border-box;
+  block-size: 100%;
+}
+
+.voz-speak__empty {
+  max-inline-size: 40rem;
+}
+
+.voz-speak__empty-body {
+  @include type-style('body-02');
+
+  margin: 0;
+  max-inline-size: 36rem;
+  color: $text-secondary;
+}
+
+.voz-speak__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-03;
+}
+
+.voz-speak__counter {
+  @include type-style('helper-text-01');
+
+  margin: 0;
+  color: $text-secondary;
+  font-variant-numeric: tabular-nums;
+}
+
+.voz-speak__counter--over {
+  color: $support-error;
+}
+
+.voz-speak__placeholder {
+  display: grid;
+  gap: $spacing-05;
+}

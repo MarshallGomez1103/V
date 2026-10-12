@@ -24,6 +24,9 @@ import './App.scss'
 const Workspace = lazy(() =>
   import('./components/Workspace').then((m) => ({ default: m.Workspace })),
 )
+const SpeakWorkspace = lazy(() =>
+  import('./components/SpeakWorkspace').then((m) => ({ default: m.SpeakWorkspace })),
+)
 const ModelManager = lazy(() =>
   import('./components/ModelManager').then((m) => ({ default: m.ModelManager })),
 )
@@ -31,11 +34,12 @@ const ProvidersSettings = lazy(() =>
   import('./components/ProvidersSettings').then((m) => ({ default: m.ProvidersSettings })),
 )
 
-type PageName = 'home' | 'nueva' | 'modelos' | 'proveedores'
+type PageName = 'home' | 'nueva' | 'speak' | 'modelos' | 'proveedores'
 
 const PAGE_KEYS: Record<PageName, { title: MessageKey; description: MessageKey }> = {
   home: { title: 'page.inicio.title', description: 'page.inicio.description' },
   nueva: { title: 'page.transcribir.title', description: 'page.transcribir.description' },
+  speak: { title: 'page.speak.title', description: 'page.speak.description' },
   modelos: { title: 'page.modelos.title', description: 'page.modelos.description' },
   proveedores: {
     title: 'page.proveedores.title',
@@ -68,13 +72,16 @@ export function App() {
     key: 0,
     initial: null,
   })
-  // Modelos/Proveedores se montan en la primera visita y luego se conservan ocultos.
-  const [visited, setVisited] = useState({ modelos: false, proveedores: false })
+  // Voz/Modelos/Proveedores se montan en la primera visita y luego se conservan ocultos
+  // (el texto escrito en Voz sobrevive a un paso por Modelos).
+  const [visited, setVisited] = useState({ speak: false, modelos: false, proveedores: false })
   if (
+    (route.name === 'speak' && !visited.speak) ||
     (route.name === 'modelos' && !visited.modelos) ||
     (route.name === 'proveedores' && !visited.proveedores)
   ) {
     setVisited({
+      speak: visited.speak || route.name === 'speak',
       modelos: visited.modelos || route.name === 'modelos',
       proveedores: visited.proveedores || route.name === 'proveedores',
     })
@@ -208,6 +215,24 @@ export function App() {
             />
           </Suspense>
         ) : null}
+
+        <div hidden={route.name !== 'speak'}>
+          <Grid narrow className="voz-grid">
+            <Column sm={4} md={8} lg={16}>
+              <PageHeader page="speak" />
+              {visited.speak ? (
+                <Suspense fallback={<Busy description={t('common.loading')} />}>
+                  <SpeakWorkspace
+                    modelsVersion={modelsVersion}
+                    onOpenModels={() => {
+                      goTo({ name: 'modelos' })
+                    }}
+                  />
+                </Suspense>
+              ) : null}
+            </Column>
+          </Grid>
+        </div>
 
         <div hidden={route.name !== 'modelos'}>
           <Grid narrow className="voz-grid">

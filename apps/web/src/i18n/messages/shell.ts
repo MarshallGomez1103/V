@@ -10,6 +10,7 @@ export const shell = {
   'nav.menu': ['Menú de secciones', 'Sections menu'],
   'nav.home': ['V, ir al inicio', 'V, go to the home page'],
   'nav.transcribir': ['Transcribir', 'Transcribe'],
+  'nav.voz': ['Voz', 'Speak'],
   'nav.modelos': ['Modelos', 'Models'],
   'nav.proveedores': ['Proveedores cloud', 'Cloud providers'],
 
@@ -17,6 +18,11 @@ export const shell = {
   'page.transcribir.description': [
     'Importa una grabación, elige el motor y obtén texto editable. Todo se procesa en este equipo.',
     'Import a recording, pick an engine and get editable text. Everything is processed on this computer.',
+  ],
+  'page.speak.title': ['Texto a voz', 'Text to speech'],
+  'page.speak.description': [
+    'Escribe o pega un texto y conviértelo en audio con una voz instalada. Todo se genera en este equipo.',
+    'Type or paste a text and turn it into audio with an installed voice. Everything is generated on this computer.',
   ],
   'page.modelos.title': ['Modelos', 'Models'],
   'page.modelos.description': [

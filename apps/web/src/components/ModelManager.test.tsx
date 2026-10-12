@@ -790,6 +790,29 @@ describe('ModelManager', () => {
       expect(dialog.textContent).not.toMatch(/revisión/)
     })
 
+    it('traduce el requisito «tts» en vez de mostrar el texto crudo', async () => {
+      const needsEngine = () =>
+        model({
+          ...voiceModel(),
+          requires: 'tts',
+          runtime_available: false,
+        })
+      stubApi(models([needsEngine()]), tasks([]))
+
+      const view = render(<ModelManager />)
+
+      const section = await screen.findByRole('region', { name: 'Síntesis de voz' })
+      expect(section.textContent).toMatch(/Requiere el motor de voz \(sherpa-onnx\)/)
+      expect(section.textContent).not.toMatch(/Requiere tts/)
+      view.unmount()
+
+      setLang('en')
+      stubApi(models([needsEngine()]), tasks([]))
+      render(<ModelManager />)
+      const english = await screen.findByRole('region', { name: 'Speech synthesis' })
+      expect(english.textContent).toMatch(/Requires the speech engine \(sherpa-onnx\)/)
+    })
+
     it('en inglés traduce secciones, capacidades y datos del diálogo', async () => {
       setLang('en')
       stubApi(models([voiceModel()]), tasks([]))

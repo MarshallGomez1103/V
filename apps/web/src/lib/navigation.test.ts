@@ -15,6 +15,9 @@ describe('rutas por hash', () => {
     expect(parseRoute('#/modelos')).toEqual({ name: 'modelos' })
     expect(parseRoute('#modelos')).toEqual({ name: 'modelos' })
     expect(parseRoute('#/proveedores')).toEqual({ name: 'proveedores' })
+    expect(parseRoute('#/speak')).toEqual({ name: 'speak' })
+    expect(parseRoute('#speak')).toEqual({ name: 'speak' })
+    expect(parseRoute('#/speak/x')).toEqual({ name: 'home' })
   })
 
   it('#/t/<id> abre un trabajo y decodifica el id', () => {
@@ -28,12 +31,25 @@ describe('rutas por hash', () => {
       { name: 'home' },
       { name: 'nueva' },
       { name: 'trabajo', jobId: 'x/y z' },
+      { name: 'speak' },
       { name: 'modelos' },
       { name: 'proveedores' },
     ]
     for (const route of routes) {
       expect(parseRoute(routeToHash(route))).toEqual(route)
     }
+  })
+
+  it('la navegación incluye Voz entre Transcribir y Modelos', () => {
+    expect(NAV_ITEMS.map((item) => item.route.name)).toEqual([
+      'home',
+      'nueva',
+      'speak',
+      'modelos',
+      'proveedores',
+    ])
+    expect(routeToHash({ name: 'speak' })).toBe('#/speak')
+    expect(isCurrent({ name: 'speak' }, { name: 'speak' })).toBe(true)
   })
 
   it('un trabajo cuenta como la sección Inicio', () => {

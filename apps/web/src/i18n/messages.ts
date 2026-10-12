@@ -3,6 +3,7 @@ import { job } from './messages/job'
 import { library } from './messages/library'
 import { models } from './messages/models'
 import { shell } from './messages/shell'
+import { speak } from './messages/speak'
 import { transcribe } from './messages/transcribe'
 import { workspace } from './messages/workspace'
 
@@ -17,6 +18,7 @@ export const MESSAGES = {
   ...workspace,
   ...library,
   ...models,
+  ...speak,
   ...errors,
 } as const
 

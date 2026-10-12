@@ -25,6 +25,10 @@ export const models = {
   'mm.cap.list': ['Capacidades: {list}', 'Capabilities: {list}'],
   'mm.requires': ['Requiere {what}', 'Requires {what}'],
   'mm.requires.diarization': ['el extra «diarization»', 'the "diarization" extra'],
+  'mm.requires.tts': [
+    'el motor de voz (sherpa-onnx)',
+    'the speech engine (sherpa-onnx)',
+  ],
   'mm.requires.blocked': [
     ': sin él no se puede usar, así que no se ofrece instalarlo.',
     ': it cannot be used without it, so installing it is not offered.',

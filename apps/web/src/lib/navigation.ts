@@ -2,13 +2,14 @@ import type { MessageKey } from '../i18n/messages'
 
 /**
  * Rutas por hash, sin librería: `#/` Home, `#/nueva`, `#/t/<jobId>` (espacio de trabajo),
- * `#/modelos`, `#/proveedores`. El hash entra en el historial del navegador, así que
+ * `#/speak` (texto a voz), `#/modelos`, `#/proveedores`. El hash entra en el historial del navegador, así que
  * Atrás/Adelante y recargar funcionan sin código extra.
  */
 export type Route =
   | { name: 'home' }
   | { name: 'nueva' }
   | { name: 'trabajo'; jobId: string }
+  | { name: 'speak' }
   | { name: 'modelos' }
   | { name: 'proveedores' }
 
@@ -24,6 +25,8 @@ export function routeToHash(route: Route): string {
       return '#/nueva'
     case 'trabajo':
       return '#/t/' + encodeURIComponent(route.jobId)
+    case 'speak':
+      return '#/speak'
     case 'modelos':
       return '#/modelos'
     case 'proveedores':
@@ -54,6 +57,8 @@ export function parseRoute(hash: string): Route {
     case 'nueva':
     case 'transcribir':
       return { name: 'nueva' }
+    case 'speak':
+      return { name: 'speak' }
     case 'modelos':
       return { name: 'modelos' }
     case 'proveedores':
@@ -71,6 +76,7 @@ export function sameRoute(a: Route, b: Route): boolean {
 export const NAV_ITEMS: readonly { route: Route; label: MessageKey }[] = [
   { route: HOME, label: 'nav.inicio' },
   { route: { name: 'nueva' }, label: 'nav.transcribir' },
+  { route: { name: 'speak' }, label: 'nav.voz' },
   { route: { name: 'modelos' }, label: 'nav.modelos' },
   { route: { name: 'proveedores' }, label: 'nav.proveedores' },
 ]

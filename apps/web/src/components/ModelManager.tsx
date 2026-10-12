@@ -81,7 +81,14 @@ const RECOMMENDED_KEY = 'faster-whisper:turbo'
 
 /** Runtime externo que cada familia necesita, en lenguaje del usuario. */
 function requiresLabel(requires: string, t: Translate): string {
-  return requires === 'diarization' ? t('mm.requires.diarization') : requires
+  switch (requires) {
+    case 'diarization':
+      return t('mm.requires.diarization')
+    case 'tts':
+      return t('mm.requires.tts')
+    default:
+      return requires
+  }
 }
 
 /** faster-whisper primero, luego el resto de proveedores; dentro, orden de catálogo. */

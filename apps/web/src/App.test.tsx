@@ -102,7 +102,7 @@ describe('App', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Inicio', 'Transcribir', 'Modelos', 'Proveedores cloud'])
+    ).toEqual(['Inicio', 'Transcribir', 'Voz', 'Modelos', 'Proveedores cloud'])
     expect(
       within(nav).getByRole('link', { name: 'Inicio' }).getAttribute('aria-current'),
     ).toBe('page')
@@ -136,6 +136,37 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Proveedores cloud' }),
     ).toBeDefined()
+  })
+
+  it('Voz carga sus opciones y «Ir a Modelos» lleva al gestor', async () => {
+    stubFetch()
+    const generic = vi.mocked(fetch)
+    const fallback = generic.getMockImplementation()
+    generic.mockImplementation((input, init) =>
+      typeof input === 'string' && input.includes('/api/synthesis/options')
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                providers: [],
+                models: [],
+                max_chars: 20000,
+                speed: { min: 0.5, max: 2 },
+              }),
+          } as Response)
+        : (fallback?.(input, init) as Promise<Response>),
+    )
+    render(<App />)
+    const nav = screen.getByRole('navigation', { name: 'Secciones de V' })
+
+    fireEvent.click(within(nav).getByRole('link', { name: 'Voz' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Texto a voz' })).toBeDefined()
+    expect(window.location.hash).toBe('#/speak')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ir a Modelos' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Modelos' })).toBeDefined()
+    expect(window.location.hash).toBe('#/modelos')
   })
 
   it('Atrás y Adelante del navegador cambian de sección', async () => {
