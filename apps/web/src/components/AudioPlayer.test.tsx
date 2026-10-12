@@ -30,6 +30,22 @@ describe('AudioPlayer', () => {
     expect(audio.getAttribute('preload')).toBe('metadata')
   })
 
+  it('con src reproduce esa URL (audio sintetizado) en vez del original', () => {
+    render(
+      <AudioPlayer
+        mediaAssetId="job 1"
+        src="/api/synthesis/job%201/audio"
+        seekToMs={null}
+        seekNonce={0}
+        durationMs={65_000}
+      />,
+    )
+
+    const audio = screen.getByLabelText<HTMLAudioElement>('Reproductor del original')
+    expect(audio.getAttribute('src')).toBe('/api/synthesis/job%201/audio')
+    expect(screen.getByLabelText('Tiempo transcurrido y duración').textContent).toContain('1:05')
+  })
+
   it('fija currentTime y reproduce cuando cambia seekNonce', () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, 'play')

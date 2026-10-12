@@ -24,6 +24,8 @@ export interface AudioPlayerProps {
   durationMs?: number | null
   /** Con un seek: pausa al llegar a este instante (muestras de un hablante). */
   stopAtMs?: number | null
+  /** URL del audio si no es el original de un medio (p. ej. un WAV sintetizado); `mediaAssetId` sirve de id. */
+  src?: string
 }
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
@@ -80,6 +82,7 @@ export function AudioPlayer({
   onTimeUpdate,
   durationMs = null,
   stopAtMs = null,
+  src,
 }: AudioPlayerProps) {
   const { t } = useI18n()
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -243,7 +246,7 @@ export function AudioPlayer({
       <audio
         ref={audioRef}
         preload="metadata"
-        src={originalMediaUrl(mediaAssetId)}
+        src={src ?? originalMediaUrl(mediaAssetId)}
         aria-label={t('audio.element')}
         onTimeUpdate={(event) => {
           sync(event.currentTarget)

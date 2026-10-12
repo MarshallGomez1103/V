@@ -1,0 +1,54 @@
+@use '../styles/carbon' as *;
+
+.voz-speak-result .voz-panel__body {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-speak-result__say {
+  @include type-style('body-compact-02');
+
+  margin: 0;
+  max-inline-size: 60ch;
+  color: $text-primary;
+}
+
+// Cifras del audio: rejilla con 1px de junta, como las tablas de Carbon.
+.voz-speak-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: $border-subtle-01;
+  border: 1px solid $border-subtle-01;
+}
+
+.voz-speak-figure {
+  padding: $spacing-04 $spacing-05;
+  background: $layer-02;
+}
+
+.voz-speak-figure__label {
+  @include type-style('label-01');
+
+  color: $text-secondary;
+}
+
+.voz-speak-figure__value {
+  @include type-style('body-compact-02');
+
+  margin: $spacing-02 0 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+// Pantallas angostas: dos columnas, y la última cifra suelta ocupa toda la fila (sin hueco).
+@include breakpoint-down(md) {
+  .voz-speak-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .voz-speak-figure:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setLang, translateIn } from '../i18n/i18n'
 import {
@@ -11,6 +11,7 @@ import {
   listSynthesis,
   messageForSynthesisError,
   SynthesisApiError,
+  subscribeSynthesisEvents,
   synthesisAudioUrl,
 } from './synthesis'
 
@@ -226,11 +227,116 @@ describe('api/synthesis', () => {
       'synthesis_audio_missing',
       'synthesis_delete_forbidden',
       'synthesis_delete_failed',
+      // Códigos de fallo del trabajo (`error_code`).
+      'voice_not_found',
+      'model_not_installed',
+      'runtime_unavailable',
+      'synthesis_failed',
+      'text_too_long',
+      'io_error',
+      'synthesis_internal_error',
+      'synthesis_runner_crashed',
+      'events_lost',
+      'events_invalid',
     ]
     for (const code of codes) {
       const key = ('err.synth.' + code) as Parameters<typeof translateIn>[1]
       expect(translateIn('es', key)).not.toBe('')
       expect(translateIn('en', key)).not.toBe(translateIn('es', key))
     }
+  })
+})
+
+class FakeEventSource extends EventTarget {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
+  static instances: FakeEventSource[] = []
+
+  readyState = FakeEventSource.OPEN
+  readonly close = vi.fn(() => {
+    this.readyState = FakeEventSource.CLOSED
+  })
+
+  constructor(readonly url: string) {
+    super()
+    FakeEventSource.instances.push(this)
+  }
+
+  emit(type: string, data: unknown) {
+    this.dispatchEvent(
+      new MessageEvent(type, { data: typeof data === 'string' ? data : JSON.stringify(data) }),
+    )
+  }
+}
+
+describe('subscribeSynthesisEvents', () => {
+  beforeEach(() => {
+    FakeEventSource.instances = []
+    vi.stubGlobal('EventSource', FakeEventSource)
+  })
+
+  const handlers = () => ({ onJob: vi.fn(), onEnd: vi.fn(), onError: vi.fn() })
+  const source = () => FakeEventSource.instances[0] as FakeEventSource
+
+  it('abre el stream del trabajo y entrega cada vista con los opcionales rellenados', () => {
+    const h = handlers()
+    subscribeSynthesisEvents('a b', h)
+    expect(source().url).toBe('/api/synthesis/a%20b/events')
+
+    const omitted = ['started_at', 'language', 'audio']
+    const partial = Object.fromEntries(Object.entries(VIEW).filter(([key]) => !omitted.includes(key)))
+    source().emit('job', partial)
+
+    expect(h.onJob).toHaveBeenCalledTimes(1)
+    expect(h.onJob.mock.calls[0]?.[0]).toMatchObject({ id: VIEW.id, started_at: null, language: null, audio: null })
+  })
+
+  it('end cierra el stream y avisa una sola vez; después ignora eventos', () => {
+    const h = handlers()
+    subscribeSynthesisEvents(VIEW.id, h)
+
+    source().emit('end', {})
+    source().emit('job', VIEW)
+
+    expect(source().close).toHaveBeenCalledTimes(1)
+    expect(h.onEnd).toHaveBeenCalledTimes(1)
+    expect(h.onJob).not.toHaveBeenCalled()
+  })
+
+  it('un payload inválido es un error con código estable', () => {
+    const h = handlers()
+    subscribeSynthesisEvents(VIEW.id, h)
+
+    source().emit('job', '{no es json')
+    source().emit('job', { id: VIEW.id })
+
+    expect(h.onError).toHaveBeenCalledTimes(2)
+    expect(h.onError.mock.calls[0]?.[0]).toMatchObject({ code: 'events_invalid' })
+    expect(h.onJob).not.toHaveBeenCalled()
+  })
+
+  it('solo un stream cerrado del todo se reporta como conexión perdida', () => {
+    const h = handlers()
+    subscribeSynthesisEvents(VIEW.id, h)
+
+    source().dispatchEvent(new Event('error'))
+    expect(h.onError).not.toHaveBeenCalled()
+
+    source().readyState = FakeEventSource.CLOSED
+    source().dispatchEvent(new Event('error'))
+    expect(h.onError.mock.calls[0]?.[0]).toMatchObject({ code: 'events_lost' })
+  })
+
+  it('la función devuelta cierra el stream y silencia los eventos', () => {
+    const h = handlers()
+    const stop = subscribeSynthesisEvents(VIEW.id, h)
+
+    stop()
+    stop()
+    source().emit('job', VIEW)
+
+    expect(source().close).toHaveBeenCalledTimes(1)
+    expect(h.onJob).not.toHaveBeenCalled()
   })
 })

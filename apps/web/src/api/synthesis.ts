@@ -1,7 +1,7 @@
 /**
  * Cliente tipado de la síntesis de voz (docs/api/synthesis.md): opciones, crear,
  * consultar, cancelar, listar y borrar. El audio se direcciona por id de trabajo,
- * nunca por rutas del host. El progreso por SSE llega con V5-03.
+ * nunca por rutas del host. El progreso llega por SSE (`subscribeSynthesisEvents`).
  */
 import { MESSAGES } from '../i18n/messages'
 import { translate, translateCode } from '../i18n/i18n'
@@ -316,4 +316,66 @@ export async function deleteSynthesis(id: string): Promise<void> {
 /** URL del WAV de un trabajo terminado (`download` fuerza `attachment`). */
 export function synthesisAudioUrl(id: string, download = false): string {
   return '/api/synthesis/' + encodeURIComponent(id) + '/audio' + (download ? '?download=true' : '')
+}
+
+export interface SynthesisEventHandlers {
+  onJob(view: SynthesisView): void
+  onEnd(): void
+  onError(error: SynthesisApiError): void
+}
+
+function parseSynthesisView(event: Event): SynthesisView | null {
+  if (!(event instanceof MessageEvent)) {
+    return null
+  }
+  const raw: unknown = event.data
+  try {
+    const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return isSynthesisView(parsed) ? normalize(parsed) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Sigue `GET /api/synthesis/{id}/events` y devuelve la función que lo cierra.
+ * El stream se cierra solo con `end`; el navegador reconecta ante cortes
+ * transitorios, así que solo un stream cerrado del todo se reporta como error.
+ */
+export function subscribeSynthesisEvents(
+  id: string,
+  handlers: SynthesisEventHandlers,
+): () => void {
+  const source = new EventSource('/api/synthesis/' + encodeURIComponent(id) + '/events')
+  let active = true
+  const stop = () => {
+    if (active) {
+      active = false
+      source.close()
+    }
+  }
+  source.addEventListener('job', (event) => {
+    if (!active) {
+      return
+    }
+    const view = parseSynthesisView(event)
+    if (view === null) {
+      handlers.onError(new SynthesisApiError('events_invalid'))
+      return
+    }
+    handlers.onJob(view)
+  })
+  source.addEventListener('end', () => {
+    if (active) {
+      stop()
+      handlers.onEnd()
+    }
+  })
+  source.addEventListener('error', () => {
+    if (active && source.readyState === EventSource.CLOSED) {
+      active = false
+      handlers.onError(new SynthesisApiError('events_lost'))
+    }
+  })
+  return stop
 }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setLang } from '../i18n/i18n'
@@ -6,6 +6,7 @@ import { SpeakWorkspace } from './SpeakWorkspace'
 
 beforeEach(() => {
   setLang('es')
+  window.localStorage.clear()
 })
 
 afterEach(() => {
@@ -56,6 +57,8 @@ function stubFetch(...responses: (Response | Error)[]) {
   return fetchMock
 }
 
+const model = () => screen.getByLabelText<HTMLSelectElement>('Modelo')
+const voice = () => screen.getByLabelText<HTMLSelectElement>('Voz', { selector: 'select' })
 const area = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Texto a convertir en voz' })
 
 describe('SpeakWorkspace', () => {
@@ -81,7 +84,7 @@ describe('SpeakWorkspace', () => {
 
   it('un error de la API se muestra con Reintentar, que vuelve a pedir las opciones', async () => {
     const fetchMock = stubFetch(
-      jsonResponse(500, { detail: { code: 'synthesis_internal_error', message: 'x' } }),
+      jsonResponse(500, { detail: { code: 'weird_failure', message: 'x' } }),
       jsonResponse(200, options()),
     )
 
@@ -89,7 +92,7 @@ describe('SpeakWorkspace', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toMatch(/No se pudieron cargar las voces/)
-    expect(alert.textContent).toMatch(/synthesis_internal_error/)
+    expect(alert.textContent).toMatch(/weird_failure/)
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
 
     await screen.findByRole('textbox', { name: 'Texto a convertir en voz' })
@@ -106,7 +109,7 @@ describe('SpeakWorkspace', () => {
     expect(alert.textContent).toMatch(/V no entiende/)
   })
 
-  it('listo: editor, contador, resumen de voces y marcador de los selectores', async () => {
+  it('listo: editor, contador, resumen de voces y selectores reales', async () => {
     stubFetch(jsonResponse(200, options()))
 
     render(<SpeakWorkspace onOpenModels={() => undefined} />)
@@ -114,10 +117,9 @@ describe('SpeakWorkspace', () => {
     await screen.findByRole('textbox', { name: 'Texto a convertir en voz' })
     expect(screen.getByTestId('speak-counter').textContent).toBe('0 de 100 caracteres · 0 palabras')
     expect(screen.getByText('Instalado: 1 modelos · 2 voces')).toBeDefined()
-    const placeholder = screen.getByTestId('speak-selectors-placeholder')
-    for (const name of ['Modelo', 'Voz', 'Idioma']) {
-      expect(within(placeholder).getByLabelText(name)).toHaveProperty('disabled', true)
-    }
+    expect(screen.queryByTestId('speak-selectors-placeholder')).toBeNull()
+    expect(model().disabled).toBe(false)
+    expect(voice().disabled).toBe(false)
   })
 
   it('cuenta caracteres y palabras al escribir y Borrar vacía el texto', async () => {

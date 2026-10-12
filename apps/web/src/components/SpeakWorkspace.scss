@@ -57,7 +57,59 @@
   color: $support-error;
 }
 
-.voz-speak__placeholder {
+.voz-speak__voice .voz-panel__body {
   display: grid;
   gap: $spacing-05;
+  align-content: start;
+}
+
+.voz-speak__selectors {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.voz-speak__speed {
+  display: grid;
+  gap: $spacing-02;
+}
+
+.voz-speak__speed-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-03;
+}
+
+.voz-speak__speed-head .cds--label {
+  margin: 0;
+}
+
+.voz-speak__speed-value {
+  @include type-style('code-02');
+
+  font-variant-numeric: tabular-nums;
+}
+
+.voz-speak__speed-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.voz-speak__range {
+  flex: 1 1 8rem;
+  min-inline-size: 6rem;
+}
+
+// Botones de la misma altura, uno al lado del otro; en columnas angostas se apilan.
+.voz-speak__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: $spacing-03;
+}
+
+.voz-speak__actions .cds--btn {
+  inline-size: 100%;
+  max-inline-size: none;
 }
