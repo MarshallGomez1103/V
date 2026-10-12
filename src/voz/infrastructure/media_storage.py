@@ -18,6 +18,7 @@ from voz.application.ports.media_storage import (
 )
 from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.filename_safety import has_unsafe_filename_character
+from voz.infrastructure._payload import require_uuid
 from voz.infrastructure.safe_fs import (
     BINARY_FLAG,
     DirectoryDurabilityError,
@@ -51,8 +52,8 @@ class FileSystemMediaStorage:
         media_type: str | None = None,
     ) -> ImportedOriginal:
         """Copy and hash ``source`` without ever mutating it."""
-        self._require_uuid(project_id, field="project_id")
-        self._require_uuid(media_asset_id, field="media_asset_id")
+        require_uuid(project_id, field="project_id")
+        require_uuid(media_asset_id, field="media_asset_id")
         source_path = Path(source)
         display_name = self._validate_display_name(source_path.name)
         destination = self.original_path_for(project_id, media_asset_id)
@@ -134,8 +135,8 @@ class FileSystemMediaStorage:
 
     def original_path_for(self, project_id: UUID, media_asset_id: UUID) -> Path:
         """Resolve an infrastructure-only path for an original identity."""
-        self._require_uuid(project_id, field="project_id")
-        self._require_uuid(media_asset_id, field="media_asset_id")
+        require_uuid(project_id, field="project_id")
+        require_uuid(media_asset_id, field="media_asset_id")
         return (
             self._storage_root
             / "projects"
@@ -151,8 +152,8 @@ class FileSystemMediaStorage:
         media_asset_id: UUID,
     ) -> BinaryIO:
         """Open a stored original without returning its host path to callers."""
-        self._require_uuid(project_id, field="project_id")
-        self._require_uuid(media_asset_id, field="media_asset_id")
+        require_uuid(project_id, field="project_id")
+        require_uuid(media_asset_id, field="media_asset_id")
         directory = self._open_existing_originals_directory(project_id)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
@@ -204,8 +205,8 @@ class FileSystemMediaStorage:
         media_asset_id: UUID,
     ) -> None:
         """Idempotently remove an exact UUID-derived original after rollback."""
-        self._require_uuid(project_id, field="project_id")
-        self._require_uuid(media_asset_id, field="media_asset_id")
+        require_uuid(project_id, field="project_id")
+        require_uuid(media_asset_id, field="media_asset_id")
         try:
             directory = self._open_existing_originals_directory(project_id)
         except MediaStorageError as error:
@@ -239,7 +240,7 @@ class FileSystemMediaStorage:
         Only the UUID-derived ``projects/<id>`` directory is touched, links are
         never followed and read-only originals are removed.
         """
-        self._require_uuid(project_id, field="project_id")
+        require_uuid(project_id, field="project_id")
         try:
             remove_directory_tree(self._storage_root, ("projects", str(project_id)))
         except OSError as error:
@@ -247,11 +248,6 @@ class FileSystemMediaStorage:
                 MediaStorageErrorCode.IO_ERROR,
                 "The project files could not be deleted.",
             ) from error
-
-    @staticmethod
-    def _require_uuid(value: object, *, field: str) -> None:
-        if not isinstance(value, UUID):
-            raise TypeError(f"{field} must be a UUID")
 
     @staticmethod
     def _validate_display_name(name: str) -> str:

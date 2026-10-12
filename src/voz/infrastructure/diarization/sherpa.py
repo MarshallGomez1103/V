@@ -258,6 +258,8 @@ def _default_engine_factory(
     return _ChildEngine(segmentation_model, embedding_model, num_threads)
 
 
+# ponytail: unlike cloud._errors.invalid_audio_error this builds a
+# DiarizationError with a caller-supplied detail; not the same function.
 def _invalid_audio(detail: str) -> DiarizationError:
     return DiarizationError(_Code.INVALID_AUDIO, detail)
 

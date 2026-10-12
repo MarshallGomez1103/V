@@ -60,6 +60,8 @@ class _Word:
     speaker: str | None
 
 
+# ponytail: whisper_cpp._mapping has the same shape but raises ValueError, not
+# InvalidScribeResponse, so the two stay separate.
 def _mapping(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise InvalidScribeResponse("expected an object")

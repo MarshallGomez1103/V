@@ -16,6 +16,12 @@ from voz.application.ports.transcription import (
 )
 from voz.application.ports.transcription_checkpoint import TranscriptionCheckpoint
 from voz.domain.entities.transcription_job import TranscriptionJob
+from voz.infrastructure.persistence._rows import (
+    row_integer,
+    row_optional_text,
+    row_real,
+    row_text,
+)
 from voz.infrastructure.persistence.schema import (
     transcription_checkpoints,
     transcription_jobs,
@@ -115,34 +121,6 @@ def _segments_from_json(value: object) -> tuple[TranscriptionSegment, ...]:
     return tuple(segments)
 
 
-def _text(row: RowMapping, key: str) -> str:
-    value = row[key]
-    if not isinstance(value, str):
-        raise TypeError(f"persisted {key} must be a string")
-    return value
-
-
-def _optional_text(row: RowMapping, key: str) -> str | None:
-    value = row[key]
-    if value is None or isinstance(value, str):
-        return value
-    raise TypeError(f"persisted {key} must be a string or null")
-
-
-def _integer(row: RowMapping, key: str) -> int:
-    value = row[key]
-    if type(value) is not int:
-        raise TypeError(f"persisted {key} must be an integer")
-    return value
-
-
-def _real(row: RowMapping, key: str) -> float:
-    value = row[key]
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"persisted {key} must be a real number")
-    return float(value)
-
-
 def _checkpoint_values(checkpoint: TranscriptionCheckpoint) -> dict[str, object]:
     return {
         "id": str(uuid5(checkpoint.job_id, f"asr-chunk:{checkpoint.chunk_index}")),
@@ -186,22 +164,22 @@ def _optional_iso(value: datetime | None) -> str | None:
 
 def _checkpoint_from_row(row: RowMapping) -> TranscriptionCheckpoint:
     return TranscriptionCheckpoint(
-        job_id=UUID(_text(row, "job_id")),
-        chunk_index=_integer(row, "chunk_index"),
-        process_start_ms=_integer(row, "process_start_ms"),
-        process_end_ms=_integer(row, "process_end_ms"),
-        owned_start_ms=_integer(row, "owned_start_ms"),
-        owned_end_ms=_integer(row, "owned_end_ms"),
-        provider_id=_text(row, "provider_id"),
-        model_id=_text(row, "model_id"),
-        model_source=_optional_text(row, "model_source"),
-        model_revision=_optional_text(row, "model_revision"),
-        requested_language=_optional_text(row, "requested_language"),
+        job_id=UUID(row_text(row, "job_id")),
+        chunk_index=row_integer(row, "chunk_index"),
+        process_start_ms=row_integer(row, "process_start_ms"),
+        process_end_ms=row_integer(row, "process_end_ms"),
+        owned_start_ms=row_integer(row, "owned_start_ms"),
+        owned_end_ms=row_integer(row, "owned_end_ms"),
+        provider_id=row_text(row, "provider_id"),
+        model_id=row_text(row, "model_id"),
+        model_source=row_optional_text(row, "model_source"),
+        model_revision=row_optional_text(row, "model_revision"),
+        requested_language=row_optional_text(row, "requested_language"),
         segments=_segments_from_json(row["segments_json"]),
-        language=_optional_text(row, "language"),
-        progress=_real(row, "progress"),
-        job_progress=_real(row, "job_progress"),
-        completed_at=datetime.fromisoformat(_text(row, "completed_at")),
+        language=row_optional_text(row, "language"),
+        progress=row_real(row, "progress"),
+        job_progress=row_real(row, "job_progress"),
+        completed_at=datetime.fromisoformat(row_text(row, "completed_at")),
     )
 
 

@@ -35,6 +35,12 @@ from voz.domain.entities.transcription_job import (
     TranscriptionJobState,
 )
 from voz.domain.entities.word import Word
+from voz.infrastructure.persistence._rows import (
+    row_integer,
+    row_optional_text,
+    row_real,
+    row_text,
+)
 from voz.infrastructure.persistence.schema import (
     media_assets,
     projects,
@@ -51,27 +57,6 @@ from voz.infrastructure.persistence.transcription_job_selections import (
 )
 
 
-def _text(row: RowMapping, key: str) -> str:
-    value = row[key]
-    if not isinstance(value, str):
-        raise TypeError(f"persisted {key} must be a string")
-    return value
-
-
-def _optional_text(row: RowMapping, key: str) -> str | None:
-    value = row[key]
-    if value is None or isinstance(value, str):
-        return value
-    raise TypeError(f"persisted {key} must be a string or null")
-
-
-def _integer(row: RowMapping, key: str) -> int:
-    value = row[key]
-    if type(value) is not int:
-        raise TypeError(f"persisted {key} must be an integer")
-    return value
-
-
 def _optional_integer(row: RowMapping, key: str) -> int | None:
     value = row[key]
     if value is None:
@@ -81,24 +66,17 @@ def _optional_integer(row: RowMapping, key: str) -> int | None:
     return value
 
 
-def _real(row: RowMapping, key: str) -> float:
-    value = row[key]
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"persisted {key} must be a real number")
-    return float(value)
-
-
 def _uuid(row: RowMapping, key: str) -> UUID:
-    return UUID(_text(row, key))
+    return UUID(row_text(row, key))
 
 
 def _optional_uuid(row: RowMapping, key: str) -> UUID | None:
-    value = _optional_text(row, key)
+    value = row_optional_text(row, key)
     return None if value is None else UUID(value)
 
 
 def _timestamp(row: RowMapping, key: str) -> datetime:
-    return datetime.fromisoformat(_text(row, key))
+    return datetime.fromisoformat(row_text(row, key))
 
 
 def _timestamp_value(value: datetime) -> str:
@@ -138,7 +116,7 @@ def _project_values(project: Project) -> dict[str, object]:
 def _project_from_row(row: RowMapping) -> Project:
     return Project(
         id=_uuid(row, "id"),
-        name=_text(row, "name"),
+        name=row_text(row, "name"),
         created_at=_timestamp(row, "created_at"),
     )
 
@@ -160,10 +138,10 @@ def _media_asset_from_row(row: RowMapping) -> MediaAsset:
     return MediaAsset(
         id=_uuid(row, "id"),
         project_id=_uuid(row, "project_id"),
-        content_sha256=_text(row, "content_sha256"),
-        display_name=_text(row, "display_name"),
-        size_bytes=_integer(row, "size_bytes"),
-        media_type=_optional_text(row, "media_type"),
+        content_sha256=row_text(row, "content_sha256"),
+        display_name=row_text(row, "display_name"),
+        size_bytes=row_integer(row, "size_bytes"),
+        media_type=row_optional_text(row, "media_type"),
         duration_ms=_optional_integer(row, "duration_ms"),
         created_at=_timestamp(row, "created_at"),
     )
@@ -184,7 +162,7 @@ def _transcript_from_row(row: RowMapping) -> Transcript:
         id=_uuid(row, "id"),
         project_id=_uuid(row, "project_id"),
         media_asset_id=_uuid(row, "media_asset_id"),
-        language=_optional_text(row, "language"),
+        language=row_optional_text(row, "language"),
         created_at=_timestamp(row, "created_at"),
     )
 
@@ -203,9 +181,9 @@ def _word_from_row(row: RowMapping) -> Word:
     return Word(
         id=_uuid(row, "id"),
         segment_id=_uuid(row, "segment_id"),
-        start_ms=_integer(row, "start_ms"),
-        end_ms=_integer(row, "end_ms"),
-        text=_text(row, "text"),
+        start_ms=row_integer(row, "start_ms"),
+        end_ms=row_integer(row, "end_ms"),
+        text=row_text(row, "text"),
     )
 
 
@@ -261,14 +239,14 @@ def _segment_from_row(row: RowMapping, segment_words: Sequence[Word]) -> Segment
     return Segment(
         id=_uuid(row, "id"),
         transcript_id=_uuid(row, "transcript_id"),
-        start_ms=_integer(row, "start_ms"),
-        end_ms=_integer(row, "end_ms"),
-        text=_text(row, "text"),
+        start_ms=row_integer(row, "start_ms"),
+        end_ms=row_integer(row, "end_ms"),
+        text=row_text(row, "text"),
         words=tuple(segment_words),
         speaker_id=_optional_uuid(row, "speaker_id"),
         edited=bool(row["edited"]),
-        revision=_integer(row, "revision"),
-        original_text=_optional_text(row, "original_text"),
+        revision=row_integer(row, "revision"),
+        original_text=row_optional_text(row, "original_text"),
         quality_flags=flags,
         avg_logprob=avg_logprob,
     )
@@ -289,8 +267,8 @@ def _speaker_from_row(row: RowMapping) -> Speaker:
     return Speaker(
         id=_uuid(row, "id"),
         project_id=_uuid(row, "project_id"),
-        name=_text(row, "name"),
-        color=_text(row, "color"),
+        name=row_text(row, "name"),
+        color=row_text(row, "color"),
         created_at=_timestamp(row, "created_at"),
         updated_at=_timestamp(row, "updated_at"),
     )
@@ -313,9 +291,9 @@ def _speaker_turn_from_row(row: RowMapping) -> SpeakerTurn:
     return SpeakerTurn(
         id=_uuid(row, "id"),
         transcript_id=_uuid(row, "transcript_id"),
-        cluster_label=_text(row, "cluster_label"),
-        start_ms=_integer(row, "start_ms"),
-        end_ms=_integer(row, "end_ms"),
+        cluster_label=row_text(row, "cluster_label"),
+        start_ms=row_integer(row, "start_ms"),
+        end_ms=row_integer(row, "end_ms"),
         speaker_id=_optional_uuid(row, "speaker_id"),
     )
 
@@ -341,15 +319,15 @@ def _job_from_row(row: RowMapping) -> TranscriptionJob:
         id=_uuid(row, "id"),
         project_id=_uuid(row, "project_id"),
         media_asset_id=_uuid(row, "media_asset_id"),
-        state=TranscriptionJobState(_text(row, "state")),
-        progress=_real(row, "progress"),
+        state=TranscriptionJobState(row_text(row, "state")),
+        progress=row_real(row, "progress"),
         created_at=_timestamp(row, "created_at"),
         updated_at=_timestamp(row, "updated_at"),
-        error_code=_optional_text(row, "error_code"),
+        error_code=row_optional_text(row, "error_code"),
         started_at=_optional_timestamp(row, "started_at"),
         stage_started_at=_optional_timestamp(row, "stage_started_at"),
         stage_progress=(
-            None if row["stage_progress"] is None else _real(row, "stage_progress")
+            None if row["stage_progress"] is None else row_real(row, "stage_progress")
         ),
     )
 
@@ -384,7 +362,7 @@ def _words_for_segments(
         .all()
     )
     for row in rows:
-        grouped[_text(row, "segment_id")].append(_word_from_row(row))
+        grouped[row_text(row, "segment_id")].append(_word_from_row(row))
     return grouped
 
 
@@ -400,7 +378,7 @@ def _validate_word_parent(connection: Connection, word: Word) -> None:
     )
     if parent is None:
         raise LookupError(f"cannot persist word for missing segment {word.segment_id}")
-    if word.start_ms < _integer(parent, "start_ms") or word.end_ms > _integer(
+    if word.start_ms < row_integer(parent, "start_ms") or word.end_ms > row_integer(
         parent, "end_ms"
     ):
         raise ValueError("word offsets must remain within segment offsets")
@@ -613,10 +591,10 @@ class SqliteSegmentRepository:
                 .mappings()
                 .all()
             )
-            segment_ids = [_text(row, "id") for row in rows]
+            segment_ids = [row_text(row, "id") for row in rows]
             grouped_words = _words_for_segments(connection, segment_ids)
         return tuple(
-            _segment_from_row(row, grouped_words[_text(row, "id")]) for row in rows
+            _segment_from_row(row, grouped_words[row_text(row, "id")]) for row in rows
         )
 
 

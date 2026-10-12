@@ -161,6 +161,8 @@ class ImportMedia:
             ) from rollback_error
 
 
+# ponytail: same check as domain.entities._validation.require_uuid; that module
+# is private to the entities package, so application keeps its own copy.
 def _require_uuid(value: object, *, field: str) -> UUID:
     if not isinstance(value, UUID):
         raise TypeError(f"{field} must be a UUID")

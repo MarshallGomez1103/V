@@ -33,6 +33,7 @@ from voz.application.ports.transcription import (
     TranscriptionResult,
     TranscriptionSegment,
 )
+from voz.infrastructure.cloud._errors import invalid_audio_error
 from voz.infrastructure.cloud.openai_limits import (
     PROVIDER_ID,
     OpenAIModelSpec,
@@ -70,12 +71,6 @@ def _fail(message: str, *, retryable: bool = False) -> TranscriptionError:
 def _cancelled() -> TranscriptionError:
     return TranscriptionError(
         TranscriptionFailureCode.CANCELLED, "Transcription was cancelled."
-    )
-
-
-def _invalid_audio() -> TranscriptionError:
-    return TranscriptionError(
-        TranscriptionFailureCode.INVALID_AUDIO, "The selected audio is invalid."
     )
 
 
@@ -152,11 +147,11 @@ class OpenAITranscriptionProvider:
         try:
             source = wave.open(BytesIO(payload), "rb")  # noqa: SIM115 - closed below
         except (EOFError, wave.Error):
-            raise _invalid_audio() from None
+            raise invalid_audio_error() from None
         with source:
             rate = source.getframerate()
             if rate <= 0:
-                raise _invalid_audio()
+                raise invalid_audio_error()
             total_ms = source.getnframes() * 1000 // rate
             windows = self._plan(
                 total_ms,

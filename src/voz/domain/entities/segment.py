@@ -5,14 +5,13 @@ from dataclasses import dataclass, field, replace
 from typing import cast
 from uuid import UUID, uuid4
 
+from voz.domain.entities._validation import require_uuid
 from voz.domain.entities.word import Word
 
 
-def _validate_uuid(value: object, field_name: str) -> None:
-    if not isinstance(value, UUID):
-        raise TypeError(f"{field_name} must be a UUID")
-
-
+# ponytail: word.py and speaker_turn.py keep their own _validate_offsets: the
+# error messages name the entity, so they are not interchangeable. Ceiling: one
+# shared check taking the entity noun once a fourth entity needs it.
 def _validate_offsets(start_ms: int, end_ms: int) -> None:
     if type(start_ms) is not int or type(end_ms) is not int:
         raise TypeError("segment offsets must be integer milliseconds")
@@ -48,10 +47,10 @@ class Segment:
     avg_logprob: float | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
-        _validate_uuid(self.id, "id")
-        _validate_uuid(self.transcript_id, "transcript_id")
+        require_uuid(self.id, field="id")
+        require_uuid(self.transcript_id, field="transcript_id")
         if self.speaker_id is not None:
-            _validate_uuid(self.speaker_id, "speaker_id")
+            require_uuid(self.speaker_id, field="speaker_id")
         if type(self.edited) is not bool:
             raise TypeError("segment edited must be a bool")
         if type(self.revision) is not int:

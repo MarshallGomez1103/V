@@ -22,6 +22,7 @@ from voz.application.ports.media_normalization import (
     MediaNormalizationProgressCallback,
     NormalizedAudio,
 )
+from voz.infrastructure._payload import require_uuid
 from voz.infrastructure.audio.media_args import (
     NO_WINDOW,
     ffmpeg_input_arguments,
@@ -73,8 +74,8 @@ class FfmpegMediaNormalizer:
         cancellation: MediaNormalizationCancellationToken | None = None,
     ) -> NormalizedAudio:
         """Run FFmpeg through inherited descriptors and publish exactly once."""
-        self._require_uuid(project_id, field="project_id")
-        self._require_uuid(media_asset_id, field="media_asset_id")
+        require_uuid(project_id, field="project_id")
+        require_uuid(media_asset_id, field="media_asset_id")
         if type(duration_ms) is not int or duration_ms <= 0:
             raise ValueError("duration_ms must be a positive integer")
         if type(audio_stream_index) is not int or audio_stream_index < 0:
@@ -148,8 +149,8 @@ class FfmpegMediaNormalizer:
 
     def normalized_path_for(self, project_id: UUID, media_asset_id: UUID) -> Path:
         """Resolve an infrastructure-only derivative path for verification/playback."""
-        self._require_uuid(project_id, field="project_id")
-        self._require_uuid(media_asset_id, field="media_asset_id")
+        require_uuid(project_id, field="project_id")
+        require_uuid(media_asset_id, field="media_asset_id")
         return (
             self._trusted_root
             / "projects"
@@ -557,11 +558,6 @@ class FfmpegMediaNormalizer:
             MediaNormalizationFailureCode.DESTINATION_EXISTS,
             "A normalized derivative already exists.",
         )
-
-    @staticmethod
-    def _require_uuid(value: object, *, field: str) -> None:
-        if not isinstance(value, UUID):
-            raise TypeError(f"{field} must be a UUID")
 
     @staticmethod
     def _is_cancelled(

@@ -3,10 +3,7 @@
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
-
-def _validate_uuid(value: object, field_name: str) -> None:
-    if not isinstance(value, UUID):
-        raise TypeError(f"{field_name} must be a UUID")
+from voz.domain.entities._validation import require_uuid
 
 
 def _validate_offsets(start_ms: int, end_ms: int) -> None:
@@ -36,7 +33,7 @@ class Word:
     id: UUID = field(default_factory=uuid4, kw_only=True)
 
     def __post_init__(self) -> None:
-        _validate_uuid(self.id, "id")
-        _validate_uuid(self.segment_id, "segment_id")
+        require_uuid(self.id, field="id")
+        require_uuid(self.segment_id, field="segment_id")
         _validate_offsets(self.start_ms, self.end_ms)
         _validate_text(self.text)

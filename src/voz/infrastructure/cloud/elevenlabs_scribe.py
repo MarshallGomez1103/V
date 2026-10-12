@@ -30,6 +30,7 @@ from voz.application.ports.transcription import (
     TranscriptionResult,
 )
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+from voz.infrastructure.cloud._errors import invalid_audio_error
 from voz.infrastructure.cloud.elevenlabs_mapping import (
     InvalidScribeResponse,
     map_scribe_response,
@@ -96,12 +97,6 @@ def _failure(message: str, *, retryable: bool = False) -> TranscriptionError:
     )
 
 
-def _invalid_audio() -> TranscriptionError:
-    return TranscriptionError(
-        TranscriptionFailureCode.INVALID_AUDIO, "The selected audio is invalid."
-    )
-
-
 def _raise_if_cancelled(cancellation: TranscriptionCancellationToken | None) -> None:
     if cancellation is not None and cancellation.is_cancelled():
         raise TranscriptionError(
@@ -140,7 +135,7 @@ def _prepare_audio(
             seconds = parsed.getnframes() / parsed.getframerate()
         audio.seek(0)
     except (EOFError, wave.Error, ZeroDivisionError, OSError) as error:
-        raise _invalid_audio() from error
+        raise invalid_audio_error() from error
     return audio, size, seconds
 
 

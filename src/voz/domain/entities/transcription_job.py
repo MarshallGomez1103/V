@@ -9,6 +9,8 @@ from math import isfinite
 from typing import Final, Self
 from uuid import UUID
 
+from voz.domain.entities._validation import require_uuid
+
 
 class TranscriptionJobState(StrEnum):
     """Explicit lifecycle states for long-running transcription work."""
@@ -88,12 +90,6 @@ class InvalidJobTransition(ValueError):
     """Raised when a job lifecycle transition is not explicitly permitted."""
 
 
-def _require_uuid(value: object, *, field_name: str) -> UUID:
-    if not isinstance(value, UUID):
-        raise TypeError(f"{field_name} must be a UUID")
-    return value
-
-
 def _require_state(value: object, *, field_name: str) -> TranscriptionJobState:
     if not isinstance(value, TranscriptionJobState):
         raise TypeError(f"{field_name} must be a TranscriptionJobState")
@@ -144,16 +140,16 @@ class TranscriptionJob:
     """Progress inside the current stage (0..1); ``None`` when it has no measure."""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "id", _require_uuid(self.id, field_name="id"))
+        object.__setattr__(self, "id", require_uuid(self.id, field="id"))
         object.__setattr__(
             self,
             "project_id",
-            _require_uuid(self.project_id, field_name="project_id"),
+            require_uuid(self.project_id, field="project_id"),
         )
         object.__setattr__(
             self,
             "media_asset_id",
-            _require_uuid(self.media_asset_id, field_name="media_asset_id"),
+            require_uuid(self.media_asset_id, field="media_asset_id"),
         )
         object.__setattr__(
             self,

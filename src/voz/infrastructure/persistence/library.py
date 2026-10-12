@@ -21,6 +21,8 @@ from voz.infrastructure.persistence.schema import (
 )
 
 
+# ponytail: not the strict reader in _rows.py: this read model coerces with
+# str() and never raises TypeError, and that behaviour is relied upon as is.
 def _text(row: RowMapping, key: str) -> str:
     return str(row[key])
 
