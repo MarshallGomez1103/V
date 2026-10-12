@@ -1,7 +1,8 @@
 """One Model Manager catalog and store across every local model family.
 
-Aggregates the pinned faster-whisper and whisper.cpp catalogs plus the sherpa
-diarization models (ADR-0007), and routes store calls to the right backend.
+Aggregates the pinned faster-whisper and whisper.cpp catalogs, the sherpa
+diarization models (ADR-0007) and the speech synthesis models (ADR-0010), and
+routes store calls to the right backend.
 Models are addressed by ``"<provider_id>:<model_id>"`` (``model_keys``).
 """
 
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from voz.application.ports.model_installation import (
     CancelCheck,
     ModelFile,
+    ModelInstallationError,
+    ModelInstallationFailureCode,
     ProgressCallback,
 )
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
@@ -24,6 +27,13 @@ from voz.infrastructure.diarization.models import (
     DiarizationModelStore,
 )
 from voz.infrastructure.model_storage import FileSystemModelStore
+from voz.infrastructure.tts.catalog import (
+    TTS_CATALOG,
+    TTS_PROVIDER_ID,
+    TTS_REQUIRES,
+    TtsModelEntry,
+)
+from voz.infrastructure.tts.model_store import TtsModelStore
 
 DIARIZATION_PROVIDER_ID = "diarization"
 WHISPER_CPP_REQUIRES = "whisper-cli"
@@ -58,6 +68,7 @@ ENGINE_CAPABILITIES: Mapping[str, frozenset[ModelCapability]] = {
         }
     ),
     "diarization": frozenset({ModelCapability.DIARIZATION, _CPU}),
+    TTS_PROVIDER_ID: frozenset({ModelCapability.SYNTHESIS, _CPU}),
 }
 
 
@@ -89,22 +100,30 @@ class ManagedModel:
     files: tuple[ModelFile, ...]
     license: str
     multilingual: bool
-    kind: str = "asr"  # asr | diarization
+    kind: str = "asr"  # asr | diarization | tts
     requires: str | None = None
     runtime_available: bool = True
 
 
 class ManagedModelCatalog:
-    """faster-whisper, whisper.cpp (only with its runtime) and diarization."""
+    """faster-whisper, whisper.cpp (only with its runtime), diarization and TTS.
+
+    The speech synthesis models are listed only when ``tts_runtime_available`` is
+    given (the composition root passes it once the engine is registered).
+    """
 
     def __init__(
         self,
         *,
         whisper_cpp_available: Callable[[], bool],
         diarization_runtime_available: Callable[[], bool],
+        tts_runtime_available: Callable[[], bool] | None = None,
+        tts_models: Sequence[TtsModelEntry] = TTS_CATALOG,
     ) -> None:
         self._whisper_cpp_available = whisper_cpp_available
         self._diarization_runtime_available = diarization_runtime_available
+        self._tts_runtime_available = tts_runtime_available
+        self._tts_models = tuple(tts_models)
 
     def entries(self) -> tuple[ManagedModel, ...]:
         models = [
@@ -140,28 +159,56 @@ class ManagedModelCatalog:
                 runtime_available=self._diarization_runtime_available(),
             )
         )
+        if self._tts_runtime_available is not None:
+            runtime_available = self._tts_runtime_available()
+            models.extend(
+                ManagedModel(
+                    e.descriptor,
+                    (ModelFile(e.archive_name, e.size_bytes, e.sha256),),
+                    e.license,
+                    multilingual=len(e.languages) > 1,
+                    kind="tts",
+                    requires=TTS_REQUIRES,
+                    runtime_available=runtime_available,
+                )
+                for e in self._tts_models
+            )
         return tuple(models)
 
 
 class RoutingModelStore:
-    """``ModelStore`` + download port: diarization to its store, the rest to files."""
+    """``ModelStore`` + download port: diarization and TTS to their stores."""
 
     def __init__(
-        self, files: FileSystemModelStore, diarization: DiarizationModelStore
+        self,
+        files: FileSystemModelStore,
+        diarization: DiarizationModelStore,
+        tts: TtsModelStore | None = None,
     ) -> None:
         self._files = files
         self._diarization = diarization
+        self._tts = tts
 
     @staticmethod
     def _is_diarization(descriptor: ModelDescriptor) -> bool:
         return descriptor.provider_id == DIARIZATION_PROVIDER_ID
 
+    @staticmethod
+    def _is_tts(descriptor: ModelDescriptor) -> bool:
+        return descriptor.provider_id == TTS_PROVIDER_ID
+
     def is_installed(self, descriptor: ModelDescriptor) -> bool:
         if self._is_diarization(descriptor):
             return self._diarization.is_installed()
+        if self._is_tts(descriptor):
+            return self._tts is not None and self._tts.is_installed(descriptor.model_id)
         return self._files.is_installed(descriptor)
 
     def disk_usage(self, descriptor: ModelDescriptor) -> int | None:
+        if self._is_tts(descriptor):
+            return (
+                None if self._tts is None else self._tts.disk_usage(descriptor.model_id)
+            )
         if not self._is_diarization(descriptor):
             return self._files.disk_usage(descriptor)
         paths = self._diarization.paths()
@@ -174,13 +221,15 @@ class RoutingModelStore:
         )
 
     def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None:
-        if not self._is_diarization(descriptor):
-            return self._files.reclaimable_usage(descriptor)
-        return self.disk_usage(descriptor)  # downloaded files are never shared
+        if self._is_diarization(descriptor) or self._is_tts(descriptor):
+            return self.disk_usage(descriptor)  # downloaded files are never shared
+        return self._files.reclaimable_usage(descriptor)
 
     def remove(self, descriptor: ModelDescriptor) -> int:
         if self._is_diarization(descriptor):
             return self._diarization.remove()
+        if self._is_tts(descriptor):
+            return 0 if self._tts is None else self._tts.remove(descriptor.model_id)
         return self._files.remove(descriptor)
 
     def download(
@@ -193,6 +242,15 @@ class RoutingModelStore:
     ) -> object:
         if self._is_diarization(descriptor):
             return self._diarization.install(progress=progress, cancelled=cancelled)
+        if self._is_tts(descriptor):
+            if self._tts is None:
+                raise ModelInstallationError(
+                    ModelInstallationFailureCode.NOT_INSTALLED,
+                    "Speech synthesis models are not available.",
+                )
+            return self._tts.install(
+                descriptor.model_id, progress=progress, cancelled=cancelled
+            )
         return self._files.download(
             descriptor, files, progress=progress, cancelled=cancelled
         )

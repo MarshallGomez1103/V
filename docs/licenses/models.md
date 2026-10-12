@@ -137,14 +137,50 @@ any material that presents or ships them must credit:
   INTERSPEECH 2018; A. Nagrani, J. S. Chung, A. Zisserman, "VoxCeleb: a
   large-scale speaker identification dataset", INTERSPEECH 2017.
 
-## 4. Future TTS models
+### 3.4 Speech synthesis (sherpa-onnx TTS)
 
-Text-to-speech is planned (Program V, phase V-2 onward) and no TTS model is
-installable today. When TTS providers are added:
+Catalog: `src/voz/infrastructure/tts/catalog.py`. Installed only by
+`TtsModelStore.install` (Model Manager install action); each model is one
+`.tar.bz2` downloaded from the `tts-models` release of `k2-fsa/sherpa-onnx`
+(`https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/<archive>`),
+with size and SHA-256 pinned in the code and checked before extraction. The
+license strings below are the exact `license` values of the catalog, verified
+on 2026-10-12 (slice V4-01, `.ai/v-plan/findings/V4-01.md`).
+
+| Model id | Archive | Weights license | Redistributed by V | Verification |
+| --- | --- | --- | --- | --- |
+| `piper-en_US-lessac-medium` | `vits-piper-en_US-lessac-medium.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); voice trained on lessac (Blizzard 2013; research-only dataset license); espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: repository license MIT; the archive's `MODEL_CARD` points to the Lessac/Blizzard 2013 research license |
+| `piper-es_ES-davefx-medium` | `vits-piper-es_ES-davefx-medium.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); davefx dataset CC0; fine-tuned from lessac (voice trained on lessac (Blizzard 2013; research-only dataset license)); espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `MODEL_CARD` states the CC0 dataset; the lessac fine-tune origin is recorded in the same card |
+| `piper-es_MX-ald-medium` | `vits-piper-es_MX-ald-medium.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); ald dataset Unlicense; fine-tuned from davefx, itself fine-tuned from lessac (voice trained on lessac (Blizzard 2013; research-only dataset license)); espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `MODEL_CARD` states the Unlicense dataset and the davefx origin |
+| `kitten-nano-en-v0_8-int8` | `kitten-nano-en-v0_8-int8.tar.bz2` | Apache-2.0; espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `LICENSE` in the archive; Hugging Face card `KittenML/kitten-tts-nano-0.8-int8` declares `apache-2.0` |
+| `kokoro-int8-multi-lang-v1_0` | `kokoro-int8-multi-lang-v1_0.tar.bz2` | Apache-2.0; espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `LICENSE` in the archive; Hugging Face card `hexgrad/Kokoro-82M` declares `apache-2.0` |
+
+Points to keep in mind:
+
+- **Piper voices and the Lessac dataset.** The `piper-voices` repository is MIT,
+  but the English voice is trained on the Lessac/Blizzard 2013 dataset, whose
+  license is for research use. The two Spanish voices are fine-tunes that start
+  from that voice (davefx from lessac, ald from davefx), so the dataset chain is
+  not clean even though their own datasets are CC0 and Unlicense. V does not
+  present these voices as freely usable commercially. The owner decides whether
+  to keep them in the default catalog; Kitten and Kokoro (Apache-2.0) are the
+  alternatives with a clean chain.
+- **espeak-ng-data (GPL-3.0).** Every archive contains the phoneme data of
+  espeak-ng, which is GPL-3.0. V does not redistribute it: it is downloaded by
+  the user from upstream and stored next to the model. It matters to anyone
+  who would repackage the archives.
+- **No quality claim.** Voice quality was not evaluated by ear; only that the
+  audio is not silent.
+- The release is mutable upstream, so the code pins SHA-256 and rejects any
+  other file.
+
+## 4. Other speech synthesis models
+
+Only the models in section 3.4 are installable. When more TTS models are added:
 
 - Each TTS model will **declare its weights license in the catalog**, next to
-  its source and pinned revision, the same way ASR catalog entries carry a
-  `license` field today. This document will gain a row per model at that time.
+  its pinned archive, the same way ASR catalog entries carry a `license` field.
+  This document gains a row per model at that time.
 - The license of a model's weights is independent of the license of the code
   that runs it.
 - Some weights carry **restrictions, including commercial ones**. Example from

@@ -10,15 +10,10 @@ caller invokes :meth:`DiarizationModelStore.install`.
 
 from __future__ import annotations
 
-import hashlib
-import http.client
 import json
 import os
 import shutil
 import tarfile
-import urllib.error
-import urllib.request
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,10 +24,10 @@ from voz.application.ports.model_installation import (
     ModelInstallationFailureCode,
     ProgressCallback,
 )
+from voz.infrastructure.artifact_download import ArtifactFetcher
 
 _Code = ModelInstallationFailureCode
 _MANIFEST_NAME = ".voz-diarization.json"
-_BLOCK_BYTES = 1024 * 1024
 _SEGMENTATION_MEMBER = "sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
 _SEGMENTATION_LICENSE_MEMBER = "sherpa-onnx-pyannote-segmentation-3-0/LICENSE"
 
@@ -103,7 +98,11 @@ class DiarizationModelStore:
         self._staging = models_root / "diarization.installing"
         self._segmentation = segmentation
         self._embedding = embedding
-        self._timeout = network_timeout_seconds
+        self._fetcher = ArtifactFetcher(
+            self._staging,
+            label="diarization model",
+            timeout_seconds=network_timeout_seconds,
+        )
 
     def paths(self) -> DiarizationModelPaths | None:
         """Return the model files when a complete, intact install exists."""
@@ -147,13 +146,13 @@ class DiarizationModelStore:
 
         try:
             self._staging.mkdir(mode=0o700, parents=True, exist_ok=True)
-            archive = self._fetch(
+            archive = self._fetcher.fetch(
                 self._segmentation,
                 lambda n: report(n, done),
                 cancelled,
             )
             done = self._segmentation.size_bytes
-            model = self._fetch(
+            model = self._fetcher.fetch(
                 self._embedding,
                 lambda n: report(n, done),
                 cancelled,
@@ -240,144 +239,6 @@ class DiarizationModelStore:
         return ModelInstallationError(
             _Code.INVALID_SNAPSHOT, "The segmentation model archive is invalid."
         )
-
-    def _fetch(
-        self,
-        artifact: DiarizationArtifact,
-        on_bytes: Callable[[int], None],
-        cancelled: CancelCheck | None,
-    ) -> Path:
-        """Leave a verified ``artifact.name`` in staging, resuming a ``.part``."""
-        finished = self._staging / artifact.name
-        partial = self._staging / f"{artifact.name}.part"
-        if finished.is_file() and self._matches(finished, artifact, cancelled):
-            on_bytes(artifact.size_bytes)
-            return finished
-        finished.unlink(missing_ok=True)
-        self._download_part(artifact, partial, on_bytes, cancelled)
-        if not self._matches(partial, artifact, cancelled):
-            partial.unlink(missing_ok=True)
-            raise ModelInstallationError(
-                _Code.CHECKSUM_MISMATCH,
-                "The downloaded diarization model failed verification.",
-            )
-        os.replace(partial, finished)
-        return finished
-
-    def _download_part(
-        self,
-        artifact: DiarizationArtifact,
-        partial: Path,
-        on_bytes: Callable[[int], None],
-        cancelled: CancelCheck | None,
-    ) -> None:
-        for _attempt in range(2):
-            try:
-                offset = partial.stat().st_size
-            except FileNotFoundError:
-                offset = 0
-            if offset > artifact.size_bytes:
-                partial.unlink()
-                offset = 0
-            if offset == artifact.size_bytes:
-                on_bytes(offset)
-                return
-            headers = {"Accept-Encoding": "identity", "User-Agent": "voz-model-store"}
-            if offset:
-                headers["Range"] = f"bytes={offset}-"
-            try:
-                response = urllib.request.urlopen(
-                    urllib.request.Request(artifact.url, headers=headers),
-                    timeout=self._timeout,
-                )
-            except urllib.error.HTTPError as error:
-                error.close()
-                if error.code == 416 and offset:  # stale partial: start over once
-                    partial.unlink(missing_ok=True)
-                    continue
-                raise ModelInstallationError(
-                    _Code.HTTP_ERROR,
-                    "The model server rejected the request.",
-                    status=error.code,
-                ) from error
-            except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
-                raise self._network_failure() from error
-            with response:
-                status = int(response.status)
-                resumed = False
-                if offset and status == 206:
-                    if not str(response.headers.get("Content-Range", "")).startswith(
-                        f"bytes {offset}-"
-                    ):
-                        partial.unlink(missing_ok=True)
-                        continue
-                    resumed = True
-                elif status != 200:
-                    raise ModelInstallationError(
-                        _Code.HTTP_ERROR,
-                        "The model server rejected the request.",
-                        status=status,
-                    )
-                written = offset if resumed else 0
-                with partial.open("ab" if resumed else "wb") as output:
-                    on_bytes(written)
-                    while block := self._read(response):
-                        if cancelled is not None and cancelled():
-                            raise self._cancelled()
-                        written += len(block)
-                        if written > artifact.size_bytes:
-                            break
-                        output.write(block)
-                        on_bytes(written)
-                    output.flush()
-                    os.fsync(output.fileno())
-                if written == artifact.size_bytes and not response.length:
-                    return
-                # Too long, or a cut connection that read() reported as clean EOF.
-                if written > artifact.size_bytes:
-                    partial.unlink(missing_ok=True)
-                    raise ModelInstallationError(
-                        _Code.CHECKSUM_MISMATCH,
-                        "The downloaded diarization model failed verification.",
-                    )
-                raise self._network_failure()
-        raise ModelInstallationError(
-            _Code.DOWNLOAD_FAILED, "The model file could not be downloaded."
-        )
-
-    def _read(self, response: http.client.HTTPResponse) -> bytes:
-        try:
-            return response.read(_BLOCK_BYTES)
-        except (OSError, http.client.HTTPException) as error:
-            raise self._network_failure() from error
-
-    @staticmethod
-    def _network_failure() -> ModelInstallationError:
-        return ModelInstallationError(
-            _Code.NETWORK_ERROR, "The model server could not be reached in time."
-        )
-
-    @staticmethod
-    def _cancelled() -> ModelInstallationError:
-        return ModelInstallationError(
-            _Code.CANCELLED, "The installation was cancelled."
-        )
-
-    def _matches(
-        self,
-        path: Path,
-        artifact: DiarizationArtifact,
-        cancelled: CancelCheck | None,
-    ) -> bool:
-        if path.stat().st_size != artifact.size_bytes:
-            return False
-        digest = hashlib.sha256()
-        with path.open("rb") as source:
-            while block := source.read(_BLOCK_BYTES):
-                if cancelled is not None and cancelled():
-                    raise self._cancelled()
-                digest.update(block)
-        return digest.hexdigest() == artifact.sha256
 
 
 __all__ = [

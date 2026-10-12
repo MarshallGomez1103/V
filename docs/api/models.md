@@ -8,8 +8,9 @@ section). No response contains host paths. Common rules: [README.md](README.md).
 ## Namespaced keys (MODELS-UI-002)
 
 The manager gathers into a single catalog (`ManagedModelCatalog`) the
-faster-whisper models, the whisper.cpp models (only if `whisper-cli` exists) and
-speaker separation (sherpa-onnx). A bare `model_id` can repeat across providers
+faster-whisper models, the whisper.cpp models (only if `whisper-cli` exists),
+speaker separation (sherpa-onnx) and the speech synthesis models (sherpa-onnx
+TTS; listed once the composition root enables the engine). A bare `model_id` can repeat across providers
 (`small` exists in faster-whisper and in whisper.cpp), so the API addresses every
 model by its **key** `"<provider_id>:<model_id>"`:
 
@@ -18,6 +19,7 @@ model by its **key** `"<provider_id>:<model_id>"`:
 | `faster-whisper:turbo` | faster-whisper ASR |
 | `whisper-cpp:small` | whisper.cpp ASR (requires `whisper-cli`) |
 | `diarization:sherpa-default` | Speaker segmentation + embeddings |
+| `sherpa-onnx-tts:piper-es_MX-ald-medium` | Speech synthesis (Piper voice, Spanish, Mexico) |
 
 All the endpoints on this page (`DELETE /api/models/{key}`,
 `POST /api/models/{key}/install`) accept the key in the path (`:` is valid; the
@@ -65,13 +67,13 @@ HTTP 200. One entry for every catalog model, installed or not.
 | Field | Meaning |
 | --- | --- |
 | `key`, `provider_id` | The API key (see above) and the provider. |
-| `kind` | Free-form family string (`asr`, `diarization` today; speech synthesis will add its own). Clients must not reject unknown values; group by `capabilities` instead. |
-| `requires` | Runtime the model needs in order to be used: `whisper-cli` (whisper.cpp), `diarization` (optional extra with sherpa-onnx) or `null`. |
+| `kind` | Free-form family string (`asr`, `diarization`, `tts` today). Clients must not reject unknown values; group by `capabilities` instead. |
+| `requires` | Runtime the model needs in order to be used: `whisper-cli` (whisper.cpp), `diarization` (optional extra with sherpa-onnx), `tts` (the sherpa-onnx runtime for speech synthesis) or `null`. |
 | `runtime_available` | `false` if that runtime is missing: the model is listed but the UI does not offer to install it ("requires the diarization extra"). whisper.cpp is not even listed without `whisper-cli`. |
 | `model_id` | Identifier within the provider; for faster-whisper, the same as in `/api/transcription-options`. |
-| `source`, `revision` | Pinned provenance (40-character commit SHA). `null` for diarization: its artifacts are release assets verified by SHA-256. |
+| `source`, `revision` | Pinned provenance (40-character commit SHA). `null` for diarization and speech synthesis: their artifacts are release assets verified by SHA-256. |
 | `capabilities` | Sorted list of capability strings the model declares (vocabulary below). Always present; never empty. |
-| `profile` | `fast` or `quality`; `null` for diarization. |
+| `profile` | `fast` or `quality`; `null` for diarization and speech synthesis. |
 | `size_bytes` | Sum of the catalog's expected files (what would be downloaded). |
 | `installed` | `true` if there is a valid V manifest for exactly that source and revision. A different revision installed earlier does not count. |
 | `disk_bytes` | **Real size** of the installed model's files (sum of `lstat`), also if they are hardlinks to the Buzz cache; `null` if not installed. Never 0 for an installed model. |
@@ -124,14 +126,15 @@ Values are stable (persisted and serialized): new ones are only added.
 | `language_detection` | Detects the spoken language | faster-whisper, whisper.cpp |
 | `word_timestamps` | Native per-word timings in the transcript (ADR-0008) | faster-whisper, whisper.cpp |
 | `diarization` | Speaker separation | `diarization:sherpa-default` |
-| `cpu`, `gpu` | Hardware the engine can run on | ASR models; `cpu` also diarization |
-| `synthesis` | Text to speech | none yet |
+| `cpu`, `gpu` | Hardware the engine can run on | ASR models; `cpu` also diarization and speech synthesis |
+| `synthesis` | Text to speech | the `sherpa-onnx-tts:*` models |
 | `alignment` | Forced alignment by a standalone aligner | none (words are native) |
 | `wake_word` | Wake-word detection | none yet |
 | `realtime` | Streaming recognition | none yet |
 
-`synthesis`, `alignment` and `wake_word` exist in the vocabulary (ADR-0010
-section 8) but no engine implements them, so no catalog entry can declare them:
+`synthesis` is implemented by the sherpa-onnx TTS engine. `alignment` and
+`wake_word` exist in the vocabulary (ADR-0010 section 8) but no engine implements
+them, so no catalog entry can declare them:
 `ENGINE_CAPABILITIES` in `src/voz/infrastructure/model_registry.py` maps every
 provider to the capabilities its engine implements, and a test fails if an entry
 declares anything outside that map. `alignment` is deliberately not declared by
@@ -141,6 +144,43 @@ the ASR models: their word timings come from the engine itself, not from an
 Capabilities are not read from `.voz-model.json` manifests: they always come
 from the trusted catalog, so manifests written before V6-01 (which have no
 `capabilities` key) and manifests with arbitrary values keep working.
+
+### Speech synthesis models (V4-03)
+
+Catalog: `src/voz/infrastructure/tts/catalog.py`. Every model is one
+`.tar.bz2` of the `tts-models` release of `k2-fsa/sherpa-onnx`, pinned by size
+and SHA-256 (`size_bytes` is the archive size). They install through the same
+`POST /api/models/{key}/install` task as any other model; `done_bytes` /
+`total_bytes` count the archive download.
+
+| Key (`sherpa-onnx-tts:<model_id>`) | Family | Languages | Archive |
+| --- | --- | --- | --- |
+| `piper-es_MX-ald-medium` | Piper (VITS) | es | 67 196 497 B |
+| `piper-es_ES-davefx-medium` | Piper (VITS) | es | 67 184 952 B |
+| `piper-en_US-lessac-medium` | Piper (VITS) | en | 67 230 653 B |
+| `kitten-nano-en-v0_8-int8` | KittenTTS | en | 31 220 690 B |
+| `kokoro-int8-multi-lang-v1_0` | Kokoro (quality, slow) | en, es, fr, hi, it, ja, pt, zh | 132 303 094 B |
+
+All of them declare `capabilities: ["cpu", "synthesis"]`, `kind: "tts"`,
+`requires: "tts"` and `multilingual` true only for Kokoro. The `license` string
+is honest about the chain of rights (see
+[../licenses/models.md](../licenses/models.md)): the Piper voices follow the
+Lessac dataset's research-only license, and every archive carries the GPL-3.0
+`espeak-ng-data` phoneme data.
+
+Install rules: the archive is verified against its pinned size and SHA-256
+**before** anything is extracted (failure: `model_installation_checksum_mismatch`,
+nothing written). Extraction is manual: only the files the catalog names, the
+`espeak-ng-data` tree and the `LICENSE`/`MODEL_CARD` notices are written, as
+regular files, under `<data>/models/tts/<model_id>/`. An archive with an
+absolute or `..` member path, or a link or device entry among the files to
+extract, or a missing expected file, is rejected as
+`model_installation_invalid_snapshot` and nothing is published. Nothing inside an
+archive is executed. An interrupted download resumes from its `.part` file.
+`installed` is true when the install manifest matches the pinned digest and the
+model files have the recorded sizes; `DELETE` removes the whole model directory
+(and any partial download) and returns the freed bytes. Deleting a speech synthesis model is not yet blocked by
+synthesis jobs that are still running.
 
 ## `DELETE /api/models/{key}?confirm=<key>`
 
