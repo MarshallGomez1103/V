@@ -6,8 +6,10 @@ descriptor it accepts and a valid voice id. Everything else must pass unchanged.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -21,9 +23,13 @@ from voz.application.ports.speech_synthesis import (
     SynthesisRequirements,
 )
 from voz.application.synthesis_provider_registry import SynthesisProviderRegistry
-from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.voice import Voice
 from voz.infrastructure.tts.fake import FakeSpeechSynthesisProvider, fake_tts_descriptor
+from voz.infrastructure.tts.subprocess_provider import (
+    SubprocessSynthesisProvider,
+    TtsModelManifest,
+)
 
 TEXT = "Hola, esto es una prueba de voz."
 
@@ -58,10 +64,43 @@ class _Engine:
         return self.provider.synthesize(text, model=self.model, **options)  # type: ignore[arg-type]
 
 
-@pytest.fixture(params=("fake",))
-def engine(request: FixtureRequest) -> Iterator[_Engine]:
+_FAKE_WORKER = Path(__file__).parents[1] / "fixtures" / "tts" / "fake_tts_worker.py"
+
+
+def _subprocess_case(tmp_path: Path) -> _Case:
+    model_file = tmp_path / "model.onnx"
+    model_file.write_bytes(b"x")
+    manifest = TtsModelManifest(
+        family="fake",
+        files={"model": model_file},
+        voices=(Voice("0", "Zero", ("es",)), Voice("1", "One", ("en", "es"))),
+        languages=("es", "en"),
+    )
+    info = SynthesisProviderInfo(
+        "subprocess-tts", "Subprocess TTS", max_chunk_chars=400
+    )
+    model = ModelDescriptor(
+        provider_id="subprocess-tts",
+        model_id="m1",
+        display_name="Fake child",
+        capabilities=frozenset({ModelCapability.SYNTHESIS}),
+    )
+    return _Case(
+        lambda: SubprocessSynthesisProvider(
+            info=info,
+            argv=[sys.executable, str(_FAKE_WORKER)],
+            manifests={"m1": manifest},
+        ),
+        model,
+        "0",
+    )
+
+
+@pytest.fixture(params=("fake", "subprocess"))
+def engine(request: FixtureRequest, tmp_path: Path) -> Iterator[_Engine]:
     cases = {
         "fake": _Case(FakeSpeechSynthesisProvider, fake_tts_descriptor(), "tone-low"),
+        "subprocess": _subprocess_case(tmp_path),
     }
     case = cases[request.param]
     provider = case.factory()
