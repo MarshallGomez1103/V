@@ -535,7 +535,7 @@ describe('ModelManager', () => {
         await screen.findByRole('heading', { level: 2, name: 'Hablantes' })
       ).closest('section') as HTMLElement
       expect(dataRows(section)).toHaveLength(1)
-      expect(section.textContent).toMatch(/Apache-2\.0/)
+      expect(section.textContent).toMatch(/CC-BY-4\.0/)
       // Sin perfil: la columna muestra un guion, no «Rápido» ni «Calidad».
       expect(section.textContent).not.toMatch(/Rápido|Calidad/)
       fireEvent.click(within(section).getByRole('button', { name: /descargar \(33\sMB\)/i }))
