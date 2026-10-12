@@ -6,6 +6,7 @@ descriptor it accepts and a valid voice id. Everything else must pass unchanged.
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -26,6 +27,11 @@ from voz.application.synthesis_provider_registry import SynthesisProviderRegistr
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.voice import Voice
 from voz.infrastructure.tts.fake import FakeSpeechSynthesisProvider, fake_tts_descriptor
+from voz.infrastructure.tts.sherpa_provider import (
+    SHERPA_TTS_PROVIDER_ID,
+    manifest_from_dir,
+    sherpa_tts_provider,
+)
 from voz.infrastructure.tts.subprocess_provider import (
     SubprocessSynthesisProvider,
     TtsModelManifest,
@@ -96,13 +102,37 @@ def _subprocess_case(tmp_path: Path) -> _Case:
     )
 
 
-@pytest.fixture(params=("fake", "subprocess"))
+def _sherpa_case() -> _Case:
+    """Real sherpa-onnx model, opt-in: ``VOZ_TTS_E2E_MODEL=<extracted dir>``
+    (and ``VOZ_TTS_E2E_FAMILY``, default ``vits``)."""
+    directory = os.environ.get("VOZ_TTS_E2E_MODEL")
+    if not directory:
+        pytest.skip("set VOZ_TTS_E2E_MODEL to an extracted sherpa-onnx TTS model")
+    family = os.environ.get("VOZ_TTS_E2E_FAMILY", "vits")
+    manifest = manifest_from_dir(family, Path(directory), languages=("es",))
+    model = ModelDescriptor(
+        provider_id=SHERPA_TTS_PROVIDER_ID,
+        model_id="e2e",
+        display_name="sherpa-onnx E2E",
+        capabilities=frozenset({ModelCapability.SYNTHESIS}),
+    )
+    return _Case(
+        lambda: sherpa_tts_provider({"e2e": manifest}),
+        model,
+        manifest.voices[0].id,
+    )
+
+
+@pytest.fixture(params=("fake", "subprocess", "sherpa"))
 def engine(request: FixtureRequest, tmp_path: Path) -> Iterator[_Engine]:
     cases = {
-        "fake": _Case(FakeSpeechSynthesisProvider, fake_tts_descriptor(), "tone-low"),
-        "subprocess": _subprocess_case(tmp_path),
+        "fake": lambda: _Case(
+            FakeSpeechSynthesisProvider, fake_tts_descriptor(), "tone-low"
+        ),
+        "subprocess": lambda: _subprocess_case(tmp_path),
+        "sherpa": _sherpa_case,
     }
-    case = cases[request.param]
+    case = cases[request.param]()
     provider = case.factory()
     yield _Engine(provider, case.model, case.voice_id)
     provider.close()
