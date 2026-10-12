@@ -199,11 +199,13 @@ def test_openai_whisper_pt_files_are_ignored(tmp_path: Path) -> None:
 def test_unpinned_catalog_entries_are_skipped(tmp_path: Path) -> None:
     build_snapshot(tmp_path)
     entry = make_entry()
-    unpinned = CatalogEntry(
+    unpinned = CatalogEntry(entry.descriptor, entry.files, "MIT", True)
+    # CatalogEntry refuses unpinned descriptors; force one to keep the cache's
+    # defensive skip covered (the catalog port is just a callable).
+    object.__setattr__(
+        unpinned,
+        "descriptor",
         ModelDescriptor("faster-whisper", "x", "X", frozenset({ModelCapability.CPU})),
-        entry.files,
-        "MIT",
-        True,
     )
 
     assert BuzzModelCache([tmp_path], lambda: (unpinned,)).find_candidates() == ()

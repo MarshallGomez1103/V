@@ -23,14 +23,18 @@ _CAPABILITIES = frozenset(
 )
 
 
-def faster_whisper_fast_descriptor(*, revision: str | None = None) -> ModelDescriptor:
-    """Build the initial turbo profile without inventing an upstream revision."""
+def faster_whisper_fast_descriptor(*, revision: str) -> ModelDescriptor:
+    """Build the turbo profile pinned to ``revision`` (a 40-hex commit SHA).
+
+    The revision is mandatory: an installable descriptor never lacks provenance.
+    Models without an upstream commit (diarization) are not built here.
+    """
     return ModelDescriptor(
         provider_id="faster-whisper",
         model_id="turbo",
         display_name="Faster Whisper Turbo (fast)",
         capabilities=_CAPABILITIES,
-        source="mobiuslabsgmbh/faster-whisper-large-v3-turbo" if revision else None,
+        source="mobiuslabsgmbh/faster-whisper-large-v3-turbo",
         revision=revision,
         profile=ProcessingProfile(
             name=ProcessingProfileName.FAST,
@@ -44,16 +48,14 @@ def faster_whisper_fast_descriptor(*, revision: str | None = None) -> ModelDescr
     )
 
 
-def faster_whisper_quality_descriptor(
-    *, revision: str | None = None
-) -> ModelDescriptor:
-    """Build the initial large-v3 quality profile with pinned provenance."""
+def faster_whisper_quality_descriptor(*, revision: str) -> ModelDescriptor:
+    """Build the large-v3 quality profile pinned to ``revision`` (mandatory)."""
     return ModelDescriptor(
         provider_id="faster-whisper",
         model_id="large-v3",
         display_name="Faster Whisper Large v3 (quality)",
         capabilities=_CAPABILITIES,
-        source="Systran/faster-whisper-large-v3" if revision else None,
+        source="Systran/faster-whisper-large-v3",
         revision=revision,
         profile=ProcessingProfile(
             name=ProcessingProfileName.QUALITY,
@@ -72,6 +74,10 @@ class CatalogEntry:
     files: tuple[ModelFile, ...]
     license: str
     multilingual: bool
+
+    def __post_init__(self) -> None:
+        if self.descriptor.provenance is None:
+            raise ValueError("catalog entries require a pinned source and revision")
 
 
 def _files(

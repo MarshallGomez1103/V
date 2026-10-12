@@ -1,11 +1,18 @@
 """Tests for Faster Whisper fast and quality descriptors."""
 
-from voz.domain.entities.model_descriptor import ModelCapability
+import inspect
+from collections.abc import Callable
+from dataclasses import replace
+
+import pytest
+
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import (
     ComputePrecision,
     ProcessingProfileName,
 )
 from voz.infrastructure.asr.catalog import (
+    CatalogEntry,
     FasterWhisperModelCatalog,
     faster_whisper_catalog,
     faster_whisper_fast_descriptor,
@@ -93,3 +100,31 @@ def test_catalog_files_pin_weights_only_and_expose_verified_sizes() -> None:
 
 def test_catalog_adapter_exposes_the_same_entries() -> None:
     assert FasterWhisperModelCatalog().entries() == faster_whisper_catalog()
+
+
+@pytest.mark.parametrize(
+    "builder", [faster_whisper_fast_descriptor, faster_whisper_quality_descriptor]
+)
+def test_descriptor_builders_require_a_pinned_revision(
+    builder: Callable[..., ModelDescriptor],
+) -> None:
+    parameter = inspect.signature(builder).parameters["revision"]
+    assert parameter.default is inspect.Parameter.empty
+    with pytest.raises(TypeError):
+        builder()
+    with pytest.raises((TypeError, ValueError)):
+        builder(revision=None)
+    with pytest.raises(ValueError):
+        builder(revision="")
+    with pytest.raises(ValueError):
+        builder(revision="main")
+
+
+def test_installable_catalog_entry_rejects_a_descriptor_without_provenance() -> None:
+    pinned = faster_whisper_catalog()[0]
+    unpinned = replace(pinned.descriptor, source=None, revision=None)
+
+    with pytest.raises(ValueError, match="revision"):
+        replace(pinned, descriptor=unpinned)
+    with pytest.raises(ValueError, match="revision"):
+        CatalogEntry(unpinned, pinned.files, license="MIT", multilingual=True)
