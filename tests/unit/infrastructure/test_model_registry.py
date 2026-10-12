@@ -62,7 +62,7 @@ def test_diarization_entry_carries_size_licenses_and_runtime_flag() -> None:
         False,
     )
     assert sum(f.size_bytes for f in entry.files) == 6_958_444 + 26_530_550
-    assert "MIT" in entry.license and "Apache" in entry.license
+    assert "MIT" in entry.license and "CC-BY-4.0" in entry.license
     assert catalog(cpp=False).entries()[-1].runtime_available is True
 
 

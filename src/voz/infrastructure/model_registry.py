@@ -88,7 +88,10 @@ class ManagedModelCatalog:
                     ModelFile(a.name, a.size_bytes, a.sha256)
                     for a in (SEGMENTATION_ARCHIVE, EMBEDDING_MODEL)
                 ),
-                license="MIT (pyannote segmentation) · Apache-2.0 (WeSpeaker)",
+                license=(
+                    "MIT (pyannote segmentation)"
+                    " · CC-BY-4.0 (WeSpeaker, VoxCeleb-trained)"
+                ),
                 multilingual=True,
                 kind="diarization",
                 requires=DIARIZATION_REQUIRES,

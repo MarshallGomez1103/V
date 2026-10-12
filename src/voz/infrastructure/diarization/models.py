@@ -72,7 +72,9 @@ EMBEDDING_MODEL = DiarizationArtifact(
     ),
     size_bytes=26_530_550,
     sha256="e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012",
-    license="Apache-2.0 (WeSpeaker)",
+    # Weights follow their training dataset, not the Apache-2.0 code license
+    # (WeSpeaker docs/pretrained.md; HF card "cc-by-4.0"). See V1-10a.
+    license="CC-BY-4.0 (WeSpeaker, VoxCeleb-trained)",
 )
 
 

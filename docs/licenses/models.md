@@ -83,21 +83,59 @@ carries its upstream `LICENSE`, which V stores next to the model as
 | Artifact | Source | Weights license | Redistributed by V | Verification |
 | --- | --- | --- | --- | --- |
 | `sherpa-onnx-pyannote-segmentation-3-0` (ONNX export of pyannote/segmentation-3.0) | https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 | MIT | No | Verified: the original card https://huggingface.co/pyannote/segmentation-3.0 shows "License: mit" (2026-10-11); the card is gated (the publisher asks for contact information before file access). The sherpa-onnx release page itself states no license. Also recorded in ADR-0007 and in the code |
-| `wespeaker_en_voxceleb_resnet34_LM.onnx` (WeSpeaker ResNet34-LM speaker embeddings) | https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx | Not verified | No | Partly verified, see below |
+| `wespeaker_en_voxceleb_resnet34_LM.onnx` (WeSpeaker ResNet34-LM speaker embeddings) | https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx | CC BY 4.0 (WeSpeaker VoxCeleb-trained weights) | No | Verified from WeSpeaker's own statements (2026-10-11), see below |
 
-WeSpeaker embedding model. The WeSpeaker **code** repository
-(https://github.com/wenet-e2e/wespeaker) shows Apache-2.0 (2026-10-11), and
-ADR-0007 and the code record "Apache-2.0 (WeSpeaker)". However, the WeSpeaker
-pretrained-models page
-(https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md,
-2026-10-11) states that pretrained models follow the license of their training
-dataset and that models trained on VoxCeleb follow Creative Commons
-Attribution 4.0 International. That page does not name this exact ONNX file,
-and the sherpa-onnx release page does not state a license for it. The weights
-license is therefore **Not verified**: it may be Apache-2.0, CC BY 4.0, or
-both may apply. Until the owner resolves this, do not describe these weights
-as Apache-2.0 in user-facing material, and treat attribution to WeSpeaker and
-VoxCeleb as required.
+WeSpeaker embedding model (re-checked 2026-10-11, slice V1-10a). Sources
+read on 2026-10-11:
+
+- https://github.com/wenet-e2e/wespeaker: the **code** is Apache-2.0. The
+  README says nothing about pretrained-model licenses and asks users to cite
+  the two WeSpeaker papers listed below.
+- https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md:
+  "The pretrained model in WeNet follows the license of it's corresponding
+  dataset. For example, the pretrained model on VoxCeleb follows Creative
+  Commons Attribution 4.0 International License." The VoxCeleb row lists
+  "ResNet34 / ResNet34_LM" with `.pt` and `.onnx` downloads.
+- https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM: model card
+  metadata declares "License: cc-by-4.0".
+- https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+  (where V downloads the file): "Each model has its own license. Please see the
+  corresponding repository for the specific license of a given model." The
+  corresponding repository is WeSpeaker, so the WeSpeaker statement applies.
+- https://www.robots.ox.ac.uk/~vgg/data/voxceleb/ asks users of the dataset
+  to cite the three VoxCeleb papers below. Its subpages
+  https://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox1.html and
+  https://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox2.html state that the
+  VoxCeleb1/VoxCeleb2 **metadata** is licensed CC BY-SA 4.0; neither page
+  states a license for models trained on the data.
+
+Conclusion. The weights are recorded as **CC BY 4.0**, the license the model
+publisher (WeSpeaker) states for its VoxCeleb-trained models; they are **not**
+Apache-2.0. The catalog string in `models.py` is
+`"CC-BY-4.0 (WeSpeaker, VoxCeleb-trained)"`. Two points remain unverified and
+are stated so as not to overclaim: (a) the sherpa-onnx ONNX file is assumed to
+be the WeSpeaker ResNet34-LM export (same name; no byte comparison with the
+WeSpeaker/Hugging Face `.onnx` was made); (b) whether the dataset's CC BY-SA
+4.0 metadata license has any bearing on trained weights is a legal question not
+settled by any source above.
+
+Required attribution (CC BY 4.0). V does not redistribute these weights, but
+any material that presents or ships them must credit:
+
+- WeSpeaker, ResNet34-LM speaker-embedding model trained on VoxCeleb, CC BY 4.0
+  (https://github.com/wenet-e2e/wespeaker), with no changes made by V. Papers
+  requested by WeSpeaker: Hongji Wang, Chengdong Liang, et al., "Wespeaker: A
+  research and production oriented speaker embedding learning toolkit",
+  ICASSP 2023; Shuai Wang, Zhengyang Chen, et al., "Advancing speaker embedding
+  learning: Wespeaker toolkit for research and production", Speech
+  Communication 162, 2024.
+- VoxCeleb (Visual Geometry Group, University of Oxford,
+  https://www.robots.ox.ac.uk/~vgg/data/voxceleb/). Papers requested: A.
+  Nagrani, J. S. Chung, W. Xie, A. Zisserman, "VoxCeleb: Large-scale speaker
+  verification in the wild", Computer Speech and Language, 2019; J. S. Chung,
+  A. Nagrani, A. Zisserman, "VoxCeleb2: Deep Speaker Recognition",
+  INTERSPEECH 2018; A. Nagrani, J. S. Chung, A. Zisserman, "VoxCeleb: a
+  large-scale speaker identification dataset", INTERSPEECH 2017.
 
 ## 4. Future TTS models
 

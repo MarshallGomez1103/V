@@ -77,6 +77,19 @@ MIT license of V. The user downloads them explicitly from their upstream
 sources. Their sources, licenses and verification status are listed in
 docs/licenses/models.md.
 
+Attribution for the speaker-embedding model used by local diarization
+(downloaded by the user on request, not redistributed by V):
+
+  wespeaker_en_voxceleb_resnet34_LM.onnx
+  WeSpeaker ResNet34-LM speaker-embedding model trained on VoxCeleb,
+  by the WeSpeaker project (https://github.com/wenet-e2e/wespeaker),
+  licensed under Creative Commons Attribution 4.0 International
+  (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/), as stated in
+  WeSpeaker's docs/pretrained.md. No changes made by V.
+  Training data: VoxCeleb1 and VoxCeleb2, Visual Geometry Group,
+  University of Oxford (https://www.robots.ox.ac.uk/~vgg/data/voxceleb/).
+  Citations are listed in docs/licenses/models.md, section 3.3.
+
 =======================================================================
 Test fixtures
 =======================================================================

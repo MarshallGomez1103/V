@@ -31,6 +31,18 @@ alongside CTranslate2 on an immutable system (Bazzite).
      pyannote/segmentation-3.0), **MIT** license;
    - embeddings: `wespeaker_en_voxceleb_resnet34_LM.onnx` (WeSpeaker ResNet34),
      **Apache-2.0** license.
+
+     > **Correction 2026-10-11 (V1-10a):** Apache-2.0 is the license of the
+     > WeSpeaker *code*, not of these weights. WeSpeaker's
+     > [`docs/pretrained.md`](https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md)
+     > states that pretrained models follow the license of their training
+     > dataset and that VoxCeleb-trained models follow Creative Commons
+     > Attribution 4.0 International; the Hugging Face card
+     > [`Wespeaker/wespeaker-voxceleb-resnet34-LM`](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)
+     > declares `cc-by-4.0`. The embedding weights are therefore recorded as
+     > **CC BY 4.0** (attribution to WeSpeaker and VoxCeleb required). The
+     > decision above is unchanged. Details and attribution:
+     > [`docs/licenses/models.md`](../licenses/models.md#33-speaker-diarization-sherpa-onnx).
    They are installed only by explicit action (`DiarizationModelStore.install`)
    in `<XDG data>/models/diarization/`, with `.part` files, resumption through
    `Range`, atomic publication and a manifest; they are never downloaded at

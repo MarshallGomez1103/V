@@ -507,7 +507,7 @@ describe('ModelManager', () => {
         source: null,
         revision: null,
         profile: null,
-        license: 'MIT (pyannote segmentation) · Apache-2.0 (WeSpeaker)',
+        license: 'MIT (pyannote segmentation) · CC-BY-4.0 (WeSpeaker, VoxCeleb-trained)',
         size_bytes: 33_488_994,
         ...overrides,
       })

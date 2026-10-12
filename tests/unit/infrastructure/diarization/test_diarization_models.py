@@ -19,6 +19,8 @@ from voz.application.ports.model_installation import (
 )
 from voz.infrastructure.diarization.models import (
     EMBEDDING_FILE,
+    EMBEDDING_MODEL,
+    SEGMENTATION_ARCHIVE,
     SEGMENTATION_FILE,
     DiarizationArtifact,
     DiarizationModelStore,
@@ -251,3 +253,11 @@ def test_remove_returns_freed_bytes(tmp_path: Path, server: _Server) -> None:
     assert store.remove() >= len(_SEGMENTATION) + len(_EMBEDDING)
     assert not store.is_installed()
     assert store.remove() == 0
+
+
+def test_artifacts_declare_their_weights_licenses() -> None:
+    # V1-10a: WeSpeaker's VoxCeleb-trained weights are CC BY 4.0 per its
+    # docs/pretrained.md; Apache-2.0 covers only the WeSpeaker code.
+    assert EMBEDDING_MODEL.license == "CC-BY-4.0 (WeSpeaker, VoxCeleb-trained)"
+    assert "Apache" not in EMBEDDING_MODEL.license
+    assert SEGMENTATION_ARCHIVE.license.startswith("MIT")
