@@ -175,3 +175,17 @@
     max-inline-size: 100%;
   }
 }
+
+.voz-shortcut__confirm {
+  display: grid;
+  gap: $spacing-03;
+}
+
+.voz-shortcut__actions {
+  display: flex;
+  gap: $spacing-03;
+}
+
+.voz-shortcut__broken {
+  color: $text-error;
+}

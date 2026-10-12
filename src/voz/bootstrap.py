@@ -490,6 +490,8 @@ def create_app(
             job, selection, has_transcript=job_has_transcript(job, transcripts)
         )
 
+    desktop_shortcut = LocalDesktopShortcut(state_directory=resolved_paths.state)
+
     class Lifespan:
         """Migrate on startup and dispose an owned engine on shutdown."""
 
@@ -500,6 +502,8 @@ def create_app(
             upgrade_to_head(resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY)
             runner.recover()
             runner.start()
+            # Re-point a broken or pre-V shortcut; never creates one (V1-05).
+            desktop_shortcut.refresh()
             model_tasks.start()
 
         async def __aexit__(
@@ -530,11 +534,7 @@ def create_app(
     )
     application.include_router(health_router)
     application.include_router(create_shutdown_router(request_shutdown))
-    application.include_router(
-        create_desktop_shortcut_router(
-            LocalDesktopShortcut(state_directory=resolved_paths.state)
-        )
-    )
+    application.include_router(create_desktop_shortcut_router(desktop_shortcut))
     application.include_router(
         create_transcription_options_router(transcription_options)
     )

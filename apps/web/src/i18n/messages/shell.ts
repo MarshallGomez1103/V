@@ -83,11 +83,27 @@ export const shell = {
     'No se pudo crear el icono. Inténtalo de nuevo.',
     'Could not create the icon. Try again.',
   ],
+  'shortcut.broken': [
+    'El acceso directo apunta a una carpeta que ya no existe: vuelve a crearlo.',
+    'The shortcut points to a folder that no longer exists: create it again.',
+  ],
+  'shortcut.remove': ['Quitar acceso directo', 'Remove shortcut'],
+  'shortcut.removeConfirm': [
+    '¿Quitar el acceso directo del escritorio y del menú de aplicaciones? V sigue instalado.',
+    'Remove the shortcut from the desktop and the applications menu? V stays installed.',
+  ],
+  'shortcut.removeYes': ['Quitar', 'Remove'],
+  'shortcut.cancel': ['Cancelar', 'Cancel'],
+  'shortcut.removed': ['Acceso directo quitado.', 'Shortcut removed.'],
+  'shortcut.removeFailed': [
+    'No se pudo quitar el acceso directo. Inténtalo de nuevo.',
+    'Could not remove the shortcut. Try again.',
+  ],
 
   'down.title': ['V no responde', 'V is not responding'],
   'down.body': [
-    'No hay conexión con el servidor local. Si lo cerraste, ábrelo con el archivo Iniciar; esta página se reconecta sola. Tus datos siguen guardados en este equipo.',
-    'There is no connection to the local server. If you closed it, open it with the Start file; this page reconnects on its own. Your data is still saved on this computer.',
+    'No hay conexión con el servidor local. Si lo cerraste, ábrelo con el archivo Start-V de la carpeta (start-v-linux.sh en Linux); esta página se reconecta sola. Tus datos siguen guardados en este equipo.',
+    'There is no connection to the local server. If you closed it, open it with the Start-V file in the folder (start-v-linux.sh on Linux); this page reconnects on its own. Your data is still saved on this computer.',
   ],
   'down.retry': ['Reintentar ahora', 'Retry now'],
 
@@ -112,8 +128,8 @@ export const shell = {
   ],
   'closed.title': ['V se cerró', 'V has closed'],
   'closed.body': [
-    'Puedes cerrar esta pestaña. Para volver, abre el archivo Iniciar de la carpeta.',
-    'You can close this tab. To come back, open the Start file in the folder.',
+    'Puedes cerrar esta pestaña. Para volver, abre el archivo Start-V de la carpeta (start-v-linux.sh en Linux).',
+    'You can close this tab. To come back, open the Start-V file in the folder (start-v-linux.sh on Linux).',
   ],
   'closed.doc': ['V cerrado', 'V closed'],
 

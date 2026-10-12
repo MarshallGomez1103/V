@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createShortcut, getShortcutStatus, ShortcutError } from './desktopShortcut'
+import { createShortcut, getShortcutStatus, removeShortcut, ShortcutError } from './desktopShortcut'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -16,7 +16,7 @@ describe('desktopShortcut', () => {
       vi.fn().mockImplementation(() => resp(200, { supported: true, exists: false, path: '/home/x/VOZ.desktop' })),
     )
     const status = await getShortcutStatus()
-    expect(status).toEqual({ supported: true, exists: false })
+    expect(status).toEqual({ supported: true, exists: false, broken: false })
     expect(JSON.stringify(status)).not.toContain('/home')
   })
 
@@ -33,7 +33,7 @@ describe('desktopShortcut', () => {
       .mockImplementation(() => resp(200, { supported: true, exists: true, path: '/x' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    expect(await createShortcut()).toEqual({ supported: true, exists: true })
+    expect(await createShortcut()).toEqual({ supported: true, exists: true, broken: false })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/desktop-shortcut')
     expect(init.method).toBe('POST')
@@ -47,5 +47,38 @@ describe('desktopShortcut', () => {
     )
     await expect(createShortcut()).rejects.toBeInstanceOf(ShortcutError)
     await expect(createShortcut()).rejects.toMatchObject({ code: 'shortcut_failed' })
+  })
+
+  it('lee el estado roto (el archivo está pero apunta a una carpeta que ya no existe)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation(() => resp(200, { supported: true, exists: false, broken: true, path: '~/v' })),
+    )
+    expect(await getShortcutStatus()).toEqual({ supported: true, exists: false, broken: true })
+  })
+
+  it('quitar envía DELETE con su propia cabecera X-VOZ-Action', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => resp(200, { supported: true, exists: false, broken: false, path: null }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await removeShortcut()).toEqual({ supported: true, exists: false, broken: false })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/desktop-shortcut')
+    expect(init.method).toBe('DELETE')
+    expect(init.headers).toMatchObject({ 'X-VOZ-Action': 'remove-desktop-shortcut' })
+  })
+
+  it('quitar con error del backend sale con su código', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation(() => resp(500, { detail: { code: 'desktop_shortcut_remove_failed' } })),
+    )
+    await expect(removeShortcut()).rejects.toMatchObject({ code: 'desktop_shortcut_remove_failed' })
   })
 })

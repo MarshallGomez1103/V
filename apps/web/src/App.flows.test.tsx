@@ -650,7 +650,7 @@ describe('cerrar el servidor', () => {
 
     expect(await screen.findByRole('heading', { name: 'V se cerró' })).toBeDefined()
     expect(screen.getByText(/puedes cerrar esta pestaña/i)).toBeDefined()
-    expect(screen.getByText(/abre el archivo iniciar de la carpeta/i)).toBeDefined()
+    expect(screen.getByText(/abre el archivo Start-V de la carpeta/i)).toBeDefined()
     const call = api.calls.find((item) => item.path === '/api/shutdown')
     expect(call?.method).toBe('POST')
     expect(call?.headers['X-VOZ-Action']).toBe('shutdown')
@@ -710,7 +710,7 @@ describe('servidor caído', () => {
       await vi.advanceTimersByTimeAsync(5000 + 2100)
     })
     expect(await screen.findByText('V no responde')).toBeDefined()
-    expect(screen.getByText(/si lo cerraste, ábrelo con el archivo iniciar/i)).toBeDefined()
+    expect(screen.getByText(/si lo cerraste, ábrelo con el archivo Start-V/i)).toBeDefined()
 
     down = false
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar ahora' }))

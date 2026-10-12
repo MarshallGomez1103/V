@@ -53,8 +53,9 @@ returned something unusable), 503 `media_storage_unavailable`, 507
 | `GET /api/jobs/{job_id}/preview?after_ms=` | — | `{"segments": [{"start_ms","end_ms","text"}]}`; 404 `job_not_found` (see "Live preview") |
 | `POST /api/transcripts/{transcript_id}/rediarize` | `{"speakers"?: {...}}` | 202 `JobView` (see "Recomputing speakers") |
 | `POST /api/shutdown` | header `X-VOZ-Action: shutdown` | 202 `{"status":"stopping"}`; 403 `shutdown_forbidden`; 501 `shutdown_unavailable` (see "Shutting down the server") |
-| `GET /api/desktop-shortcut` | — | `{"supported","exists","path"}` (see "Desktop icon") |
-| `POST /api/desktop-shortcut` | header `X-VOZ-Action: desktop-shortcut` | 201 `{"supported","exists","path"}`; 403 `desktop_shortcut_forbidden`; 409 `desktop_shortcut_unsupported`; 500 `desktop_shortcut_failed` |
+| `GET /api/desktop-shortcut` | — | `{"supported","exists","broken","path"}` (see "Desktop icon") |
+| `POST /api/desktop-shortcut` | header `X-VOZ-Action: desktop-shortcut` | 201 `{"supported","exists","broken","path"}`; 403 `desktop_shortcut_forbidden`; 409 `desktop_shortcut_unsupported`; 500 `desktop_shortcut_failed` |
+| `DELETE /api/desktop-shortcut` | header `X-VOZ-Action: remove-desktop-shortcut` | 200 `{"supported","exists","broken","path"}`; 403 `desktop_shortcut_forbidden`; 500 `desktop_shortcut_remove_failed` |
 
 `JobView`:
 
@@ -177,27 +178,59 @@ the client must assume the API stops answering.
 
 ### Desktop icon (`/api/desktop-shortcut`)
 
-Creates a shortcut on the desktop and in the application menu that runs the
-`Start-V-*` launcher in the project folder (V1-04; shortcuts created before point to the deprecated `Iniciar-*` wrappers, which still work), with the icon from `packaging/icons/`
-(`voz.png`, `voz.ico`, `voz.svg`, derived from `favicon.svg`). It uses only the
-standard library and what each system ships.
+Creates a shortcut named **V** on the desktop and in the application menu. Two
+modes, chosen when it is created:
 
-`GET` → `{"supported": bool, "exists": bool, "path": str|null}`. `supported` is
-`false` if V is not running from a folder with launchers (for example installed
-as a wheel) or on an unsupported OS. `exists` is `true` if the shortcut V created
-is still in place. `path` is where it ended up, with the home directory
-abbreviated as `~` (never absolute host paths).
+- **Source checkout**: runs the `Start-V-*` launcher (`start-v-linux.sh`,
+  `Start-V-macOS.command`, `Start-V-Windows.bat`) with the icon from
+  `packaging/icons/` (`voz.png`, `voz.ico`).
+- **Installed as a tool** (no checkout, Linux only): `Exec=v` (or `Exec=voz` if
+  `v` is not on `PATH`) with the icon shipped in the package. The entry uses the
+  bare command name, so the desktop session must have it on its `PATH` (for
+  `uv tool install`, `~/.local/bin`); otherwise the icon shows as broken. Windows
+  and macOS shortcuts are only offered from a checkout.
+
+It uses only the standard library and what each system ships.
+
+`GET` → `{"supported": bool, "exists": bool, "broken": bool, "path": str|null}`.
+`supported` is `false` if V runs neither from a folder with launchers nor with
+the `v`/`voz` command on `PATH`, or on an unsupported OS. `exists` is `true` if
+the shortcut V created is in place **and what it opens still exists** (the
+launcher, or the command on `PATH`). `broken` is `true` if the shortcut is in
+place but its target is gone (for example the checkout was moved or deleted); a
+broken shortcut is `exists: false`, `broken: true`, and `path` is still returned
+so it can be recreated or removed. `path` is where it ended up, with the home
+directory abbreviated as `~` (never absolute host paths).
 
 `POST` (header `X-VOZ-Action: desktop-shortcut`; 403
 `desktop_shortcut_forbidden` without it) creates or recreates the shortcut and
 answers 201 with the same body as `GET`. 409 `desktop_shortcut_unsupported`; 500
-`desktop_shortcut_failed` (message without paths). Linux: `voz.desktop` on the
-desktop (`xdg-user-dir DESKTOP`) and in `$XDG_DATA_HOME/applications`, with
-`gio set … metadata::trusted` if `gio` exists. Windows: `VOZ.lnk` via PowerShell
-(honors a desktop moved by OneDrive). macOS: a minimal `VOZ.app` that opens
-`Start-V-macOS.command` in Terminal (`.icns` icon via `sips`, if available). The
-record of where it was placed lives in `<state>/desktop-shortcut.txt`, never in
-the code folder.
+`desktop_shortcut_failed` (message without paths).
+
+`DELETE` (header `X-VOZ-Action: remove-desktop-shortcut`; 403
+`desktop_shortcut_forbidden` without it, and the `POST` header does not work here)
+removes every copy and the record, and answers 200 with the same body as `GET`.
+It is idempotent and works even when `supported` is `false`. It deletes only files
+V made (it recognises them by an `X-V-Shortcut=true` key, by the recorded path or
+by the app bundle identifier), never a file of the same name that the user wrote.
+500 `desktop_shortcut_remove_failed` (message without paths).
+
+Per platform. Linux: `v.desktop` on the desktop (`xdg-user-dir DESKTOP`) and in
+`$XDG_DATA_HOME/applications`, with `gio set … metadata::trusted` if `gio` exists.
+Windows: `V.lnk` via PowerShell (honors a desktop moved by OneDrive). macOS: a
+minimal `V.app` that opens `Start-V-macOS.command` in Terminal (`.icns` icon via
+`sips`, if available). The record of where it was placed and what it opens lives
+in `<state>/desktop-shortcut.txt`, never in the code folder.
+
+Shortcuts from before the rename (`voz.desktop`, `VOZ.lnk`, `VOZ.app`, named
+`VOZ`) are recognised: creating a new one replaces them (no duplicates) and
+`DELETE` removes them too.
+
+At startup the server calls `refresh()` (the composition root, not an endpoint):
+if a shortcut V made is broken, or predates this record, it is regenerated for the
+current checkout or tool install. It never creates a shortcut that was not there
+(a user who removed it keeps it removed), leaves a working shortcut that points at
+another checkout alone, and never fails startup.
 
 ### Reproducible selection (S5.20)
 
