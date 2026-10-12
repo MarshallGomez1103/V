@@ -5,11 +5,12 @@ independent of transport concerns.
 """
 
 from collections.abc import Callable, Iterable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import BinaryIO, Self
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -41,9 +42,12 @@ from voz.application.ports.diarization import (
     DiarizationProvider,
 )
 from voz.application.ports.transcription import (
+    TranscriptionCancellationToken,
     TranscriptionError,
     TranscriptionFailureCode,
+    TranscriptionOptions,
     TranscriptionProvider,
+    TranscriptionResult,
 )
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.application.prepare_inference_audio import PrepareInferenceAudio
@@ -75,6 +79,7 @@ from voz.infrastructure.asr.options import (
     FasterWhisperRuntimeProbe,
     LocalTranscriptionModelCatalog,
 )
+from voz.infrastructure.asr.runtime_cache import SingleRuntimeCache
 from voz.infrastructure.asr.whisper_cpp import WhisperCppProvider
 from voz.infrastructure.asr.whisper_cpp_options import (
     WhisperCppRuntimeProbe,
@@ -207,6 +212,34 @@ class LocalAsrRuntime:
         )
 
 
+ASR_IDLE_SECONDS = 60.0
+"""Quiet time after which the local ASR runtime hands its memory back."""
+
+
+class _ResidentProvider:
+    """Borrow the cached runtime per call, so an idle close never strands a job."""
+
+    def __init__(
+        self,
+        provider_id: str,
+        borrow: Callable[[], AbstractContextManager[LocalAsrRuntime]],
+    ) -> None:
+        self.provider_id = provider_id
+        self._borrow = borrow
+
+    def transcribe(
+        self,
+        *,
+        audio: BinaryIO,
+        options: TranscriptionOptions,
+        cancellation: TranscriptionCancellationToken | None = None,
+    ) -> TranscriptionResult:
+        with self._borrow() as runtime:
+            return runtime.providers.get(self.provider_id).transcribe(
+                audio=audio, options=options, cancellation=cancellation
+            )
+
+
 def create_local_asr_runtime(
     descriptor: ModelDescriptor,
     *,
@@ -328,9 +361,13 @@ def create_app(
             ),
         )
 
-    # ponytail: one runtime per descriptor, closed on shutdown; the snapshot's
-    # execution decision is informative, hardware is re-probed at load time.
-    runtimes: dict[ModelDescriptor, LocalAsrRuntime] = {}
+    # ponytail: one resident local runtime; another model closes it first and it
+    # is closed after ASR_IDLE_SECONDS without use (next job reloads the model).
+    # The snapshot's execution decision is informative, hardware is re-probed
+    # at load time.
+    runtimes = SingleRuntimeCache[ModelDescriptor, LocalAsrRuntime](
+        idle_seconds=ASR_IDLE_SECONDS
+    )
 
     other_providers: dict[str, TranscriptionProvider] = {}
 
@@ -363,11 +400,14 @@ def create_app(
         return provider
 
     def _local_provider(selection: JobSelection) -> TranscriptionProvider:
-        runtime = runtimes.get(selection.model)
-        if runtime is None:
-            runtime = create_local_asr_runtime(selection.model, paths=resolved_paths)
-            runtimes[selection.model] = runtime
-        return runtime.providers.get(selection.model.provider_id)
+        descriptor = selection.model
+        return _ResidentProvider(
+            descriptor.provider_id,
+            lambda: runtimes.use(
+                descriptor,
+                lambda: create_local_asr_runtime(descriptor, paths=resolved_paths),
+            ),
+        )
 
     def audio_source_for(
         project_id: UUID, media_asset_id: UUID
@@ -407,9 +447,7 @@ def create_app(
 
     def release_asr(selection: JobSelection) -> None:
         # S6.15/S14.07: free ASR memory before diarization; recreated lazily.
-        runtime = runtimes.pop(selection.model, None)
-        if runtime is not None:
-            runtime.close()
+        runtimes.release()
 
     runner = JobRunner(
         jobs=jobs,
@@ -469,9 +507,7 @@ def create_app(
         ) -> None:
             model_tasks.stop()
             runner.stop()
-            for runtime in runtimes.values():
-                runtime.close()
-            runtimes.clear()
+            runtimes.close()
             for diarization_engine in diarization_engines:
                 diarization_engine.close()
             diarization_engines.clear()
