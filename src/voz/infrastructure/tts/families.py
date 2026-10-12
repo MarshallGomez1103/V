@@ -28,6 +28,7 @@ graph, so the server can list voices in-process.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -317,22 +318,45 @@ def resolve_sid(voice_id: str, names: tuple[str, ...], count: int) -> int | None
     return names.index(voice_id) if voice_id in names else None
 
 
+_GENERIC_NAME: Final = re.compile(r"(speaker[\s_-]*)?\d+", re.IGNORECASE)
+
+
+def _named(names: tuple[str, ...], sid: int) -> str:
+    """The ONNX name of ``sid``; ``""`` when absent or only a synthesized id."""
+    name = names[sid] if sid < len(names) else ""
+    return "" if _GENERIC_NAME.fullmatch(name) else name
+
+
 def read_voices(
-    family: str, files: Mapping[str, str | Path], languages: tuple[str, ...] = ()
+    family: str,
+    files: Mapping[str, str | Path],
+    languages: tuple[str, ...] = (),
+    curated: tuple[Voice, ...] = (),
 ) -> tuple[Voice, ...]:
-    """Voices of an installed model (``id`` = sid as text) from its metadata."""
+    """Voices of an installed model (``id`` = sid as text) from its metadata.
+
+    Real ONNX names win. Where the model names no speaker (or only ``Speaker 0``
+    style ids; Piper's single-voice ONNX does not) the ``curated`` voice with the
+    same id supplies the name, then ``Speaker <sid>``.
+    """
     name = canonical_family(family)
     try:
         metadata = read_onnx_metadata(metadata_model_path(files))
     except OSError as error:
         raise ModelFilesError("cannot read the model file") from error
     names = speaker_names(metadata)
+    backup = {voice.id: voice for voice in curated}
     voices: list[Voice] = []
     for sid in range(speaker_count(metadata)):
-        label = names[sid] if sid < len(names) and names[sid] else f"Speaker {sid}"
+        fallback = backup.get(str(sid))
+        label = _named(names, sid)
+        voice_languages = languages
+        if not label and fallback:
+            label, voice_languages = fallback.name, fallback.languages
+        label = label or f"Speaker {sid}"
         lang = kokoro_lang(label) if name == "kokoro" else ""
         voices.append(
-            Voice(str(sid), label, (lang.split("-")[0],) if lang else languages)
+            Voice(str(sid), label, (lang.split("-")[0],) if lang else voice_languages)
         )
     return tuple(voices)
 

@@ -8,7 +8,8 @@ archive. Models are addressed as ``"sherpa-onnx-tts:<model_id>"``.
 
 Voice ids are the sherpa-onnx speaker ids (``sid``) as text. ``voices`` here is a
 curated fallback: an installed model's manifest reads the real speaker names from
-the ONNX metadata (``families.read_voices``) and uses this list only if that fails.
+the ONNX metadata (``families.read_voices``); this list backs it up when the read
+fails or the model names no speaker (the real Piper ONNX files do not: V4-06a).
 """
 
 from __future__ import annotations
@@ -103,6 +104,9 @@ def _piper(
     )
 
 
+# ponytail: the order of the 8 Kitten names (2-m, 2-f, 3-m, ...) is the sorted
+# ``expr-voice-{2..5}-{m,f}`` set of V4-01, not read from a sid -> name table; the
+# real model names its speakers in ONNX metadata, which prevails over this list.
 _KITTEN_VOICES = tuple(
     Voice(str(sid), f"expr-voice-{number}-{gender}", ("en",))
     for sid, (number, gender) in enumerate(
@@ -111,8 +115,9 @@ _KITTEN_VOICES = tuple(
 )
 
 # Kokoro multi-lang v1.0 speaker ids (sherpa-onnx order). ``ef_dora``=28,
-# ``em_alex``=29 and ``em_santa``=53 were measured in V4-01; the English ids
-# follow the same sorted order that lands ``ef_dora`` on 28.
+# ``em_alex``=29 and ``em_santa``=53 were measured in V4-01. The English ids are
+# NOT verified (inferred from the sorted order that lands ``ef_dora`` on 28); the
+# real model names its 54 speakers in ONNX metadata, which prevails over this list.
 _KOKORO_VOICES = (
     Voice("3", "af_heart", ("en",)),
     Voice("2", "af_bella", ("en",)),

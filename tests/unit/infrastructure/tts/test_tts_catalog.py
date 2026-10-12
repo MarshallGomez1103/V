@@ -90,4 +90,9 @@ def test_voices_follow_the_measured_speaker_ids() -> None:
     kitten = _BY_ID["kitten-nano-en-v0_8-int8"].voices
     assert [v.id for v in kitten] == [str(i) for i in range(8)]
     assert kitten[0].name == "expr-voice-2-m" and kitten[7].name == "expr-voice-5-f"
-    assert [v.name for v in _BY_ID["piper-es_MX-ald-medium"].voices] == ["ald"]
+    for model_id, name in (
+        ("piper-es_MX-ald-medium", "ald"),
+        ("piper-es_ES-davefx-medium", "davefx"),
+        ("piper-en_US-lessac-medium", "lessac"),
+    ):
+        assert [(v.id, v.name) for v in _BY_ID[model_id].voices] == [("0", name)]

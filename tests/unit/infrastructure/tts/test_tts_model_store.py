@@ -400,3 +400,17 @@ def test_the_manifest_reads_the_real_voices_from_the_onnx_metadata(
 
     assert [(v.id, v.name) for v in manifest.voices] == [("0", "ana"), ("1", "luis")]
     assert manifest.voices[0].languages == ("es",)
+
+
+def test_the_manifest_uses_the_curated_name_when_the_onnx_names_no_speaker(
+    tmp_path: Path, server: _Server
+) -> None:
+    onnx = _onnx_with_metadata({"n_speakers": "1"})  # like the real Piper es_MX
+    members = {**_GOOD, f"{_ROOT}/test.onnx": onnx}
+    store = _store(tmp_path, _entry(server, _tar(members)))
+
+    manifest = store.install("test-voice")
+
+    assert [(v.id, v.name, v.languages) for v in manifest.voices] == [
+        ("0", "Test", ("es",))
+    ]

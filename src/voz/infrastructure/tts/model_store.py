@@ -208,8 +208,8 @@ class TtsModelStore:
             files = discover_files(entry.family, directory)
         except ModelFilesError:
             return None
-        try:  # the ONNX metadata names the real speakers
-            voices = read_voices(entry.family, files, entry.languages)
+        try:  # the ONNX metadata names the real speakers; the catalog backs it up
+            voices = read_voices(entry.family, files, entry.languages, entry.voices)
         except ModelFilesError:
             voices = entry.voices  # unreadable metadata: the curated list
         return TtsModelManifest(

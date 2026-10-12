@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from voz.domain.entities.voice import Voice
 from voz.infrastructure.tts import families
 from voz.infrastructure.tts.families import ModelFilesError
 
@@ -375,6 +376,31 @@ def test_read_voices_names_and_languages(tmp_path: Path) -> None:
     ]
     voices = families.read_voices("kokoro", {"model": kokoro}, ("en", "es"))
     assert [(v.id, v.languages) for v in voices] == [("0", ("en",)), ("1", ("es",))]
+
+
+def test_curated_names_back_up_an_onnx_without_speaker_names(tmp_path: Path) -> None:
+    curated = (Voice("0", "ald", ("es",)),)
+    for metadata in ({"n_speakers": "1"}, {"n_speakers": "1", "speaker_names": "0"}):
+        model = write_model(tmp_path / str(len(metadata)), metadata)
+        (voice,) = families.read_voices("vits", {"model": model}, ("xx",), curated)
+        assert (voice.id, voice.name, voice.languages) == ("0", "ald", ("es",))
+    generic = write_model(
+        tmp_path / "g", {"n_speakers": "2", "speaker_names": "Speaker 0,Speaker_1"}
+    )
+    names = [
+        v.name for v in families.read_voices("vits", {"model": generic}, (), curated)
+    ]
+    assert names == ["ald", "Speaker 1"]  # no curated voice for sid 1
+
+
+def test_onnx_names_prevail_over_curated_ones(tmp_path: Path) -> None:
+    model = write_model(tmp_path, {"n_speakers": "2", "speaker_names": "ana,luis"})
+    curated = (Voice("0", "ald", ("es",)), Voice("1", "davefx", ("es",)))
+    voices = families.read_voices("vits", {"model": model}, ("en",), curated)
+    assert [(v.name, v.languages) for v in voices] == [
+        ("ana", ("en",)),
+        ("luis", ("en",)),
+    ]
 
 
 def test_read_voices_of_a_missing_model_is_model_files_error(tmp_path: Path) -> None:
