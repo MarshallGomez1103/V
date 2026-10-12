@@ -217,11 +217,12 @@ class SynthesisRunner:
             self._check(stop)
             if job.state is SynthesisJobState.CANCELLING:
                 return self._settle(job)
-            if job.state is not SynthesisJobState.PERSISTING:
+            if (
+                job.state is not SynthesisJobState.PERSISTING
+                or self.audio.get_by_job(job.id) is None
+            ):
+                # Also a PERSISTING job whose run died before storing its row.
                 job = self._render(job, stop)
-            if self.audio.get_by_job(job.id) is None:
-                # PERSISTING left by a run that crashed before storing its row.
-                raise _CodedFailure(SynthesisRunnerFailureCode.INTERNAL.value)
             job = self._save(self._step(job, SynthesisJobState.COMPLETED))
         except _Stopping:
             pass
@@ -280,19 +281,22 @@ class SynthesisRunner:
             done = (index + 1) * job.chunks_total // len(chunks)
             if done > job.chunks_done:
                 job = self._save(job.with_chunks_done(done, at=self._not_before(job)))
-            if job.state is not SynthesisJobState.RUNNING:
+            if job.state in _CANCEL_PATH:
                 raise _Stopping  # a cancel won the write; ``_settle`` finishes it
         self._check(stop)
         gaps = [
             silence_gap_ms(request.text[before.end : after.start])
             for before, after in pairwise(chunks)
         ]
-        job = self._save(self._step(job, SynthesisJobState.PERSISTING))
+        if job.state is not SynthesisJobState.PERSISTING:
+            job = self._save(self._step(job, SynthesisJobState.PERSISTING))
         if job.state is not SynthesisJobState.PERSISTING:
             raise _Stopping
-        # ponytail: a crash after the WAV is published but before its row is
-        # added leaves the file behind; the retry then fails with
-        # "audio_exists". Ceiling: one orphan directory per such crash.
+        # No row yet, so any audio.wav here is left over from a run that died
+        # between publishing it and recording it: it has no owner, drop it.
+        # ponytail: delete_job removes the whole job directory, not just the
+        # WAV. Ceiling: fine while a job directory holds only its audio.
+        self.storage.delete_job(job.id)
         self.audio.add(self.storage.write(job.id, rendered, gaps))
         return job
 

@@ -182,7 +182,11 @@ class FileSystemSynthesisStorage:
 
     def delete(self, relative_path: str) -> None:
         """Remove the job directory; links inside it are unlinked, never followed."""
-        job_id = self._parse_relative_path(relative_path)
+        self.delete_job(self._parse_relative_path(relative_path))
+
+    def delete_job(self, job_id: UUID) -> None:
+        """Remove the job directory (leftovers included); a no-op when absent."""
+        require_uuid(job_id, field="job_id")
         try:
             remove_directory_tree(self._data_root, (_ROOT_DIR, str(job_id)))
         except OSError as error:

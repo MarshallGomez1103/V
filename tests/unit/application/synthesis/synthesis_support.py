@@ -89,6 +89,9 @@ class MemoryStorage:
     def delete(self, relative_path: str) -> None:
         self.deleted.append(relative_path)
 
+    def delete_job(self, job_id: UUID) -> None:
+        self.deleted.append(f"synthesis/{job_id}/audio.wav")
+
 
 class MemoryCatalog:
     def __init__(self, *registrations: ModelRegistration) -> None:

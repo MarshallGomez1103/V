@@ -8,7 +8,7 @@ import struct
 import wave
 from array import array
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -282,6 +282,60 @@ def test_delete_refuses_a_job_directory_that_is_a_symlink(
 
     with pytest.raises(SynthesisStorageError) as caught:
         storage.delete(f"synthesis/{job_id}/audio.wav")
+
+    assert caught.value.code is Code.UNSAFE_STORAGE_PATH
+    assert (outside / "audio.wav").read_bytes() == b"precious"
+
+
+def test_delete_job_removes_leftovers_idempotently_and_allows_a_rewrite(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    keep = storage.write(uuid4(), [_int16([1] * 10)], [])
+    orphan = storage.write(uuid4(), [_int16([2] * 10)], [])
+    job_id = UUID(orphan.relative_path.split("/")[1])
+    unrecorded = uuid4()
+
+    storage.delete_job(job_id)
+    storage.delete_job(job_id)
+    storage.delete_job(unrecorded)  # never written: nothing to do
+
+    assert not (tmp_path / "data" / orphan.relative_path).parent.exists()
+    assert (tmp_path / "data" / keep.relative_path).is_file()
+    assert storage.write(job_id, [_int16([3] * 10)], []).sha256 != orphan.sha256
+
+
+def test_delete_job_unlinks_symlinks_without_touching_their_targets(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("keep me")
+    job_id = uuid4()
+    job_dir = tmp_path / "data" / "synthesis" / str(job_id)
+    job_dir.mkdir(parents=True)
+    (job_dir / "audio.wav").symlink_to(secret)
+    (job_dir / "evil").symlink_to(outside, target_is_directory=True)
+
+    storage.delete_job(job_id)
+
+    assert not job_dir.exists()
+    assert secret.read_text() == "keep me"
+
+
+def test_delete_job_refuses_a_job_directory_that_is_a_symlink(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "audio.wav").write_bytes(b"precious")
+    job_id = uuid4()
+    synthesis = tmp_path / "data" / "synthesis"
+    synthesis.mkdir(parents=True)
+    (synthesis / str(job_id)).symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(SynthesisStorageError) as caught:
+        storage.delete_job(job_id)
 
     assert caught.value.code is Code.UNSAFE_STORAGE_PATH
     assert (outside / "audio.wav").read_bytes() == b"precious"

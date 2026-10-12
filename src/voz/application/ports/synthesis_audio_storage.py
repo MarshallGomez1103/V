@@ -57,6 +57,10 @@ class SynthesisAudioStorage(Protocol):
         """Remove the audio and its job directory; a no-op when already gone."""
         ...
 
+    def delete_job(self, job_id: UUID) -> None:
+        """Same as :meth:`delete`, for a job whose audio was never recorded."""
+        ...
+
 
 __all__ = [
     "SynthesisAudioStorage",

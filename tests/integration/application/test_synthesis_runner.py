@@ -21,6 +21,7 @@ from sqlalchemy import Engine
 from voz.application.compute_slot import ComputeKind, ComputeSlot, SlotUser
 from voz.application.ports.speech_synthesis import (
     PcmAudio,
+    PcmSampleFormat,
     SynthesisCancellationToken,
     SynthesisError,
     SynthesisFailureCode,
@@ -309,6 +310,42 @@ def test_shutdown_leaves_job_resumable_and_recover_renders_it_again(
     assert finished.state is SynthesisJobState.COMPLETED
     assert fresh.calls == len(CHUNKS)  # no per-chunk checkpoints: from zero
     _assert_completed_wav(fixture, fresh)
+    fixture.engine.dispose()
+
+
+@pytest.mark.parametrize("state", ["RUNNING", "PERSISTING"])
+def test_resumed_job_replaces_an_orphan_wav_that_has_no_row(
+    tmp_path: Path, state: str
+) -> None:
+    fixture = harness(tmp_path)
+    # A previous run published audio.wav and died before recording its row.
+    orphan = fixture.storage.write(
+        fixture.job.id, [PcmAudio(bytes(64), 16_000, PcmSampleFormat.INT16)], []
+    )
+    job_dir = tmp_path / "data" / "synthesis" / str(fixture.job.id)
+    (job_dir / "stray.tmp").write_bytes(b"junk")
+    if state == "PERSISTING":
+        running = fixture.job.transition_to(SynthesisJobState.RUNNING, at=BASE)
+        fixture.jobs.save(
+            running.with_chunks_done(len(CHUNKS), at=BASE).transition_to(
+                SynthesisJobState.PERSISTING, at=BASE
+            )
+        )
+    assert (
+        SqliteSynthesizedAudioRepository(fixture.engine).get_by_job(fixture.job.id)
+        is None
+    )
+
+    finished = fixture.runner.run_job(fixture.job.id)
+
+    assert finished is not None
+    assert finished.state is SynthesisJobState.COMPLETED
+    assert finished.error_code is None
+    _assert_completed_wav(fixture, fixture.provider)
+    stored = SqliteSynthesizedAudioRepository(fixture.engine).get_by_job(fixture.job.id)
+    assert stored is not None
+    assert stored.sha256 != orphan.sha256
+    assert [p.name for p in job_dir.iterdir()] == ["audio.wav"]  # one WAV, no junk
     fixture.engine.dispose()
 
 
