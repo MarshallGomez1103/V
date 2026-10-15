@@ -195,6 +195,7 @@ documentación en inglés, TTS y release). Para retomar, leer
 
 | Slice | State | Scope |
 | --- | --- | --- |
+| V8-01 | Verified | ADR-0011 defines experiment-only resource controls and separates measured results from estimates; executor remains planned. |
 | V5-04 | Verified | Persistent synthesis history with playback, WAV downloads and confirmed deletion, including when no models are installed; UI and static-bundle browser flow verified. |
 | V4-04 | Verified | Configurable STT/TTS servers, explicit CLOUD consent, private endpoint storage and safe validation errors; fake HTTP contracts and browser flow verified. |
 

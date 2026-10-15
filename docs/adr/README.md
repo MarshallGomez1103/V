@@ -22,6 +22,7 @@ the former product name VOZ where they describe that moment (see
 | [0008](0008-word-timestamps.md) | Native word timestamps from Faster Whisper, without WhisperX | Accepted | S7.01, S7.03, S7.04, S7.08 |
 | [0009](0009-rename-to-v.md) | Rename the product to V with compatibility (`v` + `voz` alias, internals unchanged) | Accepted | V1-01 |
 | [0010](0010-voice-engines-and-tts.md) | Voice engines and models, and the speech synthesis (TTS) architecture | Accepted | V2-01 |
+| [0011](0011-edge-lab.md) | Edge Lab experiment resource boundaries | Accepted | V8-01 |
 
 ## Format
 
