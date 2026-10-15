@@ -16,13 +16,13 @@ export const shell = {
 
   'page.transcribir.title': ['Transcribir', 'Transcribe'],
   'page.transcribir.description': [
-    'Importa una grabación, elige el motor y obtén texto editable. Todo se procesa en este equipo.',
-    'Import a recording, pick an engine and get editable text. Everything is processed on this computer.',
+    'Importa una grabación, elige el motor y obtén texto editable.',
+    'Import a recording, pick an engine and get editable text.',
   ],
   'page.speak.title': ['Texto a voz', 'Text to speech'],
   'page.speak.description': [
-    'Escribe o pega un texto y conviértelo en audio con una voz instalada. Todo se genera en este equipo.',
-    'Type or paste a text and turn it into audio with an installed voice. Everything is generated on this computer.',
+    'Escribe o pega un texto y conviértelo en audio con el modelo de voz que elijas.',
+    'Type or paste text and turn it into audio with your chosen speech model.',
   ],
   'page.modelos.title': ['Modelos', 'Models'],
   'page.modelos.description': [

@@ -15,3 +15,24 @@
   flex-wrap: wrap;
   gap: $spacing-03;
 }
+
+.voz-endpoints {
+  display: grid;
+  gap: $spacing-05;
+  margin-block-start: $spacing-07;
+}
+
+.voz-endpoint__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: $spacing-02 $spacing-05;
+  margin-block-end: $spacing-05;
+
+  dt {
+    color: $text-secondary;
+  }
+
+  dd {
+    overflow-wrap: anywhere;
+  }
+}

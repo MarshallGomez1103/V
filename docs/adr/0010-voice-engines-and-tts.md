@@ -186,6 +186,15 @@ TTS child process counts as the resident runtime while it runs.
   reachable **only on loopback by default**; when V is bound to a network
   host they require the local token of V10-02.
 
+V4-04 implements the client with separate local and cloud provider IDs and
+live endpoint storage. Changing locality invalidates an existing selection.
+Endpoint configuration and keys are separate private files, written atomically
+with POSIX mode `0600`; keys never appear in configuration responses. All
+compatible requests bypass environment proxies and reject redirects, preserving
+the selected destination. Cancellation shuts down the active HTTP connection.
+See [the provider API](../api/providers.md#openai-compatible-servers-v4-04) for
+configuration, consent and compatibility limits.
+
 ### 6. Isolated runtimes only for heavy engines (deferred)
 
 Engines whose dependencies cannot live in V's environment (torch, a
@@ -270,7 +279,9 @@ dedicated slice designs it.
 | Structural provider port and explicit registry | `src/voz/application/ports/transcription.py`, `src/voz/application/transcription_provider_registry.py` |
 | Capabilities in the model descriptor (to be extended) | `src/voz/domain/entities/model_descriptor.py` (`ModelCapability`) |
 | sherpa-onnx TTS API available, no new dependency | verified in `.venv` on 2026-10-11 (see Context); sherpa-onnx 1.13.8 |
-| `SpeechSynthesisProvider`, TTS entities, worker, compute slot, catalog, OpenAI-compatible engine and server | **planned** (V2-02, V2-03, V3-01, V3-03, V4-02, V4-03, V4-04, V10-07) |
+| `SpeechSynthesisProvider`, TTS entities, worker, compute slot and catalog | Implemented in `application/ports/speech_synthesis.py`, `domain/entities/`, `application/compute_slot.py` and `infrastructure/tts/`; shared provider contracts in `tests/contract/test_speech_synthesis_provider.py` |
+| OpenAI-compatible client | `infrastructure/cloud/openai_compatible.py`, `tests/contract/test_openai_compatible.py` and `tests/integration/test_providers_api.py`; local fake HTTP server, no paid requests |
+| OpenAI-compatible server | **planned** (V10-07) |
 
 ## Verification
 

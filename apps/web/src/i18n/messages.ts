@@ -1,3 +1,4 @@
+import { endpoints } from './messages/endpoints'
 import { errors } from './messages/errors'
 import { job } from './messages/job'
 import { library } from './messages/library'
@@ -18,6 +19,7 @@ export const MESSAGES = {
   ...workspace,
   ...library,
   ...models,
+  ...endpoints,
   ...speak,
   ...errors,
 } as const

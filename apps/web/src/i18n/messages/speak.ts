@@ -31,6 +31,19 @@ export const speak = {
   'speak.clear': ['Borrar el texto', 'Clear the text'],
 
   'speak.voice.title': ['Voz', 'Voice'],
+  'speak.cloud.title': ['Síntesis remota', 'Remote synthesis'],
+  'speak.cloud.notice': [
+    'Al escuchar una muestra o generar audio, el texto se enviará fuera de este equipo al proveedor seleccionado.',
+    'When you hear a sample or generate audio, the text will be sent outside this computer to the selected provider.',
+  ],
+  'speak.cloud.confirm': [
+    'Permitir el envío de texto a este modelo remoto para muestras y generación de audio.',
+    'Allow sending text to this remote model for samples and audio generation.',
+  ],
+  'speak.cloud.result': [
+    'Este trabajo usa un proveedor remoto que procesa el texto fuera de este equipo.',
+    'This job uses a remote provider that processes the text outside this computer.',
+  ],
   'speak.voice.description': [
     'Instalado: {models} modelos · {voices} voces',
     'Installed: {models} models · {voices} voices',
@@ -112,8 +125,8 @@ export const speak = {
     'Waiting for another job to finish: V runs only one heavy task at a time.',
   ],
   'speak.say.RUNNING': [
-    'El motor está sintetizando el texto por fragmentos, en este equipo.',
-    'The engine is synthesizing the text in chunks, on this computer.',
+    'El motor está sintetizando el texto por fragmentos.',
+    'The engine is synthesizing the text in chunks.',
   ],
   'speak.say.PERSISTING': [
     'Voz lista; se está guardando el archivo de audio.',

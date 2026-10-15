@@ -105,7 +105,11 @@ def test_install_synthesize_block_and_delete_through_the_default_wiring(
     client: TestClient, tmp_path: Path
 ) -> None:
     options = client.get("/api/synthesis/options").json()
-    assert [p["provider_id"] for p in options["providers"]] == [TTS_PROVIDER_ID]
+    assert [p["provider_id"] for p in options["providers"]] == [
+        "openai-compatible",
+        "openai-compatible-cloud",
+        TTS_PROVIDER_ID,
+    ]
     assert options["models"] == []
     listed = {m["key"]: m for m in client.get("/api/models").json()["models"]}
     assert listed[KEY]["installed"] is False

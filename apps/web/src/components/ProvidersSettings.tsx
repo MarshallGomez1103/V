@@ -14,6 +14,7 @@ import {
   type ProviderView,
 } from '../api/providers'
 import { Busy } from './Busy'
+import { CompatibleEndpoints } from './CompatibleEndpoints'
 import { Notice } from './Notice'
 import { Panel } from './Panel'
 import './ProvidersSettings.scss'
@@ -198,6 +199,7 @@ export function ProvidersSettings({
           ))}
         </Grid>
       )}
+      <CompatibleEndpoints onChanged={onChanged} />
     </section>
   )
 }

@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 from _pytest.fixtures import FixtureRequest
+from openai_compatible_fake import fake_server
+from openai_compatible_fake import setup as compatible_setup
 
 from voz.application.ports.speech_synthesis import (
     PcmAudio,
@@ -123,7 +125,20 @@ def _sherpa_case() -> _Case:
     )
 
 
-@pytest.fixture(params=("fake", "subprocess", "sherpa"))
+def _compatible_case(request: FixtureRequest, tmp_path: Path) -> _Case:
+    """OpenAI-compatible engine against the loopback fake server (V4-04)."""
+    server_context = fake_server(key="sk-contract-fake")
+    server = server_context.__enter__()
+    request.addfinalizer(lambda: server_context.__exit__(None, None, None))
+    configured = compatible_setup(tmp_path / "config", server, key="sk-contract-fake")
+    return _Case(
+        configured.speech,
+        configured.descriptor(ModelCapability.SYNTHESIS),
+        configured.endpoint.tts_voices[0],
+    )
+
+
+@pytest.fixture(params=("fake", "subprocess", "sherpa", "openai-compatible"))
 def engine(request: FixtureRequest, tmp_path: Path) -> Iterator[_Engine]:
     cases = {
         "fake": lambda: _Case(
@@ -131,6 +146,7 @@ def engine(request: FixtureRequest, tmp_path: Path) -> Iterator[_Engine]:
         ),
         "subprocess": lambda: _subprocess_case(tmp_path),
         "sherpa": _sherpa_case,
+        "openai-compatible": lambda: _compatible_case(request, tmp_path),
     }
     case = cases[request.param]()
     provider = case.factory()

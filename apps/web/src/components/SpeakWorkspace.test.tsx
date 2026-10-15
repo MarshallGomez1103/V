@@ -62,6 +62,25 @@ const voice = () => screen.getByLabelText<HTMLSelectElement>('Voz', { selector: 
 const area = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Texto a convertir en voz' })
 
 describe('SpeakWorkspace', () => {
+  it('un modelo cloud exige confirmación antes de generar o escuchar muestra', async () => {
+    stubFetch(jsonResponse(200, options({
+      providers: [{ provider_id: MODEL.provider_id, display_name: 'Remote', locality: 'cloud' }],
+    })))
+    render(<SpeakWorkspace onOpenModels={() => undefined} />)
+    await screen.findByRole('textbox', { name: 'Texto a convertir en voz' })
+    fireEvent.change(area(), { target: { value: 'Hola' } })
+    const generate = screen.getByRole<HTMLButtonElement>('button', { name: 'Generar audio' })
+    const sample = screen.getByRole<HTMLButtonElement>('button', { name: 'Escuchar muestra' })
+    expect(generate.disabled).toBe(true)
+    expect(sample.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(generate.disabled).toBe(false)
+    expect(sample.disabled).toBe(false)
+    fireEvent.change(voice(), { target: { value: '1' } })
+    expect(generate.disabled).toBe(true)
+    expect(sample.disabled).toBe(true)
+  })
+
   it('muestra «cargando» mientras llegan las opciones', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
 

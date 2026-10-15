@@ -222,7 +222,7 @@ function sentence(job: JobView, t: Translate): string | null {
 export function JobScreen({ job, loading, error, onCancel, onAdjust }: JobScreenProps) {
   const { t } = useI18n()
   const providerId = readString(job?.selection?.provider_id)
-  const providers = useCloudProviders(providerId !== null)
+  const providers = useCloudProviders(providerId !== null, readString(job?.selection?.model_id))
   const processing = job !== null && (PROCESSABLE_STATES.has(job.state) || job.state === 'CANCELLING')
   const now = useNow(processing)
 

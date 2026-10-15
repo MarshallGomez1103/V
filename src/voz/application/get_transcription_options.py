@@ -119,12 +119,13 @@ class GetTranscriptionOptions:
                 reasons.append(BlockingReason.MODEL_NOT_REGISTERED)
             elif not registration.files_available:
                 reasons.append(BlockingReason.MODEL_FILES_MISSING)
-            if model.provenance is None and not registration.cloud:
+            # Remote: nothing installed here, compute runs in another process.
+            local = not (registration.cloud or registration.remote)
+            if model.provenance is None and local:
                 reasons.append(BlockingReason.REVISION_UNPINNED)
             if not runtime.available:
                 reasons.append(BlockingReason.RUNTIME_UNAVAILABLE)
             execution = None
-            local = not registration.cloud  # cloud: remote compute, no local plan
             if (
                 local
                 and runtime.available

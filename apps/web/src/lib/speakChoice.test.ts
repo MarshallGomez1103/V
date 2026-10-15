@@ -48,6 +48,14 @@ afterEach(() => {
 })
 
 describe('resolveChoice', () => {
+  it('prefiere un modelo local aunque el primero disponible sea cloud', () => {
+    const cloud = { ...KOKORO, provider_id: 'remote' }
+    const available = options(cloud, PIPER)
+    available.providers = [{ provider_id: 'remote', display_name: 'Remote', locality: 'cloud' }]
+    expect(resolveChoice(available, {}, 'es').model).toBe(PIPER)
+    expect(resolveChoice(available, { model: 'remote:kokoro' }, 'es').model).toBe(cloud)
+  })
+
   it('sin preferencia toma el primer modelo listo y su primera voz', () => {
     const notReady = { ...PIPER, model_id: 'x', runtime_ready: false }
     const choice = resolveChoice(options(notReady, KOKORO), {}, 'en')

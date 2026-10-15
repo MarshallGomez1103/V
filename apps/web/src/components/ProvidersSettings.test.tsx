@@ -48,13 +48,25 @@ const ACME = {
 }
 const LIST = [OPENAI, ACME]
 
+const ENDPOINTS = '/api/providers/compatible'
+
+/** Respuestas en orden para las claves; la sección de servidores recibe `[]`. */
 function stubFetch(...responses: Response[]) {
-  const fetchMock = vi.fn<typeof fetch>()
-  for (const response of responses) {
-    fetchMock.mockResolvedValueOnce(response)
-  }
+  const queue = [...responses]
+  const fetchMock = vi.fn<typeof fetch>((input) => {
+    if ((typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith(ENDPOINTS)) {
+      return Promise.resolve(jsonResponse(200, []))
+    }
+    const next = queue.shift()
+    return next ? Promise.resolve(next) : Promise.reject(new Error('sin respuesta'))
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+/** Llamadas a la API de claves, sin las de la sección de servidores. */
+function keyCalls(fetchMock: ReturnType<typeof stubFetch>) {
+  return fetchMock.mock.calls.filter(([input]) => !(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith(ENDPOINTS))
 }
 
 function row(name: string): HTMLElement {
@@ -132,7 +144,7 @@ describe('ProvidersSettings', () => {
     await waitFor(() => {
       expect(within(row('Acme Cloud')).getByText('Configurado')).toBeDefined()
     })
-    const [url, init] = fetchMock.mock.calls[1] ?? []
+    const [url, init] = keyCalls(fetchMock)[1] ?? []
     expect(url).toBe('/api/providers/acme/key')
     expect(init?.method).toBe('PUT')
     expect(init?.body).toBe(JSON.stringify({ key: 'xi-secreta' }))
@@ -181,8 +193,8 @@ describe('ProvidersSettings', () => {
     await waitFor(() => {
       expect(within(row('OpenAI')).getByText('No configurado')).toBeDefined()
     })
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/providers/openai/key')
-    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('DELETE')
+    expect(keyCalls(fetchMock)[1]?.[0]).toBe('/api/providers/openai/key')
+    expect(keyCalls(fetchMock)[1]?.[1]?.method).toBe('DELETE')
   })
 
   it('si falla la lista permite reintentar', async () => {

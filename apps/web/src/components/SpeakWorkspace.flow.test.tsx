@@ -435,6 +435,7 @@ describe('SpeakWorkspace: generar', () => {
     fireEvent.click(button('Generar audio'))
 
     await screen.findByRole('heading', { name: 'En cola, esperando turno' })
+    await streamOpen()
     expect(api.posts[0]).toEqual({
       text: 'Hola mundo',
       provider_id: 'sherpa-onnx',
@@ -484,6 +485,7 @@ describe('SpeakWorkspace: generar', () => {
     type('Hola mundo')
     fireEvent.click(button('Generar audio'))
     await screen.findByRole('heading', { name: 'En cola, esperando turno' })
+    await streamOpen()
     emit('job', view({ state: 'RUNNING', progress: 0.25, chunks_done: 1, chunks_total: 4 }))
 
     fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }))
@@ -509,6 +511,7 @@ describe('SpeakWorkspace: generar', () => {
     type('Hola mundo')
     fireEvent.click(button('Generar audio'))
     await screen.findByRole('heading', { name: 'En cola, esperando turno' })
+    await streamOpen()
 
     emit('job', view({ state: 'FAILED', error_code: 'synthesis_failed' }))
 
@@ -523,6 +526,7 @@ describe('SpeakWorkspace: generar', () => {
     type('Hola')
     fireEvent.click(button('Generar audio'))
     await screen.findByRole('heading', { name: 'En cola, esperando turno' })
+    await streamOpen()
 
     emit('job', view({ state: 'FAILED', error_code: 'rarisimo' }))
 
@@ -561,6 +565,7 @@ describe('SpeakWorkspace: generar', () => {
     type('Hola')
     fireEvent.click(button('Generar audio'))
     await screen.findByRole('heading', { name: 'En cola, esperando turno' })
+    await streamOpen()
     const first = latest()
 
     first.readyState = FakeEventSource.CLOSED
@@ -581,6 +586,7 @@ describe('SpeakWorkspace: generar', () => {
     type('Hola')
     fireEvent.click(button('Generar audio'))
     await screen.findByRole('heading', { name: 'En cola, esperando turno' })
+    await streamOpen()
 
     cleanup()
 

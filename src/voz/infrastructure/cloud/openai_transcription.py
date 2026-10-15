@@ -85,9 +85,12 @@ class _Window:
 
 
 class OpenAITranscriptionProvider:
-    """``whisper-1`` (verbose_json) and ``gpt-4o-transcribe-diarize`` by model id."""
+    """``whisper-1`` (verbose_json) and ``gpt-4o-transcribe-diarize`` by model id.
 
-    provider_id = PROVIDER_ID
+    The keyword-only ``provider_id``/``spec_for``/``secret_id``/``key_required``/
+    ``label`` let the OpenAI-compatible engine (V4-04) reuse this adapter for
+    any ``/v1/audio/transcriptions`` server; the defaults are OpenAI's.
+    """
 
     def __init__(
         self,
@@ -103,6 +106,11 @@ class OpenAITranscriptionProvider:
         sleep: Callable[[float], None] = time.sleep,
         jitter: Callable[[], float] = random.random,
         endpoint: str = ENDPOINT,
+        provider_id: str = PROVIDER_ID,
+        spec_for: Callable[[str], OpenAIModelSpec | None] = openai_spec,
+        secret_id: str | None = None,
+        key_required: bool = True,
+        label: str = "OpenAI",
     ) -> None:
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
@@ -117,6 +125,11 @@ class OpenAITranscriptionProvider:
         self._sleep = sleep
         self._jitter = jitter
         self._endpoint = endpoint
+        self.provider_id = provider_id
+        self._spec_for = spec_for
+        self._secret_id = provider_id if secret_id is None else secret_id
+        self._key_required = key_required
+        self._label = label
 
     def transcribe(
         self,
@@ -126,22 +139,22 @@ class OpenAITranscriptionProvider:
         cancellation: TranscriptionCancellationToken | None = None,
     ) -> TranscriptionResult:
         spec = (
-            openai_spec(options.model.model_id)
-            if options.model.provider_id == PROVIDER_ID
+            self._spec_for(options.model.model_id)
+            if options.model.provider_id == self.provider_id
             else None
         )
         if spec is None:
             raise TranscriptionError(
                 TranscriptionFailureCode.MODEL_NOT_INSTALLED,
-                "The selected model does not belong to OpenAI.",
+                f"The selected model does not belong to {self._label}.",
             )
         self._check(cancellation)
         try:
-            key = self._secrets.get(PROVIDER_ID)
+            key = self._secrets.get(self._secret_id)
         except SecretsError:
-            raise _fail("The OpenAI API key storage is unusable.") from None
-        if key is None:
-            raise _fail("The OpenAI API key is not configured.")
+            raise _fail(f"The {self._label} API key storage is unusable.") from None
+        if key is None and self._key_required:
+            raise _fail(f"The {self._label} API key is not configured.")
 
         payload = audio.read()
         try:
@@ -172,7 +185,9 @@ class OpenAITranscriptionProvider:
                     else _slice(source, rate, window)
                 )
                 reply = self._post(body, key, spec, options, cancellation)
-                parsed, detected = _parse(reply, window, None if whole else index)
+                parsed, detected = _parse(
+                    reply, window, None if whole else index, self._label
+                )
                 language = language or detected
                 segments.extend(parsed)
         return TranscriptionResult(
@@ -206,7 +221,7 @@ class OpenAITranscriptionProvider:
         usable_ms = (self._limit(spec) - _HEADER_MARGIN_BYTES) // frame_bytes * 1000
         chunk_ms = usable_ms // rate - 2 * self._overlap_ms
         if chunk_ms <= 0:
-            raise _fail("The OpenAI upload limit is too small for this audio.")
+            raise _fail(f"The {self._label} upload limit is too small for this audio.")
         return [
             _Window(
                 start + chunk.process_start_ms,
@@ -222,7 +237,7 @@ class OpenAITranscriptionProvider:
     def _post(
         self,
         wav: bytes,
-        key: str,
+        key: str | None,
         spec: OpenAIModelSpec,
         options: TranscriptionOptions,
         cancellation: TranscriptionCancellationToken | None,
@@ -240,12 +255,10 @@ class OpenAITranscriptionProvider:
         body, content_type = encode_multipart(
             fields, "file", "audio.wav", "audio/wav", wav
         )
-        request = HttpRequest(
-            self._endpoint,
-            {"Authorization": f"Bearer {key}", "Content-Type": content_type},
-            body,
-            self._timeout_s,
-        )
+        headers = {"Content-Type": content_type}
+        if key is not None:
+            headers["Authorization"] = f"Bearer {key}"
+        request = HttpRequest(self._endpoint, headers, body, self._timeout_s)
         for attempt in range(1, self._max_attempts + 1):
             self._check(cancellation)
             retry_after: float | None = None
@@ -254,16 +267,16 @@ class OpenAITranscriptionProvider:
             except TransportError as error:
                 # Only timeouts are recoverable; other network errors are not retried.
                 failure = _fail(
-                    "OpenAI did not answer in time."
+                    f"{self._label} did not answer in time."
                     if error.timeout
-                    else "OpenAI could not be reached.",
+                    else f"{self._label} could not be reached.",
                     retryable=True,
                 )
                 recoverable = error.timeout
             else:
                 if reply.status == 200:
                     return reply.body
-                failure, recoverable = _http_failure(reply.status)
+                failure, recoverable = _http_failure(reply.status, self._label)
                 retry_after = _retry_after(reply.headers)
             if not recoverable or attempt == self._max_attempts:
                 raise failure
@@ -292,17 +305,17 @@ class OpenAITranscriptionProvider:
             raise _cancelled()
 
 
-def _http_failure(status: int) -> tuple[TranscriptionError, bool]:
+def _http_failure(status: int, label: str) -> tuple[TranscriptionError, bool]:
     """Map a non-200 status; only 429/5xx are recoverable, never auth/validation."""
     if status in (401, 403):
-        return _fail("OpenAI rejected the API key."), False
+        return _fail(f"{label} rejected the API key."), False
     if status == 413:
-        return _fail("The audio exceeds the OpenAI upload limit."), False
+        return _fail(f"The audio exceeds the {label} upload limit."), False
     if status == 429:
-        return _fail("OpenAI rate limit reached.", retryable=True), True
+        return _fail(f"{label} rate limit reached.", retryable=True), True
     if status >= 500:
-        return _fail("OpenAI is temporarily unavailable.", retryable=True), True
-    return _fail("OpenAI rejected the request."), False
+        return _fail(f"{label} is temporarily unavailable.", retryable=True), True
+    return _fail(f"{label} rejected the request."), False
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
@@ -337,7 +350,7 @@ def _number(value: object) -> float | None:
 
 
 def _parse(
-    raw: bytes, window: _Window, chunk_index: int | None
+    raw: bytes, window: _Window, chunk_index: int | None, label: str = "OpenAI"
 ) -> tuple[list[TranscriptionSegment], str | None]:
     """Canonical segments on the global timeline, owned by ``window`` only.
 
@@ -347,13 +360,20 @@ def _parse(
     try:
         document = cast(object, json.loads(raw))
     except (UnicodeDecodeError, ValueError):
-        raise _fail("OpenAI returned an unreadable response.") from None
+        raise _fail(f"{label} returned an unreadable response.") from None
     if not isinstance(document, dict):
-        raise _fail("OpenAI returned an unexpected response.")
+        raise _fail(f"{label} returned an unexpected response.")
     body = cast(dict[str, object], document)
     items = body.get("segments")
+    plain = body.get("text")
+    if "segments" not in body and isinstance(plain, str):
+        # Plain ``json`` answer of some compatible servers: one segment over the
+        # owned span. ponytail: split audio may repeat the overlap's words.
+        owned = (window.owned_end_ms - window.owned_start_ms) / 1000
+        items = [{"start": 0.0, "end": owned, "text": plain}]
+        window = _Window(*([window.owned_start_ms, window.owned_end_ms] * 2))
     if not isinstance(items, list):
-        raise _fail("OpenAI returned an unexpected response.")
+        raise _fail(f"{label} returned an unexpected response.")
     found: list[TranscriptionSegment] = []
     shared = (window.process_start_ms, window.process_end_ms) != (
         window.owned_start_ms,
@@ -370,7 +390,7 @@ def _parse(
             entry.get("text"),
         )
         if start is None or end is None or not isinstance(text, str):
-            raise _fail("OpenAI returned an unexpected response.")
+            raise _fail(f"{label} returned an unexpected response.")
         if not text.strip():
             continue
         start_ms = window.process_start_ms + round(start * 1000)
@@ -383,8 +403,8 @@ def _parse(
         if end_ms <= start_ms:
             continue
         cursor = end_ms
-        label = entry.get("speaker")
-        speaker = None if label is None else str(label)
+        tag = entry.get("speaker")
+        speaker = None if tag is None else str(tag)
         if speaker is not None and chunk_index is not None:
             speaker = f"{chunk_index + 1}:{speaker}"
         found.append(TranscriptionSegment(start_ms, end_ms, text, speaker=speaker))

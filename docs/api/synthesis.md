@@ -4,12 +4,15 @@ Common rules (loopback, `Host` check, error shape) are in [README.md](README.md)
 Design: [ADR-0010](../adr/0010-voice-engines-and-tts.md). Implementation:
 `src/voz/interfaces/api/synthesis.py`.
 
-V renders text with a local synthesis engine and keeps the result as one WAV
+V renders text with a selected synthesis engine and keeps the result as one WAV
 (PCM 16-bit mono, at the model's native sample rate). A job is queued, rendered
 chunk by chunk by a background worker that shares the process-wide compute slot
 with transcription (only one heavy job runs at a time), and ends `COMPLETED`,
-`FAILED` or `CANCELLED`. Nothing on this page downloads models or calls a cloud
-service. Responses never contain host paths: audio is addressed by job id.
+`FAILED` or `CANCELLED`. Synthesis never downloads models. Local processing is
+the default; explicitly configured and selected
+[OpenAI-compatible servers](providers.md#openai-compatible-servers-v4-04) can
+process text remotely, with cloud consent recorded before configuration.
+Responses never contain host paths: audio is addressed by job id.
 
 ## Endpoints
 
@@ -39,9 +42,11 @@ service. Responses never contain host paths: audio is addressed by job id.
 }
 ```
 
-Only installed models with the `synthesis` capability of a registered engine
-are listed. A model whose engine cannot read it is left out (the Model Manager
-explains why). `max_chars` is the text limit after trimming.
+Only available models with the `synthesis` capability of a registered engine
+are listed: installed local weights or explicitly configured server models.
+`providers[].locality` distinguishes `local` from `cloud`; the UI displays CLOUD
+before and during remote generation. A model whose engine cannot read it is
+left out (the Model Manager explains why). `max_chars` is the text limit after trimming.
 
 ### SynthesisView
 

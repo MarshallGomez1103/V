@@ -20,6 +20,7 @@ class ModelRegistration:
     files_available: bool = False
     cloud: bool = False  # audio leaves the machine; never installable or recommended
     provider_label: str | None = None  # visible provider name, cloud options only
+    remote: bool = False  # served by another process (cloud or loopback server)
 
 
 @dataclass(frozen=True, slots=True)

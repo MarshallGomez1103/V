@@ -191,6 +191,12 @@ documentación en inglés, TTS y release). Para retomar, leer
 `.ai/v-plan/AGENT-PROTOCOL.md` (privados, fuera de Git). Línea base: HEAD
 1186908 = `origin/main`; pytest 1612 passed / 3 skipped, vitest 543.
 
+## Voice engine extensions
+
+| Slice | State | Scope |
+| --- | --- | --- |
+| V4-04 | Verified | Configurable STT/TTS servers, explicit CLOUD consent, private endpoint storage and safe validation errors; fake HTTP contracts and browser flow verified. |
+
 ## Trabajo activo — v3 y portable
 
 | Paquete | IDs | Agente | Estado | Último logro verificable |

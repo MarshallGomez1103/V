@@ -11,6 +11,7 @@ import { localeOf, useI18n } from '../i18n/i18n'
 import { formatDuration } from '../lib/formatTime'
 import { AudioPlayer } from './AudioPlayer'
 import { Busy } from './Busy'
+import { CloudBadge } from './CloudBadge'
 import { Notice } from './Notice'
 import { Panel } from './Panel'
 import './SpeakResult.scss'
@@ -21,6 +22,7 @@ interface SpeakResultProps {
   reused: boolean
   /** Nombre de la voz con la que se pidió (la API solo devuelve su id). */
   voiceName: string
+  locality?: string
   /** Fallo del stream de eventos (conexión), ya traducido. */
   streamError: string | null
   onCancel: () => void
@@ -30,11 +32,17 @@ interface SpeakResultProps {
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 
 /** Resultado de una generación: progreso en vivo, cancelación y, al terminar, reproductor y descarga. */
-export function SpeakResult({ job, reused, voiceName, streamError, onCancel, onReconnect }: SpeakResultProps) {
+export function SpeakResult({ job, reused, voiceName, locality, streamError, onCancel, onReconnect }: SpeakResultProps) {
   const { t, lang } = useI18n()
+  const cloudNotice = locality === 'cloud' ? (
+    <Notice kind="warning" title={t('speak.cloud.title')} subtitle={t('speak.cloud.result')}>
+      <CloudBadge plain />
+    </Notice>
+  ) : null
   if (job === null) {
     return (
       <Panel titleId="voz-speak-result" title={t('speak.result.title')} className="voz-speak-result">
+        {cloudNotice}
         <div role="status">
           <Busy description={t('speak.generate.creating')} />
         </div>
@@ -76,6 +84,7 @@ export function SpeakResult({ job, reused, voiceName, streamError, onCancel, onR
       actions={actions}
       className={'voz-speak-result voz-speak-result--' + job.state.toLowerCase()}
     >
+      {cloudNotice}
       {reused ? (
         <Notice kind="info" title={t('speak.reused')} subtitle={t('speak.reused.body')} />
       ) : null}

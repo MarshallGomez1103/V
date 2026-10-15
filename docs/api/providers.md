@@ -67,10 +67,10 @@ key being configured.
 
 ## Cloud warning in a job
 
-A job's screen decides whether it is cloud by looking up its
-`selection.provider_id` in `GET /api/providers` (everything it returns is cloud)
-and uses its `label`. If that query fails no warning is shown; it is never
-inferred from a hard-coded id.
+A job's screen resolves `selection.provider_id` against `GET /api/providers`
+and the cloud metadata in `GET /api/transcription-options`, using the provider's
+label. This includes user-configured OpenAI-compatible cloud servers. If both
+queries fail no warning is shown; it is never inferred from a hard-coded id.
 
 ## ElevenLabs (`elevenlabs`, Scribe)
 
@@ -100,3 +100,79 @@ Privacy, data sent and key deletion: [privacy/elevenlabs.md](../privacy/elevenla
   response body nor paths.
 - **Limits** (dated constants in `elevenlabs_scribe.py`, not verified live):
   maximum upload 3 GiB, 100 keyterms of up to 50 characters.
+
+## OpenAI-compatible servers (V4-04)
+
+Settings → Providers lets you register a server with its base URL (including
+`/v1`), an optional API key, transcription model IDs, speech model IDs and voice
+IDs. At least one model is required; speech models also require a voice. IDs
+are declared explicitly; testing a connection does not install or select models.
+
+Only `localhost`, `127.0.0.0/8` and `::1` count as local. All other hosts,
+including LAN addresses, display **CLOUD** and require `cloud_consent: true`
+before saving. Editing the URL clears the UI consent checkbox. Registering a
+server never sends audio or text, selects a provider or creates a fallback.
+The connection test is an explicit request to the saved server. In Voice,
+remote synthesis and samples also require an unchecked confirmation control;
+local models take priority when a previous choice disappears. CLOUD remains
+visible on the selected model and the generation result.
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /api/providers/compatible` | List saved endpoints, including `cloud`, `cloud_consent` and `key_configured`; never return keys. |
+| `POST /api/providers/compatible` | Create an endpoint; return `201` with its generated ID and configuration. |
+| `PUT /api/providers/compatible/{id}` | Replace an endpoint; return its configuration. |
+| `DELETE /api/providers/compatible/{id}` | Delete its configuration and stored key; requires `X-VOZ-Action: delete-compatible-endpoint`; return `204`. |
+| `POST /api/providers/compatible/{id}/test` | Explicitly request `{base_url}/models`, with a five-second timeout. |
+
+Create and replace accept this body (the optional `key` is write-only):
+
+```json
+{
+  "name": "Local speech server",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "key": null,
+  "clear_key": false,
+  "stt_models": ["whisper"],
+  "tts_models": ["speech"],
+  "tts_voices": ["default"],
+  "cloud_consent": false
+}
+```
+
+A null or blank key preserves the saved key; a nonblank value replaces it;
+`clear_key: true` removes it unless a replacement is supplied. Credentials in
+the URL, query strings and fragments are rejected. The endpoint configuration
+is stored atomically in `$XDG_CONFIG_HOME/voz/openai-compatible.json` with mode
+`0600` on POSIX. Keys use `ProviderSecrets` in the separate `secrets.toml` file,
+with the same protection; neither file belongs in SQLite. Symlinks and
+files accessible to group or other users are rejected. Windows relies on the
+user profile ACL rather than POSIX modes.
+
+The connection result has `reachable`, `status`, `models` and `code` fields.
+A server that responds with an HTTP error is reachable; `401`/`403` map to
+`endpoint_auth_rejected`, `404` to `endpoint_models_unlisted`. Network failures
+and timeouts return `endpoint_unreachable` and `endpoint_timeout`. Remote
+response bodies and transport exceptions are not exposed as error messages.
+
+Configuration failures use `endpoint_invalid` or
+`endpoint_cloud_consent_required` (`422`), `endpoint_not_found` (`404`),
+`endpoints_file_insecure` or `endpoints_file_invalid` (`409`), and
+`endpoints_write_failed` (`500`). Key errors use the existing secrets codes.
+Deletion without its action header returns `endpoint_delete_forbidden` (`403`).
+
+Model options use provider ID `openai-compatible` for loopback and
+`openai-compatible-cloud` otherwise; model IDs are `<endpoint-id>/<server-model>`.
+Configuration is read live. Removing a model or moving an endpoint between
+local and cloud invalidates its previous selection instead of silently sending
+data to a different locality.
+
+STT sends multipart WAV to `{base_url}/audio/transcriptions`; TTS sends text,
+model, voice and speed to `{base_url}/audio/speech` and requests WAV. Keys travel
+only in the Authorization header. Redirects are not followed, environment
+proxies are bypassed, and cancellation closes the in-flight connection. Speech
+accepts PCM16 or float32 WAV, keeping the first channel for multichannel audio;
+raw PCM responses use 24 kHz PCM16 mono. Transcription requests use a conservative
+25 MB upload ceiling; speech chunks are limited to 4,000 characters. Compatibility
+is verified with a local fake HTTP server; third-party servers remain experimental
+until exercised separately.

@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+import stat
 from pathlib import Path
 from typing import cast
 
@@ -11,6 +12,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from voz.application.ports.cloud_providers import CloudProviderInfo
+from voz.application.ports.compatible_endpoints import (
+    CompatibleEndpoint,
+    ConnectionCheck,
+)
+from voz.infrastructure.cloud.compatible_store import (
+    ENDPOINTS_FILENAME,
+    FileCompatibleEndpointStore,
+)
 from voz.infrastructure.cloud.provider_info import CLOUD_PROVIDER_INFO
 from voz.infrastructure.secrets import SECRETS_FILENAME, ProviderSecrets
 from voz.interfaces.api.providers import create_providers_router
@@ -189,3 +198,237 @@ def test_estimate_endpoint_returns_dated_price_without_contacting_anyone(
         ).status_code
         == 404
     )
+
+
+# --- OpenAI-compatible endpoints (V4-04) ------------------------------------------
+
+
+class _Tester:
+    def __init__(self) -> None:
+        self.keys: list[str | None] = []
+
+    def check(self, endpoint: CompatibleEndpoint, key: str | None) -> ConnectionCheck:
+        self.keys.append(key)
+        return ConnectionCheck(True, 200, ("m1",))
+
+
+def _endpoints_client(tmp_path: Path, tester: _Tester | None = None) -> httpx.Client:
+    config = tmp_path / "voz"
+    app = FastAPI()
+    app.include_router(
+        create_providers_router(
+            ProviderSecrets(config, environ={}),
+            CLOUD_PROVIDER_INFO,
+            endpoints=FileCompatibleEndpointStore(config),
+            tester=tester,
+        )
+    )
+    return cast(httpx.Client, TestClient(app))  # pyright: ignore[reportUnknownArgumentType]
+
+
+def _endpoint_body(**changes: object) -> dict[str, object]:
+    return {
+        "name": "Speaches",
+        "base_url": "http://127.0.0.1:8000/v1",
+        "key": KEY,
+        "stt_models": ["Systran/faster-whisper-small"],
+        **changes,
+    }
+
+
+def test_compatible_endpoint_key_goes_to_secrets_and_is_never_echoed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    tester = _Tester()
+    client = _endpoints_client(tmp_path, tester)
+
+    created = client.post("/api/providers/compatible", json=_endpoint_body())
+    endpoint_id = created.json()["id"]
+    tested = client.post(f"/api/providers/compatible/{endpoint_id}/test")
+
+    assert created.status_code == 201 and tested.json()["models"] == ["m1"]
+    assert tester.keys == [KEY]
+    for response in (created, tested, client.get("/api/providers/compatible")):
+        assert KEY not in response.text
+    assert KEY not in (tmp_path / "voz" / "openai-compatible.json").read_text()
+    assert KEY in (tmp_path / "voz" / SECRETS_FILENAME).read_text()
+    assert KEY not in caplog.text
+
+    cleared = client.put(
+        f"/api/providers/compatible/{endpoint_id}",
+        json=_endpoint_body(key=None, clear_key=True),
+    )
+    assert cleared.json()["key_configured"] is False
+
+
+def test_compatible_endpoint_errors_are_stable(tmp_path: Path) -> None:
+    client = _endpoints_client(tmp_path)
+    created = client.post("/api/providers/compatible", json=_endpoint_body()).json()
+    url = f"/api/providers/compatible/{created['id']}"
+
+    def code(response: httpx.Response) -> tuple[int, str]:
+        return response.status_code, response.json()["detail"]["code"]
+
+    assert code(client.post(url + "/test")) == (501, "endpoint_test_unavailable")
+    assert code(client.delete(url)) == (403, "endpoint_delete_forbidden")
+    assert code(
+        client.put("/api/providers/compatible/aaaaaaaaaaaa", json=_endpoint_body())
+    ) == (404, "endpoint_not_found")
+    assert code(
+        client.post(
+            "/api/providers/compatible", json=_endpoint_body(base_url="file:///x")
+        )
+    ) == (422, "endpoint_invalid")
+    assert code(
+        client.post("/api/providers/compatible", json=_endpoint_body(key="has space"))
+    ) == (422, "secrets_key_invalid")
+    (tmp_path / "voz" / "openai-compatible.json").chmod(0o644)
+    assert code(client.get("/api/providers/compatible")) == (
+        409,
+        "endpoints_file_insecure",
+    )
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.example.com/v1",
+        "http://192.168.1.20:8000/v1",
+        "http://localhost.example.com/v1",
+    ],
+)
+def test_cloud_consent_is_required_before_saving_or_testing(
+    tmp_path: Path, base_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    tester = _Tester()
+    client = _endpoints_client(tmp_path, tester)
+    url = "/api/providers/compatible"
+    refused = client.post(url, json=_endpoint_body(base_url=base_url))
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "endpoint_cloud_consent_required"
+    assert client.get(url).json() == []
+    assert not (tmp_path / "voz" / SECRETS_FILENAME).exists()
+    assert not (tmp_path / "voz" / ENDPOINTS_FILENAME).exists()
+    assert tester.keys == []
+
+    accepted = client.post(
+        url, json=_endpoint_body(base_url=base_url, cloud_consent=True)
+    )
+    assert accepted.status_code == 201
+    endpoint = accepted.json()
+    assert endpoint["cloud"] is True and endpoint["cloud_consent"] is True
+    assert tester.keys == []
+    tested = client.post(f"{url}/{endpoint['id']}/test")
+    assert tested.status_code == 200 and tester.keys == [KEY]
+    for response in (refused, accepted, tested, client.get(url)):
+        assert KEY not in response.text
+    assert KEY not in caplog.text
+
+
+@pytest.mark.parametrize("initial_cloud", [False, True])
+def test_refused_url_edit_preserves_endpoint_and_key(
+    tmp_path: Path, initial_cloud: bool
+) -> None:
+    tester = _Tester()
+    client = _endpoints_client(tmp_path, tester)
+    base_url = (
+        "https://first.example.com/v1" if initial_cloud else "http://localhost:8000/v1"
+    )
+    created = client.post(
+        "/api/providers/compatible",
+        json=_endpoint_body(base_url=base_url, cloud_consent=initial_cloud),
+    )
+    assert created.status_code == 201
+    endpoint = created.json()
+    files = [tmp_path / "voz" / name for name in (ENDPOINTS_FILENAME, SECRETS_FILENAME)]
+    before = [file.read_bytes() for file in files]
+    url = f"/api/providers/compatible/{endpoint['id']}"
+    refused = client.put(
+        url,
+        json=_endpoint_body(
+            base_url="https://second.example.com/v1", key="replacement-secret"
+        ),
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "endpoint_cloud_consent_required"
+    assert [file.read_bytes() for file in files] == before
+    assert client.get("/api/providers/compatible").json() == [endpoint]
+    assert tester.keys == []
+    assert client.post(url + "/test").status_code == 200
+    assert tester.keys == [KEY]
+
+
+def test_compatible_files_stay_0600_across_update_and_delete(tmp_path: Path) -> None:
+    client = _endpoints_client(tmp_path)
+    url = "/api/providers/compatible"
+    first = client.post(url, json=_endpoint_body(cloud_consent=True))
+    assert first.status_code == 201
+    assert first.json()["cloud"] is False
+    assert first.json()["cloud_consent"] is False
+    second = client.post(url, json=_endpoint_body(name="Second", key="second-secret"))
+    assert second.status_code == 201
+    files = [tmp_path / "voz" / name for name in (ENDPOINTS_FILENAME, SECRETS_FILENAME)]
+    assert all(stat.S_IMODE(file.stat().st_mode) == 0o600 for file in files)
+
+    first_url = f"{url}/{first.json()['id']}"
+    updated = client.put(first_url, json=_endpoint_body(key="replacement-secret"))
+    assert updated.status_code == 200 and updated.json()["key_configured"] is True
+    assert all(stat.S_IMODE(file.stat().st_mode) == 0o600 for file in files)
+    cleared = client.put(first_url, json=_endpoint_body(key=None, clear_key=True))
+    assert cleared.status_code == 200 and cleared.json()["key_configured"] is False
+    assert "replacement-secret" not in files[1].read_text(encoding="utf-8")
+
+    deleted = client.delete(
+        f"{url}/{second.json()['id']}",
+        headers={"X-VOZ-Action": "delete-compatible-endpoint"},
+    )
+    assert deleted.status_code == 204
+    assert not files[1].exists()
+    assert stat.S_IMODE(files[0].stat().st_mode) == 0o600
+    assert "second-secret" not in files[0].read_text(encoding="utf-8")
+
+
+def test_insecure_compatible_secrets_fail_without_echo_or_mutation(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    tester = _Tester()
+    client = _endpoints_client(tmp_path, tester)
+    created = client.post("/api/providers/compatible", json=_endpoint_body())
+    assert created.status_code == 201
+    url = f"/api/providers/compatible/{created.json()['id']}"
+    secrets_file = tmp_path / "voz" / SECRETS_FILENAME
+    secrets_file.chmod(0o644)
+    before = secrets_file.read_bytes()
+
+    listing = client.get("/api/providers/compatible")
+    assert listing.status_code == 200 and listing.json()[0]["key_configured"] is False
+    responses = (
+        client.post(url + "/test"),
+        client.put(url, json=_endpoint_body(key="replacement-secret")),
+        client.delete(url, headers={"X-VOZ-Action": "delete-compatible-endpoint"}),
+    )
+    for response in responses:
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "secrets_file_insecure"
+        assert KEY not in response.text and str(tmp_path) not in response.text
+    assert secrets_file.read_bytes() == before
+    assert tester.keys == []
+    assert KEY not in caplog.text and "replacement-secret" not in caplog.text
+
+
+def test_malformed_url_with_consent_returns_safe_validation_error(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    client = _endpoints_client(tmp_path)
+    response = client.post(
+        "/api/providers/compatible",
+        json=_endpoint_body(base_url="http://[", cloud_consent=True),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "endpoint_invalid"
+    assert KEY not in response.text and KEY not in caplog.text
+    assert not (tmp_path / "voz" / SECRETS_FILENAME).exists()

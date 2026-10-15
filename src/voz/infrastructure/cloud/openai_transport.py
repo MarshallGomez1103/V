@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import http.client
+import socket
+import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 from uuid import uuid4
+
+_ABORT_POLL_S = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +22,9 @@ class HttpRequest:
     headers: Mapping[str, str] = field(repr=False)  # carries the API key
     body: bytes = field(repr=False)  # carries the user's audio
     timeout_s: float = 600.0
+    method: str = "POST"
+    abort: Callable[[], bool] | None = field(default=None, repr=False, compare=False)
+    """Polled while the request is in flight; ``True`` cuts the connection."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,11 +35,14 @@ class HttpResponse:
 
 
 class TransportError(Exception):
-    """No response at all (connect, TLS, reset, timeout)."""
+    """No response at all (connect, TLS, reset, timeout, or cut by ``abort``)."""
 
-    def __init__(self, *, timeout: bool = False) -> None:
+    def __init__(self, *, timeout: bool = False, aborted: bool = False) -> None:
         self.timeout = timeout
-        super().__init__("timeout" if timeout else "network error")
+        self.aborted = aborted
+        super().__init__(
+            "aborted" if aborted else "timeout" if timeout else "network error"
+        )
 
 
 Transport = Callable[[HttpRequest], HttpResponse]
@@ -37,8 +50,13 @@ Transport = Callable[[HttpRequest], HttpResponse]
 
 def urllib_transport(request: HttpRequest) -> HttpResponse:
     """Real network transport. Only the composition root may inject it."""
+    if request.abort is not None:
+        return _abortable(request, request.abort)
     prepared = urllib.request.Request(
-        request.url, data=request.body, headers=dict(request.headers), method="POST"
+        request.url,
+        data=request.body if request.body or request.method != "GET" else None,
+        headers=dict(request.headers),
+        method=request.method,
     )
     try:
         with urllib.request.urlopen(prepared, timeout=request.timeout_s) as reply:
@@ -52,6 +70,59 @@ def urllib_transport(request: HttpRequest) -> HttpResponse:
         raise TransportError(timeout=isinstance(error.reason, TimeoutError)) from error
     except OSError as error:
         raise TransportError from error
+
+
+def _abortable(request: HttpRequest, abort: Callable[[], bool]) -> HttpResponse:
+    """``http.client`` request whose socket a watcher shuts down on ``abort``.
+
+    ponytail: no proxy support on this path (urllib's env proxies are skipped);
+    it is only used by engines that need cancellation mid-request.
+    """
+    parts = urlsplit(request.url)
+    factory = (
+        http.client.HTTPSConnection
+        if parts.scheme == "https"
+        else http.client.HTTPConnection
+    )
+    connection = factory(parts.hostname or "", parts.port, timeout=request.timeout_s)
+    done = threading.Event()
+    aborted = threading.Event()
+
+    def watch() -> None:
+        while not done.wait(_ABORT_POLL_S):
+            if aborted.is_set() or abort():
+                aborted.set()
+                sock = connection.sock
+                if sock is not None:  # before connect(): retry on the next poll
+                    with contextlib.suppress(OSError):
+                        sock.shutdown(socket.SHUT_RDWR)
+                    return
+
+    watcher = threading.Thread(target=watch, name="voz-http-abort", daemon=True)
+    watcher.start()
+    path = parts.path or "/"
+    if parts.query:
+        path += "?" + parts.query
+    try:
+        connection.request(
+            request.method,
+            path,
+            body=request.body if request.body or request.method != "GET" else None,
+            headers=dict(request.headers),
+        )
+        reply = connection.getresponse()
+        body = reply.read()
+        if aborted.is_set():
+            raise TransportError(aborted=True)
+        return HttpResponse(reply.status, body, dict(reply.getheaders()))
+    except TimeoutError as error:
+        raise TransportError(timeout=True) from error
+    except (OSError, http.client.HTTPException) as error:
+        raise TransportError(aborted=aborted.is_set()) from error
+    finally:
+        done.set()
+        connection.close()
+        watcher.join()
 
 
 def encode_multipart(

@@ -11,6 +11,8 @@ from typing import BinaryIO
 import pytest
 from _pytest.fixtures import FixtureRequest
 from elevenlabs_contract_fake import elevenlabs_contract_case
+from openai_compatible_fake import fake_server
+from openai_compatible_fake import setup as compatible_setup
 
 from voz.application.asr_device_selection import ComputeDevice, ExecutionDecision
 from voz.application.ports.transcription import (
@@ -231,12 +233,24 @@ def _openai_case(diarized: bool) -> "_ProviderContractCase":
         "elevenlabs",
         "openai",
         "openai-diarized",
+        "openai-compatible",
     )
 )
 def provider_case(
     request: FixtureRequest,
     tmp_path: Path,
 ) -> _ProviderContractCase:
+    if request.param == "openai-compatible":
+        server_context = fake_server(key="sk-contract-fake")
+        server = server_context.__enter__()
+        request.addfinalizer(lambda: server_context.__exit__(None, None, None))
+        configured = compatible_setup(
+            tmp_path / "config", server, key="sk-contract-fake"
+        )
+        return _ProviderContractCase(
+            provider=configured.transcription(),
+            options=configured.transcription_options(),
+        )
     if request.param == "elevenlabs":
         provider, options = elevenlabs_contract_case()
         return _ProviderContractCase(provider=provider, options=options)

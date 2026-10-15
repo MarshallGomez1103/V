@@ -53,8 +53,12 @@ export function resolveChoice(
   preference: SpeakPreference,
   interfaceLanguage: string,
 ): SpeakChoice {
+  const local = (item: SynthesisModel) =>
+    !options.providers.some((provider) => provider.provider_id === item.provider_id && provider.locality === 'cloud')
   const model =
     options.models.find((item) => modelKey(item) === preference.model) ??
+    options.models.find((item) => local(item) && item.runtime_ready) ??
+    options.models.find(local) ??
     options.models.find((item) => item.runtime_ready) ??
     options.models[0]
   if (model === undefined) {

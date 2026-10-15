@@ -149,8 +149,13 @@ def test_default_app_has_no_synthesis_models_until_one_is_installed(
     )
     with TestClient(create_app(paths=paths)) as client:
         options = client.get("/api/synthesis/options").json()
-        # Only the real sherpa-onnx engine, and only when its runtime exists.
-        assert {p["provider_id"] for p in options["providers"]} <= {"sherpa-onnx-tts"}
+        # sherpa-onnx only when its runtime exists, plus the OpenAI-compatible
+        # engines, which have no models until the user declares an endpoint.
+        assert {p["provider_id"] for p in options["providers"]} <= {
+            "sherpa-onnx-tts",
+            "openai-compatible",
+            "openai-compatible-cloud",
+        }
         assert options["models"] == []
         response = client.post("/api/synthesis", json=_body())
         assert response.status_code == 404

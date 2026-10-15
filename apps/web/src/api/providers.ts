@@ -136,3 +136,129 @@ export async function getEstimate(
   }
   return body
 }
+
+/* --- Servidores compatibles con OpenAI (V4-04) ----------------------------- */
+
+export interface CompatibleEndpoint {
+  id: string
+  name: string
+  base_url: string
+  /** Fuera de loopback: el audio y el texto salen del equipo. */
+  cloud: boolean
+  cloud_consent: boolean
+  key_configured: boolean
+  stt_models: string[]
+  tts_models: string[]
+  tts_voices: string[]
+}
+
+export interface CompatibleEndpointInput {
+  name: string
+  base_url: string
+  /** `null` conserva la clave guardada; un texto la reemplaza. */
+  key: string | null
+  clear_key?: boolean
+  stt_models: string[]
+  tts_models: string[]
+  tts_voices: string[]
+  cloud_consent: boolean
+}
+
+export interface ConnectionCheck {
+  reachable: boolean
+  status: number | null
+  models: string[]
+  code: string | null
+}
+
+const ENDPOINTS_URL = '/api/providers/compatible'
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isEndpoint(value: unknown): value is CompatibleEndpoint {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.base_url === 'string' &&
+    typeof value.cloud === 'boolean' &&
+    typeof value.cloud_consent === 'boolean' &&
+    typeof value.key_configured === 'boolean' &&
+    isStringList(value.stt_models) &&
+    isStringList(value.tts_models) &&
+    isStringList(value.tts_voices)
+  )
+}
+
+function isConnectionCheck(value: unknown): value is ConnectionCheck {
+  return (
+    isRecord(value) &&
+    typeof value.reachable === 'boolean' &&
+    (value.status === null || typeof value.status === 'number') &&
+    isStringList(value.models) &&
+    (value.code === null || typeof value.code === 'string')
+  )
+}
+
+/** Misma regla que el backend: solo localhost, 127.0.0.0/8 y ::1 son locales. */
+export function isLoopbackUrl(value: string): boolean {
+  let host: string
+  try {
+    host = new URL(value.trim()).hostname
+  } catch {
+    return false
+  }
+  return (
+    host === 'localhost' ||
+    host === '[::1]' ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+  )
+}
+
+export async function listCompatibleEndpoints(
+  signal?: AbortSignal,
+): Promise<CompatibleEndpoint[]> {
+  const body = await request(ENDPOINTS_URL, signal ? { signal } : {})
+  if (!Array.isArray(body) || !body.every(isEndpoint)) {
+    throw new ProviderApiError('invalid_response')
+  }
+  return body
+}
+
+/** Crea (sin `id`) o reemplaza un servidor; la clave nunca vuelve en la respuesta. */
+export async function saveCompatibleEndpoint(
+  input: CompatibleEndpointInput,
+  id?: string,
+): Promise<CompatibleEndpoint> {
+  const body = await request(
+    id === undefined ? ENDPOINTS_URL : ENDPOINTS_URL + '/' + encodeURIComponent(id),
+    {
+      method: id === undefined ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  )
+  if (!isEndpoint(body)) {
+    throw new ProviderApiError('invalid_response')
+  }
+  return body
+}
+
+export async function deleteCompatibleEndpoint(id: string): Promise<void> {
+  await request(ENDPOINTS_URL + '/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: { 'X-VOZ-Action': 'delete-compatible-endpoint' },
+  })
+}
+
+export async function testCompatibleEndpoint(id: string): Promise<ConnectionCheck> {
+  const body = await request(ENDPOINTS_URL + '/' + encodeURIComponent(id) + '/test', {
+    method: 'POST',
+  })
+  if (!isConnectionCheck(body)) {
+    throw new ProviderApiError('invalid_response')
+  }
+  return body
+}

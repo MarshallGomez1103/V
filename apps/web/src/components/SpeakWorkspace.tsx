@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { Button, Column, Grid, TextArea } from '@carbon/react'
+import { Button, Checkbox, Column, Grid, TextArea } from '@carbon/react'
 import { ArrowRight, StopFilledAlt, VolumeUp } from '@carbon/icons-react'
 
 import { isAbortError } from '../api/errors'
@@ -18,6 +18,7 @@ import { localeOf, translate, useI18n } from '../i18n/i18n'
 import {
   firstSentence,
   loadPreference,
+  modelKey,
   requestOf,
   resolveChoice,
   sampleLanguage,
@@ -141,8 +142,14 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
   const [preference, setPreference] = useState<SpeakPreference>(loadPreference)
   const choice = resolveChoice(options, preference, lang)
   const request = requestOf(choice)
-  const usable = request !== null && choice.model.runtime_ready
+  const cloud = options.providers.some(
+    (provider) => provider.provider_id === choice.model.provider_id && provider.locality === 'cloud',
+  )
+  const [confirmedCloud, setConfirmedCloud] = useState<string | null>(null)
+  const usable = request !== null && choice.model.runtime_ready &&
+    (!cloud || confirmedCloud === modelKey(choice.model))
   const change = (next: SpeakPreference) => {
+    setConfirmedCloud(null)
     setPreference(next)
     savePreference(resolveChoice(options, next, lang))
   }
@@ -155,7 +162,7 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
   const active = job !== null && ACTIVE_SYNTHESIS_STATES.has(job.state)
 
   const generate = () => {
-    if (request === null || !status.canGenerate || creating || active) {
+    if (request === null || !usable || !status.canGenerate || creating || active) {
       return
     }
     setCreating(true)
@@ -192,7 +199,7 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
       sample.stop()
       return
     }
-    if (request === null) {
+    if (request === null || !usable) {
       return
     }
     sample.start({
@@ -262,12 +269,23 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
             disabled={creating || active}
             onChange={change}
           />
+          {cloud ? (
+            <Checkbox
+              id={id + '-cloud-confirm'}
+              labelText={t('speak.cloud.confirm')}
+              checked={confirmedCloud === modelKey(choice.model)}
+              disabled={creating || active}
+              onChange={(_, { checked }) => {
+                setConfirmedCloud(checked ? modelKey(choice.model) : null)
+              }}
+            />
+          ) : null}
           <div className="voz-speak__actions">
             <Button
               kind="tertiary"
               size="md"
               renderIcon={sampleBusy ? StopFilledAlt : VolumeUp}
-              disabled={!usable}
+              disabled={!usable && !sampleBusy}
               onClick={listen}
             >
               {sample.phase === 'playing'
@@ -308,6 +326,9 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
             job={generation === null ? null : job}
             reused={generation?.reused ?? false}
             voiceName={generation?.voiceName ?? ''}
+            locality={options.providers.find(
+              (provider) => provider.provider_id === (job?.provider_id ?? choice.model.provider_id),
+            )?.locality ?? 'local'}
             streamError={events.error}
             onCancel={cancel}
             onReconnect={events.retry}

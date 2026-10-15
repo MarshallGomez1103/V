@@ -85,22 +85,19 @@ class ProviderSecrets:
 
     def _read_file(self) -> dict[str, object]:
         try:
-            info = self._file.lstat()
-        except FileNotFoundError:
-            return {}
-        except OSError as error:
-            raise _invalid() from error
-        # ponytail: Windows reports 0o666 for every file and has no POSIX modes;
-        # the user-profile ACL is the protection there, so only POSIX is checked.
-        group_or_world = info.st_mode & 0o077 if os.name != "nt" else 0
-        if not stat.S_ISREG(info.st_mode) or group_or_world:
+            text = read_private_text(self._file)
+        except InsecureFileError:
             raise SecretsError(
                 SecretsFailureCode.FILE_INSECURE,
                 "The secrets file must be a regular file with mode 0600.",
-            )
+            ) from None
+        except (OSError, UnicodeDecodeError) as error:
+            raise _invalid() from error
+        if text is None:
+            return {}
         try:
-            return dict(tomllib.loads(self._file.read_text(encoding="utf-8")))
-        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+            return dict(tomllib.loads(text))
+        except tomllib.TOMLDecodeError as error:
             raise _invalid() from error
 
     def _write_file(self, entries: Mapping[str, object]) -> None:
@@ -109,28 +106,56 @@ class ProviderSecrets:
             for name, value in sorted(entries.items())
             if isinstance(value, str)
         )
-        temporary: str | None = None
         try:
-            self._config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-            # mkstemp creates the file 0600, so the key is never world-readable.
-            descriptor, temporary = tempfile.mkstemp(
-                dir=self._config_dir, prefix=".secrets-"
-            )
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(body)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self._file)
-            temporary = None
+            write_private_text(self._file, body)
         except OSError as error:
             raise SecretsError(
                 SecretsFailureCode.WRITE_FAILED,
                 "The secrets file could not be written.",
             ) from error
-        finally:
-            if temporary is not None:
-                with contextlib.suppress(OSError):
-                    os.unlink(temporary)
+
+
+class InsecureFileError(Exception):
+    """A private file is not a regular file with mode 0600."""
+
+
+def read_private_text(path: Path) -> str | None:
+    """UTF-8 text of a 0600 regular file, ``None`` if it does not exist.
+
+    Raises ``InsecureFileError`` (symlink, group/world access), ``OSError`` or
+    ``UnicodeDecodeError``.
+    """
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    # ponytail: Windows reports 0o666 for every file and has no POSIX modes;
+    # the user-profile ACL is the protection there, so only POSIX is checked.
+    group_or_world = info.st_mode & 0o077 if os.name != "nt" else 0
+    if not stat.S_ISREG(info.st_mode) or group_or_world:
+        raise InsecureFileError(path.name)
+    return path.read_text(encoding="utf-8")
+
+
+def write_private_text(path: Path, body: str) -> None:
+    """Atomically replace ``path`` with ``body`` (mode 0600); raises ``OSError``."""
+    temporary: str | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # mkstemp creates the file 0600, so the content is never world-readable.
+        descriptor, temporary = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.stem}-"
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(body)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
 
 
 def _checked_id(provider_id: str) -> str:
@@ -145,4 +170,10 @@ def _invalid() -> SecretsError:
     )
 
 
-__all__ = ["SECRETS_FILENAME", "ProviderSecrets"]
+__all__ = [
+    "SECRETS_FILENAME",
+    "InsecureFileError",
+    "ProviderSecrets",
+    "read_private_text",
+    "write_private_text",
+]

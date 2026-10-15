@@ -81,7 +81,7 @@ from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
 )
 from voz.application.waveform_peaks import GetWaveformPeaks
-from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
 from voz.infrastructure.asr.catalog import FasterWhisperModelCatalog
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
@@ -106,6 +106,7 @@ from voz.infrastructure.cloud.catalog import (
     CompositeCatalog,
     RoutingRuntimeProbe,
 )
+from voz.infrastructure.cloud.compatible_store import FileCompatibleEndpointStore
 from voz.infrastructure.cloud.elevenlabs_pricing import (
     ELEVENLABS_DEFAULT_MODELS,
     ELEVENLABS_PRICES,
@@ -113,6 +114,19 @@ from voz.infrastructure.cloud.elevenlabs_pricing import (
 from voz.infrastructure.cloud.elevenlabs_scribe import (
     ElevenLabsScribeProvider,
     elevenlabs_scribe_descriptor,
+)
+from voz.infrastructure.cloud.openai_compatible import (
+    CLOUD_PROVIDER_ID as COMPATIBLE_CLOUD_ID,
+)
+from voz.infrastructure.cloud.openai_compatible import (
+    PROVIDER_IDS as COMPATIBLE_PROVIDER_IDS,
+)
+from voz.infrastructure.cloud.openai_compatible import (
+    CompatibleModels,
+    CompatibleRuntimeProbe,
+    CompatibleSpeechProvider,
+    CompatibleTranscriptionProvider,
+    HttpConnectionTester,
 )
 from voz.infrastructure.cloud.openai_limits import (
     DEFAULT_MODEL_ID as OPENAI_DEFAULT_MODEL_ID,
@@ -369,6 +383,10 @@ def create_app(
     secrets = ProviderSecrets(resolved_paths.config)
     cloud_descriptors = (*openai_descriptors(), elevenlabs_scribe_descriptor())
     cloud_probe = CloudRuntimeProbe(secrets, cloud_descriptors)
+    # User-declared OpenAI-compatible servers (V4-04): read live from the
+    # config file; non-loopback ones are cloud and saved only with consent.
+    compatible_store = FileCompatibleEndpointStore(resolved_paths.config)
+    compatible_probe = CompatibleRuntimeProbe()
     if transcription_options is None:
         local_catalogs = (
             LocalTranscriptionModelCatalog(model_store),
@@ -384,6 +402,7 @@ def create_app(
                 (
                     *local_catalogs,
                     CloudTranscriptionCatalog(cloud_descriptors, CLOUD_PROVIDER_LABELS),
+                    CompatibleModels(compatible_store, ModelCapability.TRANSCRIPTION),
                 )
             ),
             RoutingRuntimeProbe(
@@ -391,6 +410,7 @@ def create_app(
                 {
                     "whisper-cpp": whisper_cpp_probe,
                     **{pid: cloud_probe for pid in cloud_probe.provider_ids},
+                    **{pid: compatible_probe for pid in COMPATIBLE_PROVIDER_IDS},
                 },
             ),
         )
@@ -412,6 +432,13 @@ def create_app(
         if provider_id == "openai":
             provider: TranscriptionProvider = OpenAITranscriptionProvider(
                 secrets=secrets, transport=urllib_transport
+            )
+        elif provider_id in COMPATIBLE_PROVIDER_IDS:
+            provider = CompatibleTranscriptionProvider(
+                store=compatible_store,
+                secrets=secrets,
+                transport=urllib_transport,
+                cloud=provider_id == COMPATIBLE_CLOUD_ID,
             )
         elif provider_id == "elevenlabs":
             provider = ElevenLabsScribeProvider(secrets=secrets)
@@ -527,13 +554,28 @@ def create_app(
     desktop_shortcut = LocalDesktopShortcut(state_directory=resolved_paths.state)
 
     if synthesis_providers is None:
-        # The engine asks the store per call: installs and deletes are live.
+        # The engines ask their store per call: installs, deletes and endpoint
+        # edits are live.
         synthesis_providers = (
-            (sherpa_tts_provider(tts_store.manifest),) if sherpa_available() else ()
+            *((sherpa_tts_provider(tts_store.manifest),) if sherpa_available() else ()),
+            *(
+                CompatibleSpeechProvider(
+                    store=compatible_store,
+                    secrets=secrets,
+                    transport=urllib_transport,
+                    cloud=cloud,
+                )
+                for cloud in (False, True)
+            ),
         )
     synthesis_registry = SynthesisProviderRegistry(synthesis_providers)
     tts_catalog = (
-        InstalledTtsModels(tts_store)
+        CompositeCatalog(
+            (
+                InstalledTtsModels(tts_store),
+                CompatibleModels(compatible_store, ModelCapability.SYNTHESIS),
+            )
+        )
         if synthesis_catalog is None
         else synthesis_catalog
     )
@@ -712,6 +754,8 @@ def create_app(
                 {**openai_prices(), **ELEVENLABS_PRICES},
                 {"openai": OPENAI_DEFAULT_MODEL_ID, **ELEVENLABS_DEFAULT_MODELS},
             ),
+            endpoints=compatible_store,
+            tester=HttpConnectionTester(urllib_transport),
         )
     )
     application.include_router(

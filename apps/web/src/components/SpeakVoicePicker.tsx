@@ -10,6 +10,8 @@ import {
   type SpeakChoice,
   type SpeakPreference,
 } from '../lib/speakChoice'
+import { CloudBadge } from './CloudBadge'
+import { Notice } from './Notice'
 
 interface SpeakVoicePickerProps {
   id: string
@@ -37,8 +39,9 @@ function useLanguageName() {
   }
 }
 
-function modelLabel(model: SynthesisModel): string {
-  return model.display_name
+function modelLabel(model: SynthesisModel, options: SynthesisOptions): string {
+  const cloud = options.providers.find((provider) => provider.provider_id === model.provider_id)?.locality === 'cloud'
+  return model.display_name + (cloud ? ' · CLOUD' : '')
 }
 
 /** Modelo, voz, idioma (si el modelo tiene varios) y velocidad; sin estado propio. */
@@ -50,6 +53,7 @@ export function SpeakVoicePicker({ id, options, choice, disabled = false, onChan
   const speedText = t('speak.voice.speedValue', { speed: format.format(choice.speed) })
   const fill = max > min ? ((choice.speed - min) / (max - min)) * 100 : 0
   const multiLanguage = choice.model.languages.length > 1
+  const cloud = options.providers.find((provider) => provider.provider_id === choice.model.provider_id)?.locality === 'cloud'
   return (
     <div className="voz-speak__selectors">
       <Select
@@ -70,9 +74,14 @@ export function SpeakVoicePicker({ id, options, choice, disabled = false, onChan
         }}
       >
         {options.models.map((model) => (
-          <SelectItem key={modelKey(model)} value={modelKey(model)} text={modelLabel(model)} />
+          <SelectItem key={modelKey(model)} value={modelKey(model)} text={modelLabel(model, options)} />
         ))}
       </Select>
+      {cloud ? (
+        <Notice kind="warning" title={t('speak.cloud.title')} subtitle={t('speak.cloud.notice')}>
+          <CloudBadge plain />
+        </Notice>
+      ) : null}
       {multiLanguage ? (
         <Select
           id={id + '-language'}
