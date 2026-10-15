@@ -132,3 +132,17 @@ installed from the Model Manager ([models.md](models.md)); both the list and
 the engine read the model store on every request, so a model installed or
 deleted there appears or disappears without a restart. Tests use a
 deterministic fake engine (`src/voz/infrastructure/tts/fake.py`).
+
+## History in the Voice workspace
+
+Voice lists the latest 50 synthesis jobs, newest first, including jobs from
+previous sessions. Each entry shows a text preview, voice, duration when audio
+is available, creation date and job state. Available model metadata supplies
+voice names; the stored voice ID remains visible when its model was removed.
+The list also remains available when no synthesis models are installed.
+
+Completed jobs can be played and downloaded as WAV. Deleting a terminal job
+requires confirmation and removes its stored result; active jobs must finish
+or be cancelled first. Cancelling the confirmation preserves the result. The
+list refreshes after the current generation finishes and after deletion. Errors
+show a retry action and never expose host paths or raw server messages.

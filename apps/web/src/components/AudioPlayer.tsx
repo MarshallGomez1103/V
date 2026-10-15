@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Dropdown, IconButton } from '@carbon/react'
 import {
   Forward_5,
@@ -85,6 +85,7 @@ export function AudioPlayer({
   src,
 }: AudioPlayerProps) {
   const { t } = useI18n()
+  const playerId = useId()
   const audioRef = useRef<HTMLAudioElement>(null)
   const [time, setTime] = useState(0)
   const [measured, setMeasured] = useState<number | null>(null)
@@ -143,6 +144,10 @@ export function AudioPlayer({
         event.shiftKey ||
         ownsKeys(event.target)
       ) {
+        return
+      }
+      const focusedPlayer = event.target instanceof HTMLElement ? event.target.closest('.voz-player') : null
+      if (focusedPlayer !== null && focusedPlayer !== audio.parentElement) {
         return
       }
       const onButton = event.target instanceof HTMLElement && event.target.closest('button, a, summary') !== null
@@ -361,7 +366,7 @@ export function AudioPlayer({
           </output>
         </div>
         <Dropdown
-          id={'rate-' + mediaAssetId}
+          id={'rate-' + playerId}
           className="voz-player__rate"
           size="md"
           label={t('audio.rate.label')}

@@ -5,6 +5,8 @@ import type { SynthesisView } from '../api/synthesis'
 import { setLang } from '../i18n/i18n'
 import { SpeakWorkspace } from './SpeakWorkspace'
 
+vi.mock('./SpeakHistory', () => ({ SpeakHistory: () => null }))
+
 class FakeEventSource extends EventTarget {
   static readonly CONNECTING = 0
   static readonly OPEN = 1

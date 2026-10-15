@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AudioPlayer } from './AudioPlayer'
@@ -9,6 +9,28 @@ afterEach(() => {
 })
 
 describe('AudioPlayer', () => {
+  it('dos vistas del mismo audio tienen controles con identificadores distintos', () => {
+    const { container } = render(<>
+      <AudioPlayer mediaAssetId="same" seekToMs={null} seekNonce={0} />
+      <AudioPlayer mediaAssetId="same" seekToMs={null} seekNonce={0} />
+    </>)
+    const ids = [...container.querySelectorAll('[id]')].map((element) => element.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('los atajos dentro de otro reproductor solo controlan ese reproductor', () => {
+    render(<>
+      <AudioPlayer mediaAssetId="result" seekToMs={null} seekNonce={0} />
+      <AudioPlayer mediaAssetId="history" seekToMs={null} seekNonce={0} />
+    </>)
+    const players = screen.getAllByRole('group', { name: 'Controles de reproducción' })
+    const audio = screen.getAllByLabelText<HTMLAudioElement>('Reproductor del original')
+    const target = within(players[1]!).getAllByRole('button')[0]!
+    fireEvent.keyDown(target, { key: 'ArrowRight' })
+    expect(audio[0]!.currentTime).toBe(0)
+    expect(audio[1]!.currentTime).toBe(5)
+  })
+
   it('no renderiza nada sin mediaAssetId', () => {
     const { container } = render(
       <AudioPlayer mediaAssetId={null} seekToMs={null} seekNonce={0} />,

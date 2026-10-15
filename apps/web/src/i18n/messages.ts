@@ -5,6 +5,7 @@ import { library } from './messages/library'
 import { models } from './messages/models'
 import { shell } from './messages/shell'
 import { speak } from './messages/speak'
+import { speakHistory } from './messages/speakHistory'
 import { transcribe } from './messages/transcribe'
 import { workspace } from './messages/workspace'
 
@@ -21,6 +22,7 @@ export const MESSAGES = {
   ...models,
   ...endpoints,
   ...speak,
+  ...speakHistory,
   ...errors,
 } as const
 

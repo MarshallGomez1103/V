@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setLang } from '../i18n/i18n'
 import { SpeakWorkspace } from './SpeakWorkspace'
 
+vi.mock('./SpeakHistory', () => ({ SpeakHistory: () => null }))
+
 beforeEach(() => {
   setLang('es')
   window.localStorage.clear()

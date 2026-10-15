@@ -30,6 +30,7 @@ import { speakTextStatus } from '../lib/speakText'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
 import { Panel } from './Panel'
+import { SpeakHistory } from './SpeakHistory'
 import { SpeakResult } from './SpeakResult'
 import { SpeakVoicePicker } from './SpeakVoicePicker'
 import './SpeakWorkspace.scss'
@@ -108,6 +109,7 @@ export function SpeakWorkspace({ modelsVersion = 0, onOpenModels }: SpeakWorkspa
             </Button>
           </div>
         </Panel>
+        <SpeakHistory />
       </div>
     )
   }
@@ -335,6 +337,17 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
           />
         </Column>
       ) : null}
+      <Column sm={4} md={8} lg={16}>
+        <SpeakHistory
+          models={options.models}
+          refreshKey={(job?.id ?? '') + ':' + (active ? 'active' : job?.state ?? '')}
+          onDeleted={(deletedId) => {
+            if (generation?.id === deletedId) {
+              setGeneration(null)
+            }
+          }}
+        />
+      </Column>
     </Grid>
   )
 }
