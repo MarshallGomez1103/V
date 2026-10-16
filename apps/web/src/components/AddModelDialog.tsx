@@ -26,6 +26,7 @@ const FAMILIES: Record<string, readonly string[]> = {
   'faster-whisper': ['ctranslate2'],
   'whisper-cpp': ['ggml'],
   'sherpa-onnx-tts': ['kitten', 'kokoro', 'vits', 'matcha'],
+  'sherpa-onnx-asr': ['whisper'],
 }
 type Phase = 'form' | 'uploading' | 'preparing' | 'preview' | 'starting' | 'job'
 type Source = 'folder' | 'huggingface' | 'url'
@@ -49,6 +50,8 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
   const [acoustic, setAcoustic] = useState('')
   const [vocoder, setVocoder] = useState('')
   const [tokens, setTokens] = useState('tokens.txt')
+  const [encoder, setEncoder] = useState('')
+  const [decoder, setDecoder] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [phase, setPhase] = useState<Phase>('form')
   const [preview, setPreview] = useState<CustomModelPreview | null>(null)
@@ -115,7 +118,9 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
     if (aborter.signal.aborted || !mounted.current) return
     const metadata: CustomModelMetadata = {
       engine, family, display_name: name.trim(), license: license.trim() || 'unknown',
-      file_roles: family === 'matcha' ? { acoustic_model: acoustic.trim(), vocoder: vocoder.trim(), tokens: tokens.trim() } : {},
+      file_roles: engine === 'sherpa-onnx-asr'
+        ? { encoder: encoder.trim(), decoder: decoder.trim(), tokens: tokens.trim() }
+        : family === 'matcha' ? { acoustic_model: acoustic.trim(), vocoder: vocoder.trim(), tokens: tokens.trim() } : {},
     }
     try {
       let prepared: CustomModelPreview
@@ -187,7 +192,11 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
   const canReview = Boolean(engine && family && name.trim()
     && (availableEngines === undefined || availableEngines.includes(engine))
     && (sourceType === 'folder' ? folderSupported && selection !== null : source.trim())
-    && (family !== 'matcha' || (acoustic.trim() && vocoder.trim() && tokens.trim())))
+    && (family !== 'matcha' || (acoustic.trim() && vocoder.trim() && tokens.trim()))
+    && (engine !== 'sherpa-onnx-asr' || (
+      encoder.trim() && decoder.trim() && tokens.trim()
+      && (sourceType !== 'folder' || [encoder, decoder, tokens].every((role) => selection?.files.some(({ name }) => name === role.trim())))
+    )))
   const licenseLabel = (value: string) => value.toLowerCase() === 'unknown'
     ? t('addModel.unknown') : t('addModel.declared', { license: value.replace(/^User-declared: /, '') })
   const busy = phase === 'uploading' || phase === 'preparing' || phase === 'starting'
@@ -217,6 +226,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
             <SelectItem value="faster-whisper" text="Faster Whisper" disabled={availableEngines !== undefined && !availableEngines.includes('faster-whisper')} />
             <SelectItem value="whisper-cpp" text="whisper.cpp" disabled={availableEngines !== undefined && !availableEngines.includes('whisper-cpp')} />
             <SelectItem value="sherpa-onnx-tts" text="sherpa-onnx TTS" disabled={availableEngines !== undefined && !availableEngines.includes('sherpa-onnx-tts')} />
+            <SelectItem value="sherpa-onnx-asr" text="sherpa-onnx ASR" disabled={availableEngines !== undefined && !availableEngines.includes('sherpa-onnx-asr')} />
           </Select>
           {availableEngines !== undefined && !availableEngines.some((item) => Object.hasOwn(FAMILIES, item))
             ? <Notice kind="warning" title={t('addModel.noEngines')} /> : null}
@@ -260,6 +270,16 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
               <TextInput id={id + '-vocoder'} labelText={t('addModel.vocoder')} value={vocoder} maxLength={512}
                 onChange={(event) => { setVocoder(event.target.value) }} required />
               <TextInput id={id + '-tokens'} labelText={t('addModel.tokens')} value={tokens} maxLength={512}
+                onChange={(event) => { setTokens(event.target.value) }} required />
+            </>
+          ) : null}
+          {engine === 'sherpa-onnx-asr' && family === 'whisper' ? (
+            <>
+              <TextInput id={id + '-encoder'} labelText={t('addModel.encoder')} value={encoder} maxLength={512}
+                onChange={(event) => { setEncoder(event.target.value) }} required />
+              <TextInput id={id + '-decoder'} labelText={t('addModel.decoder')} value={decoder} maxLength={512}
+                onChange={(event) => { setDecoder(event.target.value) }} required />
+              <TextInput id={id + '-asr-tokens'} labelText={t('addModel.asrTokens')} value={tokens} maxLength={512}
                 onChange={(event) => { setTokens(event.target.value) }} required />
             </>
           ) : null}

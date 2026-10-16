@@ -354,10 +354,6 @@ The authoritative list of what exists, with stable IDs and verifiable status, is
 [ROADMAP.md](ROADMAP.md) (currently written in Spanish; translation is part of
 the ongoing work). Everything below is **planned and does not exist yet**:
 
-- **Text to speech** with local models (planned: through the sherpa-onnx
-  runtime, which would support several model families).
-- **Bring-your-own model**: add any compatible local speech model, not only
-  the built-in catalog.
 - A public release, with packaged installers.
 
 Plans can change; do not rely on any of this until it appears in the
@@ -370,6 +366,7 @@ Plans can change; do not rely on any of this until it appears in the
 - [Troubleshooting](docs/troubleshooting.md)
 - Install: [Linux](docs/install/linux.md), [Windows and macOS](docs/install/windows-macos.md)
 - [Models: download, import and removal](docs/models.md), [Buzz cache reuse](docs/buzz.md)
+- [Experimental Whisper ONNX](docs/sherpa-onnx-asr.md)
 - [whisper.cpp](docs/whisper-cpp.md), [Quality profiles](docs/quality-profiles.md), [Benchmarks](docs/benchmarks.md)
 - [Diagnostics](docs/diagnostics.md), [Robustness](docs/robustness.md), [Release and versioning](docs/release.md)
 - [HTTP API](docs/api/README.md), [Architecture](docs/architecture/README.md), [ADRs](docs/adr/README.md)

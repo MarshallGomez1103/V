@@ -887,3 +887,187 @@ def test_windows_whisper_cpp_validation_is_explicitly_unsupported(
             tmp_path, "whisper-cpp", "ggml", file_roles={}, cancelled=lambda: False
         )
     assert raised.value.code == "custom_model_runtime_unavailable"
+
+
+def whisper_folder(root: Path) -> Path:
+    root.mkdir()
+    for name in ("tiny-encoder.int8.onnx", "tiny-decoder.int8.onnx", "tokens.txt"):
+        (root / name).write_bytes(b"synthetic")
+    (root / "untrusted.py").write_bytes(b"never execute")
+    (root / "voices.bin").write_bytes(b"not ASR")
+    return root
+
+
+def test_sherpa_whisper_custom_import_has_native_cpu_profile(tmp_path: Path) -> None:
+    files, store, validator, importer = stores(tmp_path)
+    source = whisper_folder(tmp_path / "source")
+    preview = importer.prepare(
+        request(source, engine="sherpa-onnx-asr", family="whisper")
+    )
+    assert preview.file_count == 3
+    assert preview.descriptor.profile is not None
+    assert preview.descriptor.profile.cpu_precision == ComputePrecision.NATIVE
+    assert preview.descriptor.supports(ModelCapability.TRANSCRIPTION)
+    descriptor = importer.execute(preview.id, confirm=True)
+    installed = files.resolve_path(descriptor)
+    assert set(custom_models.model_files(installed, "whisper", {})) == {
+        "encoder",
+        "decoder",
+        "tokens",
+    }
+    assert not (installed / "untrusted.py").exists()
+    assert not (installed / "voices.bin").exists()
+    assert validator.calls == [("sherpa-onnx-asr", "whisper")]
+    assert store.list_models(ModelCapability.TRANSCRIPTION)[0].descriptor == descriptor
+
+    class Runtime:
+        def probe(self, provider_id: str) -> RuntimeAvailability:
+            assert provider_id == "sherpa-onnx-asr"
+            return RuntimeAvailability(
+                True,
+                hardware=HardwareCapabilities(
+                    frozenset(), frozenset({ComputePrecision.NATIVE})
+                ),
+                capabilities=descriptor.capabilities,
+            )
+
+    options = GetTranscriptionOptions(
+        CustomModelCatalog(store, ModelCapability.TRANSCRIPTION), Runtime()
+    ).execute()
+    assert options.options[0].can_start
+    assert store.remove(descriptor) > 0
+    assert source.exists()
+
+
+def test_sherpa_whisper_validator_loads_only_installed_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = whisper_folder(tmp_path / "source")
+    factory = Mock()
+
+    def installed(name: str) -> SimpleNamespace:
+        assert name == "sherpa_onnx"
+        return SimpleNamespace(OfflineRecognizer=SimpleNamespace(from_whisper=factory))
+
+    monkeypatch.setattr(custom_model_worker.importlib, "import_module", installed)
+    assert (
+        custom_model_worker._load(source, "sherpa-onnx-asr", "whisper", {})  # pyright: ignore[reportPrivateUsage]
+        == CustomValidation()
+    )
+    factory.assert_called_once_with(
+        encoder=str(source / "tiny-encoder.int8.onnx"),
+        decoder=str(source / "tiny-decoder.int8.onnx"),
+        tokens=str(source / "tokens.txt"),
+        language="",
+        task="transcribe",
+        provider="cpu",
+        num_threads=1,
+        debug=False,
+        enable_token_timestamps=False,
+        enable_segment_timestamps=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "name,allowed",
+    [
+        ("encoder.onnx", True),
+        ("nested/decoder.onnx", True),
+        ("tokens.txt", True),
+        ("voices.bin", False),
+        ("run.py", False),
+        ("model.onnx.exe", False),
+        ("../encoder.onnx", False),
+        ("dict/private", False),
+    ],
+)
+def test_sherpa_asr_allowlist(name: str, allowed: bool) -> None:
+    assert custom_models.allowed_file("sherpa-onnx-asr", name) is allowed
+
+
+def test_sherpa_whisper_explicit_roles_are_validated_before_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = whisper_folder(tmp_path / "source")
+    factory = Mock()
+    monkeypatch.setattr(custom_model_worker, "load_whisper", factory)
+    roles = {
+        "encoder": "tiny-encoder.int8.onnx",
+        "decoder": "tiny-decoder.int8.onnx",
+        "tokens": "tokens.txt",
+    }
+    custom_model_worker._load(source, "sherpa-onnx-asr", "whisper", roles)  # pyright: ignore[reportPrivateUsage]
+    assert factory.call_args.args[0] == {
+        role: source / name for role, name in roles.items()
+    }
+    factory.reset_mock()
+    for bad in [
+        {**roles, "encoder": "../outside.onnx"},
+        {**roles, "decoder": roles["encoder"]},
+        {**roles, "tokens": "missing.txt"},
+        {**roles, "script": "run.py"},
+    ]:
+        with pytest.raises(CustomModelError):
+            custom_model_worker._load(source, "sherpa-onnx-asr", "whisper", bad)  # pyright: ignore[reportPrivateUsage]
+    factory.assert_not_called()
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_sherpa_whisper_validation_child_uses_installed_runtime_factory(
+    tmp_path: Path,
+    fails: bool,
+) -> None:
+    pytest.importorskip("sherpa_onnx")
+    source = whisper_folder(tmp_path / "source")
+    child = """
+import sys, os
+from pathlib import Path
+import sherpa_onnx
+from voz.infrastructure.custom_model_worker import main
+folder=Path(sys.argv[3])
+def factory(**kwargs):
+    assert kwargs['provider']=='cpu' and kwargs['num_threads']==1
+    assert kwargs['task']=='transcribe' and kwargs['language']==''
+    for role in ('encoder','decoder','tokens'):
+        assert Path(kwargs[role]).is_file()
+    (folder/'.factory-pid').write_text(str(os.getpid()))
+    return object()
+sherpa_onnx.OfflineRecognizer.from_whisper=staticmethod(factory)
+sys.exit(main())
+"""
+    if fails:
+        child = child.replace("return object()", "raise RuntimeError('private-secret')")
+    validator = SubprocessModelValidator(
+        argv=[sys.executable, "-c", child], timeout_seconds=10
+    )
+    if fails:
+        with pytest.raises(CustomModelError) as error:
+            validator.validate(
+                source,
+                "sherpa-onnx-asr",
+                "whisper",
+                file_roles={},
+                cancelled=lambda: False,
+            )
+        assert error.value.code == "custom_model_validation_failed"
+        assert "private-secret" not in str(error.value)
+    else:
+        assert (
+            validator.validate(
+                source,
+                "sherpa-onnx-asr",
+                "whisper",
+                file_roles={},
+                cancelled=lambda: False,
+            )
+            == CustomValidation()
+        )
+    import os
+
+    assert int((source / ".factory-pid").read_text()) != os.getpid()
+
+
+@pytest.mark.parametrize("name", ["LICENSE", "MODEL_CARD"])
+def test_sherpa_asr_preserves_license_metadata(name: str) -> None:
+    assert custom_models.allowed_file("sherpa-onnx-asr", name)
+    assert not custom_models.allowed_file("sherpa-onnx-asr", "nested/" + name)

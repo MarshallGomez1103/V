@@ -18,6 +18,7 @@ class DevicePreference(StrEnum):
 
 
 class ComputePrecision(StrEnum):
+    NATIVE = "native"
     FLOAT16 = "float16"
     INT8_FLOAT16 = "int8_float16"
     INT8 = "int8"

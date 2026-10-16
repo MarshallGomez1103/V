@@ -443,3 +443,37 @@ def test_job_writer_persists_job_and_selection_in_one_call() -> None:
 
     assert written == [(created.job, created.selection)]
     assert jobs.items == {} and selections.items == {}
+
+
+@pytest.mark.parametrize("profile", [None, "default"])
+def test_native_asr_snapshots_engine_defaults_without_faster_whisper_recipe(
+    profile: str | None,
+) -> None:
+    native = replace(MODEL, provider_id="sherpa-onnx-asr")
+    create, _, _ = use_case(model=native)
+    result = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(native),
+        profile=profile,
+    )
+    assert result.selection.quality_profile is None
+
+
+@pytest.mark.parametrize("option", ["academic", "prompt", "glossary"])
+def test_native_asr_rejects_unsupported_options_before_persisting(option: str) -> None:
+    native = replace(MODEL, provider_id="sherpa-onnx-asr")
+    create, jobs, selections = use_case(model=native)
+    if option == "glossary":
+        create = replace(create, glossaries=Glossaries(("Private term",)))
+    with pytest.raises(CreateJobError) as failure:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(native),
+            profile="academic" if option == "academic" else None,
+            prompt="Private hint" if option == "prompt" else None,
+        )
+    assert failure.value.code.value == "job_options_unsupported"
+    assert not jobs.items and not selections.items
+    assert "Private" not in str(failure.value)

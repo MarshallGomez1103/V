@@ -62,6 +62,33 @@ beforeEach(() => {
 afterEach(() => { cleanup(); Reflect.deleteProperty(HTMLInputElement.prototype, 'webkitdirectory') })
 
 describe('AddModelDialog', () => {
+  it('imports Whisper ONNX from the explorer with explicit encoder, decoder and tokens roles', async () => {
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['sherpa-onnx-asr']} />)
+    expect(screen.getByRole<HTMLOptionElement>('option', { name: 'sherpa-onnx ASR' }).disabled).toBe(false)
+    fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'sherpa-onnx-asr' } })
+    fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'whisper' } })
+    fireEvent.change(screen.getByLabelText('Nombre del modelo'), { target: { value: 'Whisper ONNX' } })
+    fireEvent.change(screen.getByLabelText('Elegir carpeta'), { target: { files: [
+      file('Private folder/tiny-encoder.int8.onnx', 'abcd'),
+      file('Private folder/tiny-decoder.onnx', 'abcd'),
+      file('Private folder/tokens.txt', 'abcd'),
+    ] } })
+    const submit = screen.getByRole<HTMLButtonElement>('button', { name: 'Copiar archivos y revisar' })
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Archivo encoder relativo (Whisper ONNX)'), { target: { value: 'tiny-encoder.int8.onnx' } })
+    fireEvent.change(screen.getByLabelText('Archivo decoder relativo (Whisper ONNX)'), { target: { value: 'tiny-decoder.onnx' } })
+    expect(submit.disabled).toBe(false)
+    fireEvent.change(screen.getByLabelText('Archivo de tokens relativo (Whisper ONNX)'), { target: { value: 'missing.txt' } })
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Archivo de tokens relativo (Whisper ONNX)'), { target: { value: 'tokens.txt' } })
+    fireEvent.click(submit)
+    await screen.findByRole('button', { name: 'Confirmar e instalar' })
+    expect(api.createCustomModelUpload).toHaveBeenCalledWith(expect.objectContaining({
+      engine: 'sherpa-onnx-asr', family: 'whisper',
+      file_roles: { encoder: 'tiny-encoder.int8.onnx', decoder: 'tiny-decoder.onnx', tokens: 'tokens.txt' },
+    }), expect.any(AbortSignal))
+  })
+
   it('requires explicit engine/family and shows selected size before any transfer', async () => {
     render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Copiar archivos y revisar' }).disabled).toBe(true)

@@ -68,6 +68,7 @@ ENGINE_CAPABILITIES: Mapping[str, frozenset[ModelCapability]] = {
             _GPU,
         }
     ),
+    "sherpa-onnx-asr": frozenset({ModelCapability.TRANSCRIPTION, _CPU}),
     "diarization": frozenset({ModelCapability.DIARIZATION, _CPU}),
     TTS_PROVIDER_ID: frozenset({ModelCapability.SYNTHESIS, _CPU}),
 }

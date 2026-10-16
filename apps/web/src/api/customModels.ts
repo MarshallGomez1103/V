@@ -155,6 +155,7 @@ function safeRelative(name: string): boolean {
 function allowed(engine: string, name: string): boolean {
   if (engine === 'faster-whisper') return ['model.bin', 'config.json', 'tokenizer.json', 'vocabulary.txt', 'vocabulary.json', 'preprocessor_config.json', 'tokenizer_config.json'].includes(name)
   if (engine === 'whisper-cpp') return /^ggml-[^/]+\.bin$/.test(name)
+  if (engine === 'sherpa-onnx-asr') return !name.includes('/') && (name.endsWith('.onnx') || ['tokens.txt', 'LICENSE', 'MODEL_CARD'].includes(name))
   if (name.includes('/')) return /^(espeak-ng-data|dict)\//.test(name) && (!name.split('/').at(-1)?.includes('.') || /\.(txt|dict)$/.test(name))
   return name.endsWith('.onnx') || ['tokens.txt', 'voices.bin', 'LICENSE', 'MODEL_CARD'].includes(name) || /^lexicon.*\.txt$/.test(name)
 }

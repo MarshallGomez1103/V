@@ -91,6 +91,10 @@ export const errors = {
     'Las instrucciones de estilo no son válidas: máximo 600 caracteres.',
     'The style instructions are not valid: 600 characters at most.',
   ],
+  'err.job.job_options_unsupported': [
+    'El motor seleccionado no admite estos perfiles, instrucciones de estilo o glosario.',
+    'The selected engine does not support these profiles, style prompts or glossary.',
+  ],
   'err.job.diarization_models_missing': [
     'Falta el modelo de hablantes. Descárgalo desde la sección Hablantes y vuelve a intentarlo.',
     'The speaker model is missing. Download it from the Speakers section and try again.',

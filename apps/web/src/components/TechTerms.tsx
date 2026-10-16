@@ -12,6 +12,7 @@ const PRECISIONS: Readonly<Record<string, MessageKey>> = {
   float32: 'term.precision.float32.def',
   int8: 'term.precision.int8.def',
   int8_float16: 'term.precision.int8_float16.def',
+  native: 'term.precision.native.def',
 }
 
 const PROFILES: Readonly<Record<string, { label: MessageKey; def: MessageKey }>> = {
@@ -34,10 +35,11 @@ export function DeviceLabel({ device, plain = false }: { device: string; plain?:
 
 /** Precisión numérica del modelo (float16, int8…) con su explicación. */
 export function PrecisionLabel({ precision, plain = false }: { precision: string; plain?: boolean }) {
+  const { t } = useI18n()
   const known = Object.hasOwn(PRECISIONS, precision) ? PRECISIONS[precision] : undefined
   return known ? (
     <Term definition={known} plain={plain}>
-      {precision}
+      {precision === 'native' ? t('term.precision.native') : precision}
     </Term>
   ) : (
     <>{precision}</>

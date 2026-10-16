@@ -719,7 +719,9 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
         <AddModelDialog
           onClose={() => { setAddingModel(false) }}
           onCompleted={modelsChanged}
-          availableEngines={[...new Set(models.filter((model) => model.runtime_available).map((model) => model.provider_id))]}
+          availableEngines={state.phase === 'ready' && state.payload.custom_engines !== undefined
+            ? state.payload.custom_engines
+            : [...new Set(models.filter((model) => model.runtime_available).map((model) => model.provider_id))]}
         />
       ) : null}
       {state.phase === 'loading' ? (

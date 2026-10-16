@@ -95,6 +95,13 @@ from voz.infrastructure.asr.options import (
     LocalTranscriptionModelCatalog,
 )
 from voz.infrastructure.asr.runtime_cache import SingleRuntimeCache
+from voz.infrastructure.asr.sherpa_onnx import SherpaOnnxProvider
+from voz.infrastructure.asr.sherpa_onnx_options import (
+    SherpaOnnxRuntimeProbe,
+)
+from voz.infrastructure.asr.sherpa_onnx_options import (
+    runtime_available as sherpa_asr_available,
+)
 from voz.infrastructure.asr.whisper_cpp import WhisperCppProvider
 from voz.infrastructure.asr.whisper_cpp_options import (
     WhisperCppRuntimeProbe,
@@ -428,6 +435,7 @@ def create_app(
                 FasterWhisperRuntimeProbe(),
                 {
                     "whisper-cpp": whisper_cpp_probe,
+                    "sherpa-onnx-asr": SherpaOnnxRuntimeProbe(),
                     **{pid: cloud_probe for pid in cloud_probe.provider_ids},
                     **{pid: compatible_probe for pid in COMPATIBLE_PROVIDER_IDS},
                 },
@@ -495,6 +503,10 @@ def create_app(
             )
         elif provider_id == "elevenlabs":
             provider = ElevenLabsScribeProvider(secrets=secrets)
+        elif provider_id == "sherpa-onnx-asr":
+            provider = SherpaOnnxProvider(
+                model_resolver=model_store, temp_root=resolved_paths.cache
+            )
         elif provider_id == "whisper-cpp":
             binary = whisper_cpp_probe.availability().binary
             if binary is None:
@@ -798,6 +810,16 @@ def create_app(
                 managed_store,
                 disk_space=disk_space,
                 external=buzz_cache,
+                custom_engines=(
+                    *(("faster-whisper",) if find_spec("faster_whisper") else ()),
+                    *(
+                        ("whisper-cpp",)
+                        if whisper_cpp_probe.availability().available
+                        else ()
+                    ),
+                    *(("sherpa-onnx-tts",) if sherpa_available() else ()),
+                    *(("sherpa-onnx-asr",) if sherpa_asr_available() else ()),
+                ),
             ),
             RemoveModel(
                 managed_catalog,

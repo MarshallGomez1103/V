@@ -60,6 +60,7 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.DIARIZATION_MODELS_MISSING: 409,
     CreateJobFailureCode.PROMPT_INVALID: 422,
     CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN: 422,
+    CreateJobFailureCode.OPTIONS_UNSUPPORTED: 422,
 }
 
 MAX_DIARIZATION_SPEAKERS = 32

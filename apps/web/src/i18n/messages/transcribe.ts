@@ -240,6 +240,11 @@ export const transcribe = {
     'Números de 16 bits: rápido y casi sin pérdida de precisión en una GPU.',
     '16-bit numbers: fast and nearly lossless on a GPU.',
   ],
+  'term.precision.native': ['Nativa', 'Native'],
+  'term.precision.native.def': [
+    'Usa la precisión guardada en los archivos del modelo ONNX, sin convertirla a otra precisión.',
+    'Uses the precision stored in the ONNX model files without converting it to another precision.',
+  ],
   'term.precision.float32.def': [
     'Números de 32 bits: máxima precisión, con más memoria y más lento.',
     '32-bit numbers: highest precision, with more memory and slower.',
@@ -381,6 +386,10 @@ export const transcribe = {
     'Speakers, text style and vocabulary for this recording.',
   ],
   'cfg.style': ['Instrucciones de estilo', 'Style instructions'],
+  'cfg.sherpaExperimental': [
+    'Motor experimental: no admite perfiles de calidad, instrucciones de estilo ni glosario. La separación de hablantes sigue disponible.',
+    'Experimental engine: quality profiles, style prompts and glossaries are not supported. Speaker separation remains available.',
+  ],
   'cfg.glossary': ['Glosario del proyecto', 'Project glossary'],
   'cfg.start': ['Transcribir', 'Transcribe'],
   'cfg.starting': ['Creando…', 'Creating…'],

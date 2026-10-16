@@ -26,6 +26,22 @@ function folderFile(path: string, contents = 'abcd'): File {
 }
 
 describe('custom model client', () => {
+  it('selects only top-level ASR ONNX weights and tokens from the explorer', () => {
+    const selected = selectFolderFiles([
+      folderFile('Private folder/tiny-encoder.int8.onnx'),
+      folderFile('Private folder/tiny-decoder.onnx'),
+      folderFile('Private folder/tokens.txt'),
+      folderFile('Private folder/voices.bin'),
+      folderFile('Private folder/lexicon.txt'),
+      folderFile('Private folder/dict/words.txt'),
+      folderFile('Private folder/model.py'),
+    ], 'sherpa-onnx-asr')
+    expect(selected.files.map(({ name }) => name)).toEqual([
+      'tiny-encoder.int8.onnx', 'tiny-decoder.onnx', 'tokens.txt',
+    ])
+    expect(selected.ignoredCount).toBe(4)
+  })
+
   it('sends only folder-relative names and explicit metadata', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(response(201, { id: ID, total_bytes: 4, file_count: 1 }))
     vi.stubGlobal('fetch', request)

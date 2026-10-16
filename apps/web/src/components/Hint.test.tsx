@@ -3,10 +3,17 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { InfoTip, Term } from './Hint'
 import { DeviceLabel, PrecisionLabel, ProcessingProfileLabel } from './TechTerms'
+import { setLang } from '../i18n/i18n'
 
 afterEach(cleanup)
 
 describe('Hint', () => {
+  it.each([['es', 'Nativa'], ['en', 'Native']] as const)('labels native precision in %s', (lang, label) => {
+    setLang(lang)
+    render(<PrecisionLabel precision="native" />)
+    expect(screen.getByRole('button', { name: label })).toBeDefined()
+  })
+
   it('Term es un botón enfocable con la definición asociada', () => {
     render(<Term definition="term.vad.def">VAD</Term>)
     const term = screen.getByRole('button', { name: 'VAD' })

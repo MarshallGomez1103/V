@@ -11,6 +11,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TranscriptionOption } from '../api/transcriptionOptions'
 import { TranscriptionOptionsSelector } from './TranscriptionOptionsSelector'
 
+it('reports selected metadata for opaque ASR IDs and clears it when the option disappears', async () => {
+  const selected = vi.fn()
+  const asr = option({ option_id: 'opaque-id', provider_id: 'sherpa-onnx-asr', display_name: 'Whisper ONNX', execution: { device: 'cpu', precision: 'native', fallback_reason: null } })
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(jsonResponse(200, { options: [asr] }))
+    .mockResolvedValueOnce(jsonResponse(200, { options: [] }))
+  vi.stubGlobal('fetch', fetchMock)
+  function Harness({ version }: { version: number }) {
+    const [value, setValue] = useState<string | null>(null)
+    return <TranscriptionOptionsSelector value={value} onChange={setValue} refreshKey={version} onSelectedOptionChange={selected} />
+  }
+  const view = render(<Harness version={0} />)
+  await waitFor(() => { expect(selected).toHaveBeenLastCalledWith(asr) })
+  view.rerender(<Harness version={1} />)
+  await waitFor(() => { expect(selected).toHaveBeenLastCalledWith(null) })
+  expect(fetchMock).toHaveBeenCalledTimes(2)
+})
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()

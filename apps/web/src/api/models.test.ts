@@ -67,6 +67,17 @@ const TASK = {
 }
 
 describe('api/models', () => {
+  it.each([null, 'sherpa-onnx-asr', [123], {}])('rejects malformed custom engines %j', async (custom_engines) => {
+    stubFetch(jsonResponse(200, { models: [], disk: { models_bytes: 0, free_bytes: null }, custom_engines }))
+    await expect(getModels()).rejects.toMatchObject({ code: 'invalid_response' })
+  })
+
+  it('accepts custom engines without requiring an existing model', async () => {
+    const payload = { models: [], disk: { models_bytes: 0, free_bytes: null }, custom_engines: ['sherpa-onnx-asr'] }
+    stubFetch(jsonResponse(200, payload))
+    await expect(getModels()).resolves.toEqual(payload)
+  })
+
   it('getModels devuelve el payload validado', async () => {
     const payload = { models: [MODEL], disk: { models_bytes: 0, free_bytes: null } }
     const fetchMock = stubFetch(jsonResponse(200, payload))

@@ -291,3 +291,25 @@ def test_binary_file_preserves_newlines_and_zero_bytes(tmp_path: Path) -> None:
     assert (
         Path(store.request(receipt.id).source) / "model.bin"
     ).read_bytes() == b"\x00\n\r\xff"
+
+
+def test_whisper_onnx_browser_upload_preserves_explicit_roles(tmp_path: Path) -> None:
+    store = FileSystemCustomModelUpload(tmp_path / "uploads")
+    roles = {
+        "encoder": "encoder.onnx",
+        "decoder": "decoder.onnx",
+        "tokens": "tokens.txt",
+    }
+    receipt = store.create(
+        manifest(
+            engine="sherpa-onnx-asr",
+            family="whisper",
+            file_roles=roles,
+            files=tuple(CustomModelUploadFile(name, 4) for name in roles.values()),
+        )
+    )
+    for index in range(3):
+        asyncio.run(store.write(receipt.id, index, chunks(b"fake")))
+    request = store.request(receipt.id)
+    assert request.engine == "sherpa-onnx-asr" and request.file_roles == roles
+    store.discard(receipt.id)

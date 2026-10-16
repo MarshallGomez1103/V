@@ -29,6 +29,7 @@ import './TranscriptionOptionsSelector.scss'
 export interface TranscriptionOptionsSelectorProps {
   value: string | null
   onChange: (optionId: string | null) => void
+  onSelectedOptionChange?: (option: TranscriptionOption | null) => void
   disabled?: boolean
   /** Al cambiar, vuelve a pedir las opciones (p. ej. tras instalar o borrar un modelo). */
   refreshKey?: number
@@ -107,6 +108,7 @@ export function TranscriptionOptionsSelector({
   refreshKey = 0,
   mediaAssetId,
   onCloudConsentChange,
+  onSelectedOptionChange,
 }: TranscriptionOptionsSelectorProps) {
   const { t, tn, lang } = useI18n()
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
@@ -119,6 +121,7 @@ export function TranscriptionOptionsSelector({
   const baseId = useId()
   const onChangeRef = useRef(onChange)
   const onConsentRef = useRef(onCloudConsentChange)
+  const onSelectedRef = useRef(onSelectedOptionChange)
 
   const retry = useCallback(() => {
     setState({ phase: 'loading' })
@@ -128,13 +131,17 @@ export function TranscriptionOptionsSelector({
   useEffect(() => {
     onChangeRef.current = onChange
     onConsentRef.current = onCloudConsentChange
-  }, [onChange, onCloudConsentChange])
+    onSelectedRef.current = onSelectedOptionChange
+  }, [onChange, onCloudConsentChange, onSelectedOptionChange])
 
   const selected =
     state.phase === 'ready'
       ? state.options.find((option) => option.option_id === value)
       : undefined
   const selectedCloud = selected?.cloud === true ? selected : undefined
+  useEffect(() => {
+    onSelectedRef.current?.(selected ?? null)
+  }, [selected])
   const consentOk = selectedCloud === undefined || consentFor === value
   const cloudProviderId = selectedCloud?.provider_id
   const cloudModelId = selectedCloud?.model_id

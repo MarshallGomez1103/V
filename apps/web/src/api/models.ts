@@ -45,6 +45,7 @@ export interface DiskUsage {
 export interface ModelsPayload {
   models: ModelView[]
   disk: DiskUsage
+  custom_engines?: string[]
 }
 
 export type TaskState =
@@ -200,6 +201,9 @@ function isModelsPayload(value: unknown): value is ModelsPayload {
     isRecord(value) &&
     Array.isArray(value.models) &&
     value.models.every(isModelView) &&
+    (value.custom_engines === undefined ||
+      (Array.isArray(value.custom_engines) &&
+        value.custom_engines.every((engine) => typeof engine === 'string'))) &&
     isRecord(value.disk) &&
     typeof value.disk.models_bytes === 'number' &&
     isNullableNumber(value.disk.free_bytes)

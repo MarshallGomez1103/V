@@ -49,6 +49,7 @@ class CreateJobFailureCode(StrEnum):
     DIARIZATION_MODELS_MISSING = "diarization_models_missing"
     PROMPT_INVALID = "job_prompt_invalid"
     QUALITY_PROFILE_UNKNOWN = "quality_profile_unknown"
+    OPTIONS_UNSUPPORTED = "job_options_unsupported"
 
 
 MAX_PROMPT_CHARS = 600
@@ -159,6 +160,15 @@ class CreateTranscriptionJob:
             )
         option = self._current_option(option_id)
         model = self._descriptor_for(option_id)
+        glossary = () if self.glossaries is None else self.glossaries.get(project_id)
+        if model.provider_id == "sherpa-onnx-asr":
+            if profile not in (None, DEFAULT_PROFILE_NAME) or prompt or glossary:
+                raise CreateJobError(
+                    CreateJobFailureCode.OPTIONS_UNSUPPORTED,
+                    "Whisper ONNX does not support decoding profiles, prompts "
+                    "or project glossaries.",
+                )
+            quality_profile = None
         if any(
             job.state.is_processable
             for job in self.jobs.list_by_media_asset(media_asset_id)
@@ -187,9 +197,7 @@ class CreateTranscriptionJob:
             created_at=now,
             diarization=diarization,
             quality_profile=quality_profile,
-            glossary=(
-                () if self.glossaries is None else self.glossaries.get(project_id)
-            ),
+            glossary=glossary,
             prompt=prompt,
         )
         if self.job_writer is None:

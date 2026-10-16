@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -115,6 +116,27 @@ function dataRows(root: HTMLElement | Document = document): HTMLElement[] {
 }
 
 describe('ModelManager', () => {
+  it('allows the first ASR import from custom engines even with an empty model catalog', async () => {
+    stubApi((url) => url === '/api/models'
+      ? jsonResponse(200, { models: [], disk: DISK, custom_engines: ['sherpa-onnx-asr'] })
+      : undefined, tasks([]))
+    render(<ModelManager />)
+    await waitFor(() => { expect(document.querySelector('.voz-models__disk')).not.toBeNull() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Añadir modelo propio' })); await Promise.resolve() })
+    expect(screen.getByRole<HTMLOptionElement>('option', { name: 'sherpa-onnx ASR' }).disabled).toBe(false)
+    expect(screen.getByRole<HTMLOptionElement>('option', { name: 'Faster Whisper' }).disabled).toBe(true)
+  })
+
+  it.each([undefined, []])('uses catalog fallback only when custom engines is absent (%j)', async (custom_engines) => {
+    stubApi((url) => url === '/api/models'
+      ? jsonResponse(200, { models: [model({ model_id: 'tiny' })], disk: DISK, ...(custom_engines === undefined ? {} : { custom_engines }) })
+      : undefined, tasks([]))
+    render(<ModelManager />)
+    await screen.findByRole('heading', { name: 'Transcripción' })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Añadir modelo propio' })); await Promise.resolve() })
+    expect(screen.getByRole<HTMLOptionElement>('option', { name: 'Faster Whisper' }).disabled).toBe(custom_engines !== undefined)
+  })
+
   it('lista los modelos en orden de catálogo con tamaño, perfil, licencia y disco', async () => {
     stubApi(
       models([

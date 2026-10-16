@@ -39,6 +39,14 @@ from voz.application.ports.transcription_options import (
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.voice import Voice
 from voz.infrastructure.asr.catalog import faster_whisper_catalog
+from voz.infrastructure.asr.sherpa_onnx_options import (
+    SHERPA_ONNX_CAPABILITIES,
+    SHERPA_ONNX_PROFILE,
+    whisper_files,
+)
+from voz.infrastructure.asr.sherpa_onnx_options import (
+    runtime_available as sherpa_asr_runtime_available,
+)
 from voz.infrastructure.asr.whisper_cpp import locate_whisper_cli
 from voz.infrastructure.asr.whisper_cpp_catalog import whisper_cpp_catalog
 from voz.infrastructure.model_registry import ENGINE_CAPABILITIES, ManagedModel
@@ -51,6 +59,7 @@ _FAMILIES = {
     "faster-whisper": {"ctranslate2"},
     "whisper-cpp": {"ggml"},
     "sherpa-onnx-tts": {"kitten", "kokoro", "vits", "matcha"},
+    "sherpa-onnx-asr": {"whisper"},
 }
 _ASR_FILES = {
     "model.bin",
@@ -96,6 +105,8 @@ def allowed_file(engine: str, name: str) -> bool:
     if not safe_relative(name):
         return False
     path = PurePosixPath(name)
+    if engine == "sherpa-onnx-asr":
+        return path.suffix in {".onnx", ".txt"} or name in {"LICENSE", "MODEL_CARD"}
     if engine == "faster-whisper":
         return name in _ASR_FILES
     if engine == "whisper-cpp":
@@ -118,6 +129,11 @@ def allowed_file(engine: str, name: str) -> bool:
 
 
 def model_files(directory: Path, family: str, roles: dict[str, str]) -> dict[str, Path]:
+    if family == "whisper":
+        try:
+            return whisper_files(directory, roles)
+        except TranscriptionError:
+            raise _invalid() from None
     if roles:
         if any(not safe_relative(name) for name in roles.values()):
             raise _invalid()
@@ -128,6 +144,8 @@ def model_files(directory: Path, family: str, roles: dict[str, str]) -> dict[str
 
 
 def _runtime_available(engine: str) -> bool:
+    if engine == "sherpa-onnx-asr":
+        return sherpa_asr_runtime_available()
     if engine == "whisper-cpp":
         return locate_whisper_cli() is not None
     package = {
@@ -209,7 +227,7 @@ class CustomModelStore:
                         and allowed_file(request.engine, name)
                     )
                     or (
-                        request.engine == "sherpa-onnx-tts"
+                        request.engine in {"sherpa-onnx-tts", "sherpa-onnx-asr"}
                         and name.endswith(".tar.bz2")
                     )
                 ):
@@ -226,13 +244,17 @@ class CustomModelStore:
                 provider_id=request.engine,
                 model_id="custom-" + token,
                 display_name=request.display_name,
-                capabilities=ENGINE_CAPABILITIES[request.engine],
+                capabilities=SHERPA_ONNX_CAPABILITIES
+                if request.engine == "sherpa-onnx-asr"
+                else ENGINE_CAPABILITIES[request.engine],
                 source=source,
                 revision=revision,
                 profile=faster_whisper_catalog()[0].descriptor.profile
                 if request.engine == "faster-whisper"
                 else whisper_cpp_catalog()[0].descriptor.profile
                 if request.engine == "whisper-cpp"
+                else SHERPA_ONNX_PROFILE
+                if request.engine == "sherpa-onnx-asr"
                 else None,
             )
         except (OSError, ValueError, TypeError):
@@ -542,11 +564,15 @@ class CustomModelStore:
                     continue
                 descriptor = replace(
                     descriptor,
-                    capabilities=ENGINE_CAPABILITIES[descriptor.provider_id],
+                    capabilities=SHERPA_ONNX_CAPABILITIES
+                    if descriptor.provider_id == "sherpa-onnx-asr"
+                    else ENGINE_CAPABILITIES[descriptor.provider_id],
                     profile=faster_whisper_catalog()[0].descriptor.profile
                     if descriptor.provider_id == "faster-whisper"
                     else whisper_cpp_catalog()[0].descriptor.profile
                     if descriptor.provider_id == "whisper-cpp"
+                    else SHERPA_ONNX_PROFILE
+                    if descriptor.provider_id == "sherpa-onnx-asr"
                     else None,
                 )
                 records.append((descriptor, metadata))

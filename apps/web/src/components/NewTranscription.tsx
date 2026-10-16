@@ -2,6 +2,7 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { Accordion, AccordionItem, Button, Column, Grid } from '@carbon/react'
 
 import { createJob, JobApiError, type JobView } from '../api/jobs'
+import type { TranscriptionOption } from '../api/transcriptionOptions'
 import { useDiarizationModel } from '../hooks/useDiarizationModel'
 import { useSeek } from '../hooks/useSeek'
 import { translate, useI18n } from '../i18n/i18n'
@@ -45,6 +46,8 @@ export function NewTranscription({
   const { t } = useI18n()
   const [imported, setImported] = useState<ImportResult | null>(initialImported)
   const [optionId, setOptionId] = useState<string | null>(null)
+  const [selectedOption, setSelectedOption] = useState<TranscriptionOption | null>(null)
+  const supportsCustomOptions = selectedOption?.provider_id !== 'sherpa-onnx-asr'
   const [cloudConsent, setCloudConsent] = useState(true)
   const [profile, setProfile] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
@@ -87,8 +90,8 @@ export function NewTranscription({
         option_id: optionId,
         language: null, // ponytail: idioma autodetectado; selector de idioma en un corte posterior
         diarization,
-        ...(profile ? { profile } : {}),
-        ...(prompt.trim() !== '' ? { prompt: prompt.trim() } : {}),
+        ...(supportsCustomOptions && profile ? { profile } : {}),
+        ...(supportsCustomOptions && prompt.trim() !== '' ? { prompt: prompt.trim() } : {}),
       })
       onCreated(created, imported)
     } catch (error: unknown) {
@@ -96,7 +99,7 @@ export function NewTranscription({
     } finally {
       setCreating(false)
     }
-  }, [cloudConsent, diarization, imported, onCreated, optionId, profile, prompt])
+  }, [cloudConsent, diarization, imported, onCreated, optionId, profile, prompt, supportsCustomOptions])
 
   const diarBlocked = diarization.enabled && diarModel.status !== 'ready'
   const canStart = optionId !== null && cloudConsent && !creating && !diarBlocked
@@ -167,15 +170,16 @@ export function NewTranscription({
                 mediaAssetId={active.media.media_asset_id}
                 value={optionId}
                 onChange={setOptionId}
+                onSelectedOptionChange={setSelectedOption}
                 onCloudConsentChange={setCloudConsent}
                 disabled={creating}
               />
-              <ProfileSelector
+              {supportsCustomOptions ? <ProfileSelector
                 value={profile}
                 onChange={setProfile}
                 language={null}
                 disabled={creating}
-              />
+              /> : <Notice kind="warning" title={t('cfg.sherpaExperimental')} />}
             </Panel>
           </Column>
           <Column sm={4} md={8} lg={8}>
@@ -193,12 +197,12 @@ export function NewTranscription({
                     model={diarModel}
                   />
                 </AccordionItem>
-                <AccordionItem title={t('cfg.style')} open>
+                {supportsCustomOptions ? <AccordionItem title={t('cfg.style')} open>
                   <StyleInstructions value={prompt} onChange={setPrompt} disabled={creating} />
-                </AccordionItem>
-                <AccordionItem title={t('cfg.glossary')}>
+                </AccordionItem> : null}
+                {supportsCustomOptions ? <AccordionItem title={t('cfg.glossary')}>
                   <GlossaryEditor projectId={active.project.id} disabled={creating} />
-                </AccordionItem>
+                </AccordionItem> : null}
               </Accordion>
             </Panel>
           </Column>

@@ -138,6 +138,7 @@ class DiskSummary:
 class ModelList:
     models: tuple[ModelStatus, ...]
     disk: DiskSummary
+    custom_engines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +147,7 @@ class ListModels:
     store: ModelStore
     disk_space: DiskSpacePort | None = None
     external: ExternalModelSource | None = None
+    custom_engines: tuple[str, ...] = ()
 
     def execute(self) -> ModelList:
         candidates = () if self.external is None else self.external.find_candidates()
@@ -203,7 +205,11 @@ class ListModels:
         )
         used = sum(item.disk_bytes or 0 for item in models)
         reclaimable_total = sum(item.reclaimable_bytes or 0 for item in models)
-        return ModelList(tuple(models), DiskSummary(used, free, reclaimable_total))
+        return ModelList(
+            tuple(models),
+            DiskSummary(used, free, reclaimable_total),
+            self.custom_engines,
+        )
 
 
 @dataclass(frozen=True, slots=True)

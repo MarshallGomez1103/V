@@ -316,9 +316,11 @@ are read without modifying the originals; remote previews query metadata only.
 
 Supported engines and families are `faster-whisper` / `ctranslate2`,
 `whisper-cpp` / `ggml`, and `sherpa-onnx-tts` / `kitten`, `kokoro`, `vits` or
-`matcha`. The engine must already be installed. `source_type` also accepts
+`matcha`, plus experimental `sherpa-onnx-asr` / `whisper` (encoder, decoder and
+tokens roles). See [Whisper ONNX limits](../sherpa-onnx-asr.md). The engine must
+already be installed. `source_type` also accepts
 `huggingface` for a public repository ID and `url` for a standalone GGML file
-or a TTS `.tar.bz2` package. Multi-file models can be supplied as a folder or
+or a sherpa `.tar.bz2` package. Multi-file models can be supplied as a folder or
 Hugging Face repository. The optional `revision` defaults to `main` for
 repository discovery, then resolves to an immutable commit before import.
 Optional `file_roles` maps known family roles to relative files when automatic
@@ -404,3 +406,7 @@ Unsafe or duplicate relative names, links, file/directory collisions, unsupporte
 files and inconsistent sizes are rejected without echoing supplied values.
 Errors include `custom_model_upload_expired`, `custom_model_upload_incomplete`
 and `custom_model_upload_limit`; disk admission uses `disk_space_insufficient`.
+
+`GET /api/models` also returns `custom_engines`, a list of installed runtime
+identifiers available for custom imports even before their first model exists.
+Older clients can ignore this field; older servers may omit it.

@@ -27,6 +27,7 @@ from voz.application.ports.transcription import (
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import ComputePrecision
 from voz.infrastructure.asr.faster_whisper import FasterWhisperProvider
+from voz.infrastructure.asr.sherpa_onnx import SherpaOnnxProvider
 from voz.infrastructure.asr.whisper_cpp import WhisperCppProvider
 from voz.infrastructure.cloud.openai_fake import FakeOpenAITransport
 from voz.infrastructure.cloud.openai_limits import openai_descriptors
@@ -198,6 +199,32 @@ class _WhisperCppResolver:
         return self.path
 
 
+def _sherpa_onnx_case(tmp_path: Path) -> _ProviderContractCase:
+    sherpa_descriptor = ModelDescriptor(
+        provider_id="sherpa-onnx-asr",
+        model_id="fixture",
+        display_name="Whisper ONNX fixture",
+        capabilities=frozenset({ModelCapability.TRANSCRIPTION, ModelCapability.CPU}),
+    )
+    for name in ("encoder.onnx", "decoder.onnx", "tokens.txt"):
+        (tmp_path / name).write_bytes(b"fake")
+
+    class Resolver:
+        def resolve_path(self, descriptor: ModelDescriptor) -> Path:
+            assert descriptor == sherpa_descriptor
+            return tmp_path
+
+    fake = Path(__file__).parents[1] / "fixtures/asr/fake_sherpa_onnx_worker.py"
+    return _ProviderContractCase(
+        provider=SherpaOnnxProvider(
+            model_resolver=Resolver(),
+            temp_root=tmp_path / "work",
+            worker_argv=(sys.executable, str(fake)),
+        ),
+        options=TranscriptionOptions(model=sherpa_descriptor, language="es"),
+    )
+
+
 class _FixedSecrets:
     """Key held by a test double only; the provider must never store it."""
 
@@ -230,6 +257,7 @@ def _openai_case(diarized: bool) -> "_ProviderContractCase":
         "structural",
         "faster-whisper",
         "whisper-cpp",
+        "sherpa-onnx-asr",
         "elevenlabs",
         "openai",
         "openai-diarized",
@@ -240,6 +268,8 @@ def provider_case(
     request: FixtureRequest,
     tmp_path: Path,
 ) -> _ProviderContractCase:
+    if request.param == "sherpa-onnx-asr":
+        return _sherpa_onnx_case(tmp_path)
     if request.param == "openai-compatible":
         server_context = fake_server(key="sk-contract-fake")
         server = server_context.__enter__()
