@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@carbon/react'
 import { Download, PlayFilledAlt, TrashCan } from '@carbon/icons-react'
 
@@ -34,6 +34,7 @@ type HistoryState =
 export function SpeakHistory({ refreshKey, models = [], onDeleted }: SpeakHistoryProps) {
   const { t } = useI18n()
   const titleId = useId()
+  const historyDescription = useRef<HTMLSpanElement>(null)
   const [state, setState] = useState<HistoryState>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -53,6 +54,7 @@ export function SpeakHistory({ refreshKey, models = [], onDeleted }: SpeakHistor
   }, [refreshKey, attempt])
 
   const removed = (id: string) => {
+    historyDescription.current?.focus()
     setState((current) => current.phase === 'ready'
       ? { ...current, items: current.items.filter((job) => job.id !== id) }
       : current)
@@ -63,7 +65,8 @@ export function SpeakHistory({ refreshKey, models = [], onDeleted }: SpeakHistor
 
   return (
     <Panel titleId={titleId} title={t('speak.history.title')}
-      description={t('speak.history.description')} className="voz-speak-history">
+      description={<span ref={historyDescription} tabIndex={-1}>{t('speak.history.description')}</span>}
+      className="voz-speak-history">
       {state.phase === 'loading' ? (
         <div role="status"><Busy description={t('speak.history.loading')} /></div>
       ) : state.phase === 'error' ? (
@@ -102,12 +105,21 @@ function HistoryRow({ job, voiceName, selected, onSelect, onDeleted }: {
 }) {
   const { t, lang } = useI18n()
   const [confirming, setConfirming] = useState(false)
+  const deleteButton = useRef<HTMLButtonElement>(null)
+  const restoreDeleteFocus = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const audio = job.state === 'COMPLETED' ? job.audio : null
   const preview = job.text_preview.slice(0, 160)
   const truncated = job.text_length > preview.length || job.text_preview.length > preview.length
   const active = ACTIVE_SYNTHESIS_STATES.has(job.state)
+
+  useEffect(() => {
+    if (!confirming && restoreDeleteFocus.current) {
+      deleteButton.current?.focus()
+      restoreDeleteFocus.current = false
+    }
+  }, [confirming])
 
   const remove = () => {
     if (busy || active || !confirming) return
@@ -144,6 +156,7 @@ function HistoryRow({ job, voiceName, selected, onSelect, onDeleted }: {
         </> : null}
         {!active && !confirming ? (
           <Button kind="danger--tertiary" size="sm" renderIcon={TrashCan}
+            ref={deleteButton}
             onClick={() => { setConfirming(true) }}>{t('common.delete')}</Button>
         ) : null}
       </div>
@@ -154,8 +167,12 @@ function HistoryRow({ job, voiceName, selected, onSelect, onDeleted }: {
             <Button kind="danger" size="sm" disabled={busy} onClick={remove}>
               {t('speak.history.delete')}
             </Button>
-            <Button kind="ghost" size="sm" disabled={busy}
-              onClick={() => { setConfirming(false); setError(null) }}>{t('common.cancel')}</Button>
+            <Button kind="ghost" size="sm" disabled={busy} autoFocus
+              onClick={() => {
+                restoreDeleteFocus.current = true
+                setConfirming(false)
+                setError(null)
+              }}>{t('common.cancel')}</Button>
           </div>
         </div>
       ) : null}

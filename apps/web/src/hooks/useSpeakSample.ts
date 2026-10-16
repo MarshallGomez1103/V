@@ -102,13 +102,17 @@ export function useSpeakSample(): SpeakSample {
     }
     const audio = new Audio(audioUrl)
     audioRef.current = audio
-    audio.addEventListener('ended', finish)
+    audio.addEventListener('ended', () => {
+      if (audioRef.current === audio) finish()
+    })
     audio.addEventListener('error', () => {
+      if (audioRef.current !== audio) return
       setError(messageForSynthesisError('synthesis_audio_missing'))
       finish()
     })
     setPlaying(true)
     Promise.resolve(audio.play()).catch(() => {
+      if (audioRef.current !== audio) return
       setError(translate('speak.sample.blocked'))
       finish()
     })

@@ -373,6 +373,30 @@ describe('SpeakWorkspace: muestra', () => {
     expect(button('Escuchar muestra').disabled).toBe(false)
   })
 
+  it('detener una muestra con play pendiente ignora su rechazo posterior', async () => {
+    stubApi([created()])
+    let rejectPlay!: (error: DOMException) => void
+    class InterruptedAudio extends FakeAudio {
+      override readonly play = vi.fn(() => new Promise<void>((_, reject) => {
+        rejectPlay = reject
+      }))
+    }
+    vi.stubGlobal('Audio', InterruptedAudio)
+    await open()
+    fireEvent.click(button('Escuchar muestra'))
+    await streamOpen()
+    emit('job', DONE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Detener muestra' }))
+
+    await act(async () => {
+      rejectPlay(new DOMException('Playback interrupted by pause', 'AbortError'))
+      await Promise.resolve()
+    })
+
+    expect(button('Escuchar muestra').disabled).toBe(false)
+    expect(screen.queryByText(/bloqueó la reproducción automática/)).toBeNull()
+  })
+
   it('una muestra reutilizada no se cancela al detenerla (podría ser la generación de otro)', async () => {
     const api = stubApi([created({}, true, 200)])
     await open()
@@ -481,7 +505,7 @@ describe('SpeakWorkspace: generar', () => {
     expect(button('Generar audio').disabled).toBe(false)
   })
 
-  it('cancelar pide la cancelación y muestra cancelando y luego cancelada', async () => {
+  it.each([false, true])('cancelar conserva el foco sin interrumpir la edición (%s)', async (editing) => {
     const api = stubApi([created()])
     await open()
     type('Hola mundo')
@@ -490,7 +514,9 @@ describe('SpeakWorkspace: generar', () => {
     await streamOpen()
     emit('job', view({ state: 'RUNNING', progress: 0.25, chunks_done: 1, chunks_total: 4 }))
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }))
+    const cancelButton = await screen.findByRole('button', { name: 'Cancelar' })
+    cancelButton.focus()
+    fireEvent.click(cancelButton)
 
     await waitFor(() => {
       expect(api.cancels).toEqual(['/api/synthesis/job-1/cancel'])
@@ -499,12 +525,15 @@ describe('SpeakWorkspace: generar', () => {
     await screen.findByRole('heading', { name: 'Cancelando la generación' })
     expect(screen.queryByRole('button', { name: 'Cancelar' })).toBeNull()
 
+    const editor = screen.getByRole('textbox', { name: 'Texto a convertir en voz' })
+    if (editing) editor.focus()
     emit('job', view({ state: 'CANCELLED', progress: 0.25 }))
     emit('end', {})
     await screen.findByRole('heading', { name: 'Generación cancelada' })
     expect(screen.getByText('Cancelaste la generación. No se guardó audio.')).toBeDefined()
     expect(screen.queryByRole('link', { name: 'Descargar WAV' })).toBeNull()
     expect(button('Generar audio').disabled).toBe(false)
+    expect(document.activeElement).toBe(editing ? editor : button('Generar audio'))
   })
 
   it('un trabajo fallido muestra el código traducido y deja volver a intentar', async () => {

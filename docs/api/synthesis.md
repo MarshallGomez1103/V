@@ -146,3 +146,12 @@ requires confirmation and removes its stored result; active jobs must finish
 or be cancelled first. Cancelling the confirmation preserves the result. The
 list refreshes after the current generation finishes and after deletion. Errors
 show a retry action and never expose host paths or raw server messages.
+
+### Keyboard and focus
+
+The Voice workspace supports keyboard operation through its text field,
+selectors, sample/generation controls, audio players and history actions. After
+cancelling a generation, focus returns to Generate when no other control has
+focus; editing in another control is preserved. Cancelling a history deletion
+returns focus to its Delete button. A successful deletion moves focus to the
+history summary, so keyboard navigation stays within the workspace.

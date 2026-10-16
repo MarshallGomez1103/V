@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button, Checkbox, Column, Grid, TextArea } from '@carbon/react'
 import { ArrowRight, StopFilledAlt, VolumeUp } from '@carbon/icons-react'
 
@@ -162,6 +162,15 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
   const events = useSynthesisEvents(generation?.id ?? null)
   const job = events.job ?? generation?.seed ?? null
   const active = job !== null && ACTIVE_SYNTHESIS_STATES.has(job.state)
+  const generateButton = useRef<HTMLButtonElement>(null)
+  const returnFromCancel = useRef(false)
+
+  useEffect(() => {
+    if (!active && returnFromCancel.current) {
+      if (document.activeElement === document.body) generateButton.current?.focus()
+      returnFromCancel.current = false
+    }
+  }, [active])
 
   const generate = () => {
     if (request === null || !usable || !status.canGenerate || creating || active) {
@@ -186,6 +195,7 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
     if (generation === null) {
       return
     }
+    returnFromCancel.current = true
     cancelSynthesis(generation.id).catch((cause: unknown) => {
       // 409: ya había terminado; el stream trae el estado final.
       if (!(cause instanceof SynthesisApiError && cause.status === 409)) {
@@ -297,6 +307,7 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
                   : t('speak.sample')}
             </Button>
             <Button
+              ref={generateButton}
               kind="primary"
               size="md"
               disabled={!usable || !status.canGenerate || creating || active}

@@ -69,6 +69,38 @@ afterEach(() => {
 })
 
 describe('SpeakHistory', () => {
+  it('focuses Cancel on confirmation and restores Delete after cancellation', async () => {
+    render(<SpeakHistory />)
+    await screen.findByText('Hola, mundo.')
+    const deleteButton = screen.getByRole('button', { name: 'Eliminar' })
+    deleteButton.focus()
+    fireEvent.click(deleteButton)
+
+    const cancelButton = screen.getByRole('button', { name: 'Cancelar' })
+    expect(document.activeElement).toBe(cancelButton)
+    fireEvent.click(cancelButton)
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Eliminar' }))
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('keeps focus in history after deletion (remaining rows: %s)', async (remaining) => {
+    const other = job({ id: 'older', text_preview: 'Anterior' })
+    list.mockResolvedValueOnce([job(), ...(remaining ? [other] : [])])
+      .mockResolvedValue(remaining ? [other] : [])
+    render(<SpeakHistory />)
+    await screen.findByText('Hola, mundo.')
+    fireEvent.click(within(row()).getByRole('button', { name: 'Eliminar' }))
+    const confirm = screen.getByRole('button', { name: 'Confirmar: eliminar' })
+    confirm.focus()
+    fireEvent.click(confirm)
+
+    await waitFor(() => { expect(screen.queryByText('Hola, mundo.')).toBeNull() })
+    const history = screen.getByRole('region', { name: 'Historial de voz' })
+    expect(history.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
   it('shows loading and then empty history without requiring installed models', async () => {
     const pending = deferred<SynthesisView[]>()
     list.mockReturnValueOnce(pending.promise)
