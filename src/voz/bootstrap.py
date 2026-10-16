@@ -25,6 +25,7 @@ from voz.application.asr_device_selection import (
     select_execution,
 )
 from voz.application.assign_speakers import AssignProviderSpeakers, AssignSpeakers
+from voz.application.compatible_audio import LocalCompatibleAudioService
 from voz.application.compute_slot import ComputeKind, ComputeSlot, SlotWaitCancelled
 from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.edit_segment import EditSegmentText
@@ -204,6 +205,7 @@ from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
 from voz.interfaces.api.model_tasks import create_model_tasks_router
 from voz.interfaces.api.models import create_models_router
+from voz.interfaces.api.openai_compat import create_openai_compat_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.providers import create_providers_router
 from voz.interfaces.api.quality_profiles import create_quality_profiles_router
@@ -642,6 +644,31 @@ def create_app(
         release_other_runtimes=runtimes.release,
     )
 
+    import_media_usecase = ImportMedia(
+        media_probe=media_probe,
+        media_storage=media_storage,
+        media_assets=media_assets,
+        disk_space=disk_space,
+    )
+    create_transcription_usecase = CreateTranscriptionJob(
+        transcription_options,
+        projects,
+        media_assets,
+        jobs,
+        selections,
+        diarization_availability=diarization_availability,
+        glossaries=glossaries,
+        job_writer=jobs,
+        admission=admission,
+    )
+    create_synthesis_usecase = CreateSynthesisJob(
+        synthesis_registry,
+        tts_catalog,
+        synthesis_jobs,
+        synthesized_audio,
+        admission=admission,
+    )
+
     class Lifespan:
         """Migrate on startup and dispose an owned engine on shutdown."""
 
@@ -713,29 +740,14 @@ def create_app(
     application.include_router(create_quality_profiles_router())
     application.include_router(
         create_media_router(
-            ImportMedia(
-                media_probe=media_probe,
-                media_storage=media_storage,
-                media_assets=media_assets,
-                disk_space=disk_space,
-            ),
+            import_media_usecase,
             projects,
             resolved_paths.cache / "uploads",
         )
     )
     application.include_router(
         create_jobs_router(
-            CreateTranscriptionJob(
-                transcription_options,
-                projects,
-                media_assets,
-                jobs,
-                selections,
-                diarization_availability=diarization_availability,
-                glossaries=glossaries,
-                job_writer=jobs,
-                admission=admission,
-            ),
+            create_transcription_usecase,
             jobs,
             selections,
             transcripts,
@@ -827,13 +839,7 @@ def create_app(
         create_synthesis_router(
             providers=synthesis_registry,
             catalog=tts_catalog,
-            create=CreateSynthesisJob(
-                synthesis_registry,
-                tts_catalog,
-                synthesis_jobs,
-                synthesized_audio,
-                admission=admission,
-            ),
+            create=create_synthesis_usecase,
             history=ListSynthesisHistory(synthesis_jobs, synthesized_audio),
             delete=DeleteSynthesisResult(
                 synthesis_jobs,
@@ -845,6 +851,22 @@ def create_app(
             audio=synthesized_audio,
             storage=synthesis_storage,
             runner=synthesis_runner,
+        )
+    )
+    application.include_router(
+        create_openai_compat_router(
+            LocalCompatibleAudioService(
+                create_project=CreateProject(projects),
+                import_media=import_media_usecase,
+                create_transcription=create_transcription_usecase,
+                transcription_runner=runner,
+                create_synthesis=create_synthesis_usecase,
+                synthesis_runner=synthesis_runner,
+                transcripts=transcripts,
+                segments=segments,
+                synthesis_storage=synthesis_storage,
+            ),
+            cache_root=resolved_paths.cache / "compatible-uploads",
         )
     )
     if STATIC_DIRECTORY.is_dir():

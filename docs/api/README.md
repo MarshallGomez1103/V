@@ -6,6 +6,9 @@ only first-party client. The exact, generated schema is published at
 contracts that go beyond the schema: error codes, side effects, limits and
 semantics.
 
+The separate [OpenAI-compatible audio interface](openai-compat.md) exposes a
+limited local subset under `/v1`; its endpoint error envelope differs from `/api`.
+
 ## Common rules
 
 - **Loopback by default.** The server binds to `127.0.0.1`. Exposing it on a

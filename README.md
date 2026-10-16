@@ -358,8 +358,6 @@ the ongoing work). Everything below is **planned and does not exist yet**:
   runtime, which would support several model families).
 - **Bring-your-own model**: add any compatible local speech model, not only
   the built-in catalog.
-- **OpenAI-compatible API**, in both directions: V consuming any
-  `/v1/audio/*` server, and V exposing `/v1/audio/*` for other applications.
 - A public release, with packaged installers.
 
 Plans can change; do not rely on any of this until it appears in the
@@ -367,6 +365,7 @@ Plans can change; do not rely on any of this until it appears in the
 
 ## Documentation index
 
+- [Local OpenAI-compatible audio API](docs/api/openai-compat.md)
 - [Web asset budgets and browser checks](docs/web-quality.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - Install: [Linux](docs/install/linux.md), [Windows and macOS](docs/install/windows-macos.md)
