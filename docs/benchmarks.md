@@ -168,3 +168,121 @@ Documentation discrepancies found at the time:
   libraries.
 - The VRAM peak is sampled: a lower bound.
 - Load includes 1 s of inference (see the metrics table).
+
+## Checkpoint frequency: synthetic CPU comparison (2026-10-16)
+
+This experiment compares 10, 15 and 30 minute audio chunks through
+`RecoverableTranscription` and its real SQLite checkpoint adapter. The
+[checkpoint harness](../scripts/benchmark-checkpoints.py) plans without loading
+a model by default; `--run` executes each policy in a separate process with
+isolated HOME/XDG directories. The production default remains **30 minutes**.
+
+### Setup and scope
+
+- Measurement started at 2026-10-16 17:07:42 UTC. Script SHA-256:
+  `d7ec3647b61dd53618a22d4627a79c819135fd955df74676828c2c3a496c0d3e`.
+- Hardware: Intel Core i7-13650HX, 20 logical CPUs. Linux 7.2.9, Python 3.12.14,
+  faster-whisper 1.2.1, CTranslate2 4.8.2, eSpeak NG 1.52.0 and FFmpeg 8.1.3.
+  Execution was CPU/int8 with the installed runtime's default thread count.
+- Model: `Systran/faster-whisper-base`, pinned revision
+  `ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66`. Required files totaled
+  147,882,941 bytes and matched the catalog sizes. The weight SHA-256 matched
+  `d01c3014881c9c6f3133c182f3d2887eb6ca1c789a7538c5c007196857a0a6a9`.
+  The existing local HF snapshot was read directly; no model was downloaded.
+- Corpus: **synthetic, sparse, single-speaker Spanish**, generated with
+  `espeak-ng -v es -s 160`, then normalized to mono PCM16 at 16 kHz. It contains
+  1,860 seconds of audio, including 322.114 seconds of speech in 62 utterances,
+  744 reference words and 5,066 normalized reference characters. Sentence
+  templates repeat with different nouns and colors; most of the timeline is
+  silence. This is not representative of recorded classes or conversations.
+- The three generated WAV files were byte-identical, SHA-256
+  `7611ed2d97cbe5dd67d82df41fad8e1b5f0a0610f50e2830826838d8190d31c8`.
+- Storage was persistent `btrfs`, with SQLite WAL and synchronous FULL.
+  Timings include checkpoint commits on this filesystem; successful readback
+  does not establish durability after power loss.
+- Serial order: 30 → 15 → 10 minutes, **n=1 per policy**, with no measured
+  variance and no control over other development processes. Each process had
+  a 300 second limit covering preparation, model verification, warmup,
+  transcription and scoring. All three completed with exit code 0 and were
+  reaped; no trial reached its timeout. Separate automated tests exercise
+  timeout, interruption and descendant cleanup.
+
+Pipeline wall time starts after database seeding and warmup and ends when
+recoverable transcription returns. It includes PCM extraction, inference,
+progress persistence, atomic checkpoints and orchestration. Reference scoring
+is outside that interval. Warmup used one second of silence and took
+0.742 / 0.620 / 0.708 seconds for the 30 / 15 / 10 minute policies. Whole
+supervised trial elapsed times were 46.179 / 41.275 / 44.581 seconds.
+
+### Measured time and checkpoint overhead
+
+The overlap was five seconds on each side of every internal cut. All confirmed
+checkpoints were read back from SQLite before reporting their count.
+
+| Chunk duration | Checkpoints | Processed audio | Pipeline wall | Inference | PCM extraction | Checkpoint commits | Other overhead | Wall delta vs 30 min |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10 min | 4 | 1,890 s | 33.762 s | 33.714 s | 28.048 ms | 13.127 ms | 6.280 ms | -5.64 % |
+| 15 min | 3 | 1,880 s | 31.173 s | 31.122 s | 35.725 ms | 9.214 ms | 5.527 ms | -12.88 % |
+| 30 min | 2 | 1,870 s | 35.781 s | 35.732 s | 35.471 ms | 7.502 ms | 6.171 ms | baseline |
+
+The longest observed wall interval from transcription start or the previous
+successful checkpoint through the next successful checkpoint was 12.136,
+15.228 and 34.603 seconds for 10, 15 and 30 minute chunks, respectively.
+These are measured compute intervals on this corpus and model, not audio
+durations or guarantees for other workloads. The wall deltas are single-run
+observations; the faster shorter-chunk runs do not establish a repeatable speedup.
+
+### Measured global and boundary quality
+
+| Chunk duration | Global WER | Word edits / reference words | Global CER |
+| --- | --- | --- | --- |
+| 10 min | 31.32 % | 233 / 744 | 11.59 % |
+| 15 min | 34.27 % | 255 / 744 | 13.48 % |
+| 30 min | 52.02 % | 387 / 744 | 21.08 % |
+
+Boundary windows are common to every policy: ±15 seconds around 10, 15, 20
+and 30 minutes, the union of their internal cuts. A complete synthesized
+utterance crosses each window's center. The reference consists of full
+utterances contained in that window; the hypothesis uses the midpoints of
+the retained ASR words after the production ownership/clamping rules. These
+scores combine recognition and ownership effects; they do not isolate the
+cause of an error. Missing word timestamps are reported as unavailable.
+
+Each cell below is **WER / CER**. An asterisk marks an actual cut for that
+policy; unmarked cells measure the same window without a cut at its center.
+
+| Window center | 10 min chunks | 15 min chunks | 30 min chunks |
+| --- | --- | --- | --- |
+| 10 min | 66.67 % / 47.44 % * | 50.00 % / 26.92 % | 50.00 % / 26.92 % |
+| 15 min | 16.67 % / 3.70 % | 75.00 % / 69.14 % * | 58.33 % / 39.51 % |
+| 20 min | 50.00 % / 44.30 % * | 16.67 % / 7.59 % | 50.00 % / 24.05 % |
+| 30 min | 58.33 % / 43.21 % * | 41.67 % / 39.51 % * | 75.00 % / 64.20 % * |
+
+The boundary comparison is mixed, and absolute error rates are high on this
+sparse, repetitive corpus. A single synthetic run cannot establish real-world
+accuracy, variance or an optimal checkpoint frequency. No default change is
+supported by this experiment alone.
+
+### Reproduce with an existing pinned snapshot
+
+Run from the repository root, supplying the existing external snapshot in
+`MODEL_SNAPSHOT`. The output directory must not already exist. The script
+rejects output inside the checkout and verifies the
+catalog weight hash before inference. On POSIX it kills its process group
+on exit, including descendants, and uses a bounded wait to reap the child.
+
+```bash
+run_dir=$(mktemp -d)
+env HOME="$run_dir" \
+  XDG_DATA_HOME="$run_dir/data" XDG_CONFIG_HOME="$run_dir/config" \
+  XDG_CACHE_HOME="$run_dir/cache" XDG_STATE_HOME="$run_dir/state" \
+  .venv/bin/python scripts/benchmark-checkpoints.py \
+  --run --model-id base --model-dir "$MODEL_SNAPSHOT" \
+  --output-dir "$run_dir/results" --timeout-seconds 300
+```
+
+`report.json` contains trial status, measured timing, global WER/CER and the
+window references/hypotheses. Each trial also retains its synthetic WAV,
+reference spans, SQLite database and logs outside Git. A timeout or failure
+has no fabricated transcription metrics. Planning without inference:
+`.venv/bin/python scripts/benchmark-checkpoints.py`.
