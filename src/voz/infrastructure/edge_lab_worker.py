@@ -9,7 +9,6 @@ import os
 import platform
 import signal
 import sys
-import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -215,86 +214,9 @@ def run_stt(
 def run_tts(
     definition: ExperimentDefinition,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    from voz.application.text_chunking import plan_text_chunks
-    from voz.infrastructure.constrained_process import outside_checkout
-    from voz.infrastructure.paths import resolve_voz_paths
-    from voz.infrastructure.tts.catalog import TTS_CATALOG
-    from voz.infrastructure.tts.model_store import TtsModelStore
-    from voz.infrastructure.tts.sherpa_provider import sherpa_tts_provider
-    from voz.interfaces.cli.bench import peak_rss_mib
+    from voz.infrastructure.edge_lab_tts import run_tts_benchmark
 
-    entry = next(
-        (entry for entry in TTS_CATALOG if entry.model_id == definition.model_id), None
-    )
-    if entry is None:
-        raise LabError("lab_model_unavailable")
-    data_root = outside_checkout(resolve_voz_paths().data)
-    manifest = TtsModelStore(data_root=data_root).manifest(entry.model_id)
-    if manifest is None:
-        raise LabError("lab_model_unavailable")
-    try:
-        with outside_checkout(definition.input_path).open("rb") as handle:
-            content = handle.read(MAX_DEFINITION_BYTES + 1)
-        if len(content) > MAX_DEFINITION_BYTES:
-            raise LabError("lab_input_unavailable")
-        text = content.decode("utf-8")
-    except (OSError, UnicodeError) as error:
-        raise LabError("lab_input_unavailable") from error
-    if not text.strip() or len(text) > 20_000:
-        raise LabError("lab_input_unavailable")
-    threads = len(definition.profile.cpu_mask) if definition.profile.cpu_mask else 1
-    provider = sherpa_tts_provider(
-        {entry.model_id: manifest},
-        num_threads=threads,
-        timeout_seconds=definition.timeout_seconds,
-    )
-    chunks = plan_text_chunks(text, max_chars=provider.describe().max_chunk_chars)
-    frames = 0
-    audio_seconds = 0.0
-    sample_rate: int | None = None
-    started = time.perf_counter()
-    try:
-        for chunk in chunks:
-            audio = provider.synthesize(
-                chunk.text,
-                model=entry.descriptor,
-                voice_id=definition.voice_id or "",
-                speed=definition.speed,
-            )
-            if sample_rate is not None and sample_rate != audio.sample_rate:
-                raise LabError("lab_worker_failed")
-            sample_rate = audio.sample_rate
-            frames += audio.frame_count
-            audio_seconds += audio.duration_seconds
-    finally:
-        provider.close()
-    if frames <= 0:
-        raise LabError("lab_worker_failed")
-    return {
-        "wall_seconds": time.perf_counter() - started,
-        "input_characters": len(text),
-        "output_audio_seconds": audio_seconds,
-        "frames": frames,
-        "sample_rate": sample_rate,
-        "chunks": len(chunks),
-        "memory": {
-            "worker_peak_rss_mib": peak_rss_mib(),
-            "largest_child_peak_rss_mib": peak_rss_mib(children=True),
-        },
-        "methods": {
-            "audio": "rendered chunks only; no inserted silence or saved audio",
-            "ram": "separate worker and completed-child RSS peaks; not tree total",
-        },
-    }, {
-        "model": {
-            "engine": entry.descriptor.provider_id,
-            "model_id": entry.model_id,
-            "archive_sha256": entry.sha256,
-        },
-        "voice_id": definition.voice_id,
-        "speed": definition.speed,
-        "threads": threads,
-    }
+    return run_tts_benchmark(definition)
 
 
 def _write(path: Path, value: dict[str, object]) -> None:

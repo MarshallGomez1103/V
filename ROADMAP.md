@@ -197,6 +197,7 @@ documentación en inglés, TTS y release). Para retomar, leer
 | --- | --- | --- |
 | V5-05 | Verified | Keyboard focus and sample cancellation regressions fixed; Carbon/M3, light/dark and es/en verified at 390 px with deterministic browser inputs. |
 | V6-05a | Verified | Explicit custom-model previews and confirmed background imports, pinned hashes, isolated load validation, live options and confirmed deletion; fake HTTP and default-wiring tests verified. |
+| V8-03 | Verified | STT bench reuse and TTS first-completed-chunk latency, render throughput and separate RSS peaks with unavailable values preserved. |
 | V8-02 | Verified | CPU experiment CLI with child-only affinity/address-space controls, deadlines, process-tree cleanup and separate measured/estimated results; disposable-process tests verified. |
 | V8-01 | Verified | ADR-0011 defines experiment-only resource controls and separates measured results from estimates; executor remains planned. |
 | V5-04 | Verified | Persistent synthesis history with playback, WAV downloads and confirmed deletion, including when no models are installed; UI and static-bundle browser flow verified. |

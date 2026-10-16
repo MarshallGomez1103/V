@@ -174,9 +174,13 @@ RSS observations and cgroup memory are different quantities.
 TTS reports render wall seconds, input character count, rendered audio seconds,
 frames, sample rate and chunk count. Worker and largest completed-child RSS
 peaks are separate. Render duration excludes inserted inter-chunk silence because
-this command does not assemble or export audio. Detailed latency/throughput
-definitions and repeated benchmark profiles are reserved for V8-03; they are not
-inferred from availability probes or presented as validated hardware results.
+this command does not assemble or export audio. `first_audio_seconds` measures the first completed chunk returned to the caller,
+including initial model loading; it is not streaming latency to the first sample.
+`throughput_audio_seconds_per_second` divides rendered audio duration by render
+wall time, including provider teardown. Preparation is excluded. Unavailable RSS
+observations remain null with a reason. See
+[benchmark definitions](edge-lab-benchmarks.md) for precise scope and comparison
+rules; these metrics are not validated hardware performance results.
 
 Failed and interrupted runs return empty measurements and preserve readiness
 observations when available. An allocation failure is not automatically diagnosed

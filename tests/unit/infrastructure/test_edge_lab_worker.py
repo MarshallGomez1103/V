@@ -239,3 +239,31 @@ def test_worker_rejects_cuda_instead_of_using_cpu() -> None:
     with pytest.raises(LabError) as raised:
         worker.apply_limits(ResourceProfile(device="cuda"))
     assert raised.value.code == "lab_device_unavailable"
+
+
+def test_tts_worker_delegates_to_benchmark_metrics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from voz.infrastructure import edge_lab_tts
+
+    definition = ExperimentDefinition(
+        "tts",
+        ResourceProfile(),
+        "sherpa-onnx-tts",
+        "fixture",
+        tmp_path / "text",
+        voice_id="0",
+    )
+    expected: tuple[dict[str, object], dict[str, object]] = (
+        {"first_audio_seconds": 0.25, "throughput_audio_seconds_per_second": 4.0},
+        {"device": "cpu"},
+    )
+
+    def render(
+        value: ExperimentDefinition,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        assert value is definition
+        return expected
+
+    monkeypatch.setattr(edge_lab_tts, "run_tts_benchmark", render)
+    assert worker.run_tts(definition) is expected
