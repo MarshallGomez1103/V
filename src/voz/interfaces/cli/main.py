@@ -26,6 +26,7 @@ from voz.interfaces.api.host_guard import LOOPBACK_HOSTS
 from voz.interfaces.cli.bench import bench_command
 from voz.interfaces.cli.diagnostics_bundle import build_bundle, write_bundle
 from voz.interfaces.cli.doctor import exit_code, render, run_doctor
+from voz.interfaces.cli.lab import lab_app
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -46,6 +47,8 @@ app = typer.Typer(
     add_completion=False,
     help="Run the local-first VOZ transcription workspace.",
 )
+
+app.add_typer(lab_app, name="lab")
 
 
 def browser_host(host: str) -> str:
