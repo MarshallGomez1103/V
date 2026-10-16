@@ -26,12 +26,15 @@ class ImportCustomModel:
         *,
         validation_context: Callable[[CancelCheck], AbstractContextManager[None]]
         | None = None,
+        staging_context: Callable[[CustomModelPlan], AbstractContextManager[None]]
+        | None = None,
     ) -> None:
         self._backend = backend
         self._validator = validator
         self._validation_context: Callable[
             [CancelCheck], AbstractContextManager[None]
         ] = validation_context or _unrestricted_validation
+        self._staging_context = staging_context
         self._plans: dict[str, CustomModelPlan] = {}
         self._lock = threading.Lock()
 
@@ -76,7 +79,12 @@ class ImportCustomModel:
                 "Prepare the model again before confirming.",
             )
         stopped = cancelled or (lambda: False)
-        directory = self._backend.stage(plan, progress=progress, cancelled=stopped)
+        with (
+            self._staging_context(plan)
+            if self._staging_context is not None
+            else nullcontext()
+        ):
+            directory = self._backend.stage(plan, progress=progress, cancelled=stopped)
         try:
             with self._validation_context(stopped):
                 if stopped():

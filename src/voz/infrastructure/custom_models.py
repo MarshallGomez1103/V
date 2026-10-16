@@ -172,6 +172,9 @@ class CustomModelStore:
         self._timeout = timeout_seconds
         self._runtime_available = runtime_available
 
+    def runtime_available(self, engine: str) -> bool:
+        return self._runtime_available(engine)
+
     def prepare(self, request: CustomModelRequest) -> CustomModelPlan:
         if request.family not in _FAMILIES.get(request.engine, set()):
             raise CustomModelError(

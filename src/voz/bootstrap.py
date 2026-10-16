@@ -5,7 +5,7 @@ independent of transport concerns.
 """
 
 from collections.abc import Callable, Generator, Iterable, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
@@ -39,7 +39,7 @@ from voz.application.library import ListLibrary
 from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.model_tasks import ModelTaskRunner
 from voz.application.normalize_media import NormalizeImportedMedia
-from voz.application.ports.custom_models import CustomModelError
+from voz.application.ports.custom_models import CustomModelError, CustomModelPlan
 from voz.application.ports.diarization import (
     DiarizationError,
     DiarizationFailureCode,
@@ -141,6 +141,7 @@ from voz.infrastructure.cloud.provider_info import (
     CLOUD_PROVIDER_INFO,
     CLOUD_PROVIDER_LABELS,
 )
+from voz.infrastructure.custom_model_upload import FileSystemCustomModelUpload
 from voz.infrastructure.custom_model_worker import SubprocessModelValidator
 from voz.infrastructure.custom_models import CustomModelCatalog, CustomModelStore
 from voz.infrastructure.desktop_shortcut import LocalDesktopShortcut
@@ -190,6 +191,7 @@ from voz.infrastructure.synthesis_storage import FileSystemSynthesisStorage
 from voz.infrastructure.tts.installed_models import InstalledTtsModels
 from voz.infrastructure.tts.model_store import TtsModelStore
 from voz.infrastructure.tts.sherpa_provider import sherpa_tts_provider
+from voz.interfaces.api.custom_model_uploads import create_custom_model_uploads_router
 from voz.interfaces.api.desktop_shortcut import create_desktop_shortcut_router
 from voz.interfaces.api.export import create_export_router
 from voz.interfaces.api.health import router as health_router
@@ -365,6 +367,10 @@ def create_app(
     )
     whisper_cpp_probe = WhisperCppRuntimeProbe()
     diarization_store = DiarizationModelStore(data_root=resolved_paths.data)
+    custom_uploads = FileSystemCustomModelUpload(
+        resolved_paths.cache / "custom-model-uploads",
+        require_space=model_store.require_custom_space,
+    )
     custom_models = CustomModelStore(model_store, cache_root=resolved_paths.cache)
     tts_store = TtsModelStore(
         data_root=resolved_paths.data, custom_manifest=custom_models.manifest
@@ -448,8 +454,15 @@ def create_app(
                 "model_installation_cancelled", "The import was cancelled."
             ) from None
 
+    def staging_context(plan: CustomModelPlan) -> AbstractContextManager[None]:
+        source = plan.files[0].local_path if plan.files else None
+        return custom_uploads.hold_source(source.parent) if source else nullcontext()
+
     custom_import = ImportCustomModel(
-        custom_models, SubprocessModelValidator(), validation_context=validation_context
+        custom_models,
+        SubprocessModelValidator(),
+        validation_context=validation_context,
+        staging_context=staging_context,
     )
     model_tasks = ModelTaskRunner(
         managed_catalog,
@@ -650,6 +663,7 @@ def create_app(
             tb: TracebackType | None,
         ) -> None:
             model_tasks.stop()
+            custom_uploads.close()
             runner.stop()
             synthesis_runner.stop()
             synthesis_registry.close_all()
@@ -778,6 +792,13 @@ def create_app(
                 synthesis_jobs=synthesis_jobs,
             ),
             custom=custom_import,
+        )
+    )
+    application.include_router(
+        create_custom_model_uploads_router(
+            custom_uploads,
+            custom_import,
+            runtime_available=custom_models.runtime_available,
         )
     )
     application.include_router(create_model_tasks_router(model_tasks))

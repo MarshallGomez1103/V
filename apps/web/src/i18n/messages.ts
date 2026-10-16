@@ -1,3 +1,4 @@
+import { addModel } from './messages/addModel'
 import { endpoints } from './messages/endpoints'
 import { errors } from './messages/errors'
 import { job } from './messages/job'
@@ -20,6 +21,7 @@ export const MESSAGES = {
   ...workspace,
   ...library,
   ...models,
+  ...addModel,
   ...endpoints,
   ...speak,
   ...speakHistory,

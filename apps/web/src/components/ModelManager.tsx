@@ -39,6 +39,7 @@ import { translate, useI18n, type Translate } from '../i18n/i18n'
 import type { MessageKey } from '../i18n/messages'
 import { formatBytes } from '../lib/formatBytes'
 import { compareModelIds } from '../lib/modelOrder'
+import { AddModelDialog } from './AddModelDialog'
 import { Busy } from './Busy'
 import { Term } from './Hint'
 import { Notice } from './Notice'
@@ -605,6 +606,7 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' })
   const [reload, setReload] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [addingModel, setAddingModel] = useState(false)
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set())
   const [notices, setNotices] = useState<Record<string, string>>({})
   const idBase = useId()
@@ -712,6 +714,14 @@ export function ModelManager({ onModelsChanged }: ModelManagerProps) {
 
   return (
     <section className="voz-models" aria-label={t('mm.title')}>
+      <Button onClick={() => { setAddingModel(true) }}>{t('addModel.title')}</Button>
+      {addingModel ? (
+        <AddModelDialog
+          onClose={() => { setAddingModel(false) }}
+          onCompleted={modelsChanged}
+          availableEngines={[...new Set(models.filter((model) => model.runtime_available).map((model) => model.provider_id))]}
+        />
+      ) : null}
       {state.phase === 'loading' ? (
         <div aria-live="polite">
           <Busy description={t('opt.loading')} />

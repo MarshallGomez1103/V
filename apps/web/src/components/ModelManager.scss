@@ -3,6 +3,7 @@
 .voz-models {
   display: grid;
   gap: $spacing-05;
+  min-inline-size: 0;
 }
 
 .voz-models__disk {
@@ -20,7 +21,14 @@
 .voz-models__group {
   display: grid;
   gap: $spacing-04;
+  min-inline-size: 0;
   margin-block-start: $spacing-05;
+
+  .cds--data-table-container {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow-x: auto;
+  }
 }
 
 .voz-model-facts {

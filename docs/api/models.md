@@ -366,3 +366,41 @@ Errors use stable, path-free codes, including `custom_model_invalid`,
 `custom_model_validation_failed` and `custom_model_validation_timeout`.
 Unconfirmed installation uses `model_install_unconfirmed`; cancellation uses
 `model_installation_cancelled`. Validation errors never echo request values.
+
+### Browser-selected folders
+
+The custom-model dialog uses the browser's directory picker and sends a copy of
+compatible weights/configuration, retaining the original files. It never asks
+for or returns a server filesystem path. Unsupported files are excluded before
+upload and remain untouched in the source folder.
+
+`POST /api/models/custom/uploads` accepts engine, family, display name, optional
+license/file roles and `files: [{"name": "model.bin", "size_bytes": 123}]`.
+Names are relative to the selected folder; its outer name is not transmitted.
+The `201` receipt contains an opaque `id`, `total_bytes` and `file_count`.
+
+Send each file as raw bytes to
+`PUT /api/models/custom/uploads/{id}/files/{index}` in manifest order. A complete
+file returns `204`; actual size must match the declared size. Browser upload
+progress is distinct from the later installation/validation task.
+`POST /api/models/custom/uploads/{id}/preview` requires all files to be complete
+and returns the ordinary custom-model preview. Explicit installation then uses
+`POST /api/models/custom/install`, as above.
+
+`DELETE /api/models/custom/uploads/{id}` returns `204` and is idempotent.
+Cancellation or failed writes discard incomplete uploads. Cleanup is deferred
+while a preview or independent staging copy holds the source. Once staged,
+validation uses its own copy, so removing the upload cannot interrupt loading.
+
+Uploads use private XDG cache directories and files (0700/0600 on POSIX).
+Pending uploads are process-local, bounded to 100 receipts and 16 GiB of total
+reserved source bytes, and expire after 20 minutes of inactivity. Expired entries
+are cleaned on subsequent upload operations; normal shutdown discards owned
+entries. An abrupt process termination can leave private cache files, which this
+version does not remove across instances. A queued import whose source expires
+before staging must be prepared again.
+
+Unsafe or duplicate relative names, links, file/directory collisions, unsupported
+files and inconsistent sizes are rejected without echoing supplied values.
+Errors include `custom_model_upload_expired`, `custom_model_upload_incomplete`
+and `custom_model_upload_limit`; disk admission uses `disk_space_insufficient`.

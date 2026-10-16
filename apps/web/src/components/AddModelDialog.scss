@@ -1,0 +1,46 @@
+@use '../styles/carbon' as *;
+
+.voz-add-model {
+  .cds--modal-content {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &__form,
+  &__preview,
+  &__folder,
+  &__progress {
+    display: grid;
+    gap: $spacing-04;
+    min-inline-size: 0;
+  }
+
+  &__folder input {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    color: $text-primary;
+    font: inherit;
+
+    &::file-selector-button {
+      padding: $spacing-03;
+      border: 1px solid $border-interactive;
+      border-radius: 0;
+      background: $layer-01;
+      color: $text-primary;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    &:focus-visible {
+      outline: 2px solid $focus;
+      outline-offset: 2px;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-03;
+    margin-block-start: $spacing-04;
+  }
+}

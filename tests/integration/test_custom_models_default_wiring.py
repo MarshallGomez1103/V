@@ -74,12 +74,14 @@ def _client(
     monkeypatch: pytest.MonkeyPatch,
     validator: FakeValidator,
     slot: ComputeSlot | None = None,
+    *,
+    runtime_available: bool = True,
 ) -> httpx.Client:
     monkeypatch.setattr(bootstrap, "SubprocessModelValidator", lambda: validator)
     monkeypatch.setattr(
         bootstrap,
         "CustomModelStore",
-        partial(CustomModelStore, runtime_available=lambda _: True),
+        partial(CustomModelStore, runtime_available=lambda _: runtime_available),
     )
     monkeypatch.setattr(bootstrap, "FasterWhisperRuntimeProbe", FakeRuntime)
     real_find_spec = bootstrap.find_spec
@@ -301,3 +303,94 @@ def test_cancelled_import_waiting_for_compute_never_loads_or_registers_weights(
             not model["model_id"].startswith("custom-")
             for model in client.get("/api/models").json()["models"]
         )
+
+
+def test_browser_folder_upload_previews_and_installs_without_host_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = {
+        "model.bin": b"fake weights",
+        "config.json": b"{}",
+        "tokenizer.json": b"{}",
+    }
+    validator = FakeValidator()
+    with _client(tmp_path / "app", monkeypatch, validator) as client:
+        created = client.post(
+            "/api/models/custom/uploads",
+            json={
+                "engine": "faster-whisper",
+                "family": "ctranslate2",
+                "display_name": "Browser folder",
+                "files": [
+                    {"name": name, "size_bytes": len(body)}
+                    for name, body in files.items()
+                ],
+            },
+        )
+        assert created.status_code == 201, created.text
+        upload_id = created.json()["id"]
+        base = "/api/models/custom/uploads/" + upload_id
+        assert created.json()["file_count"] == 3
+        incomplete = client.post(base + "/preview")
+        assert incomplete.status_code == 422 and not validator.calls
+        for index, body in enumerate(files.values()):
+            sent = client.put(base + "/files/" + str(index), content=body)
+            assert sent.status_code == 204, sent.text
+        preview = client.post(base + "/preview")
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["size_bytes"] == sum(map(len, files.values()))
+        task = _install(client, preview.json())
+        assert client.delete(base).status_code == 204
+        assert client.delete(base).status_code == 204
+        listed = client.get("/api/models")
+        assert any(
+            model["key"] == task["key"] and model["installed"]
+            for model in listed.json()["models"]
+        )
+        assert (
+            client.delete(
+                "/api/models/" + task["key"], params={"confirm": task["key"]}
+            ).status_code
+            == 200
+        )
+        for response in (created, incomplete, preview, listed):
+            assert str(tmp_path) not in response.text
+
+
+@pytest.mark.parametrize(
+    "filename", ["../private-source-secret.bin", "/private-source-secret.bin"]
+)
+def test_browser_folder_upload_rejects_unsafe_names_without_reflecting_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filename: str
+) -> None:
+    with _client(tmp_path / "app", monkeypatch, FakeValidator()) as client:
+        response = client.post(
+            "/api/models/custom/uploads",
+            json={
+                "engine": "faster-whisper",
+                "family": "ctranslate2",
+                "display_name": "Test",
+                "files": [{"name": filename, "size_bytes": 1}],
+            },
+        )
+        assert response.status_code == 422
+        assert "private-source-secret" not in response.text
+
+
+def test_browser_folder_upload_checks_runtime_before_accepting_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "app"
+    with _client(root, monkeypatch, FakeValidator(), runtime_available=False) as client:
+        response = client.post(
+            "/api/models/custom/uploads",
+            json={
+                "engine": "faster-whisper",
+                "family": "ctranslate2",
+                "display_name": "Test",
+                "files": [{"name": "model.bin", "size_bytes": 1}],
+            },
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "custom_model_runtime_unavailable"
+    assert not (root / "cache/custom-model-uploads").exists()
