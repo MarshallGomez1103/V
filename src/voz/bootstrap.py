@@ -209,6 +209,7 @@ from voz.interfaces.api.openai_compat import create_openai_compat_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.providers import create_providers_router
 from voz.interfaces.api.quality_profiles import create_quality_profiles_router
+from voz.interfaces.api.security_headers import SecurityHeadersMiddleware
 from voz.interfaces.api.segments import create_segments_router
 from voz.interfaces.api.server_auth import ServerAuthMiddleware
 from voz.interfaces.api.shutdown import create_shutdown_router
@@ -715,6 +716,7 @@ def create_app(
     application.add_middleware(
         HostGuardMiddleware, allowed_hosts=(*LOOPBACK_HOSTS, *allowed_hosts)
     )
+    application.add_middleware(SecurityHeadersMiddleware)
     application.include_router(health_router)
     application.include_router(create_shutdown_router(request_shutdown))
     application.include_router(create_desktop_shortcut_router(desktop_shortcut))

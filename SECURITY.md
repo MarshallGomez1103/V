@@ -38,6 +38,28 @@ when judging a report:
 - **No host paths in the browser.** API responses must not contain absolute
   host paths.
 
+## HTTP response policy
+
+Handled HTTP responses include `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, same-origin resource
+policy and a Content Security Policy. Scripts, connections and workers are
+restricted to the application origin; objects and framing are disabled. Inline
+styles remain permitted for the UI, and media permits local blob URLs. Camera
+access is disabled; microphone access is restricted to the same origin.
+
+The header layer wraps Host and authentication checks without buffering uploads,
+audio ranges or SSE bodies. It does not add HSTS to the local HTTP server or
+change cache policy. Unhandled exceptions outside that layer and deployments
+that replace the application middleware are outside this guarantee.
+
+## Dependency and secret checks
+
+Run `npm audit` from `apps/web` and audit the installed Python environment with
+`pip-audit --path .venv/lib/python3.12/site-packages --skip-editable` from an
+isolated audit-tool environment. Check tracked files and history with
+`bash scripts/audit-secrets.sh`. Review findings rather than treating a successful
+scan as proof that every optional runtime or historical secret is covered.
+
 ## What to report
 
 Examples of valid security reports:

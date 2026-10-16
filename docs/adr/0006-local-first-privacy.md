@@ -94,8 +94,9 @@ limits.
   until V0-04.
 - Other processes and users on the same machine can connect to
   `127.0.0.1:8765`. The security scope is in [SECURITY.md](../../SECURITY.md).
-- There is no `Content-Security-Policy` or hardening headers on the static
-  server (master plan section 17): **planned**.
+- Handled HTTP responses now carry CSP and hardening headers, including Host
+  and authentication denials. Scripts are same-origin; inline styles and blob
+  media remain permitted. See [the response policy](../../SECURITY.md#http-response-policy).
 - Model installation remains explicit. Custom weights must match a supported
   installed engine; declaring a license does not verify its terms.
 - Privacy verification of logs is spot-check only (tests of errors without
