@@ -367,6 +367,7 @@ Plans can change; do not rely on any of this until it appears in the
 
 ## Documentation index
 
+- [Web asset budgets and browser checks](docs/web-quality.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - Install: [Linux](docs/install/linux.md), [Windows and macOS](docs/install/windows-macos.md)
 - [Models: download, import and removal](docs/models.md), [Buzz cache reuse](docs/buzz.md)

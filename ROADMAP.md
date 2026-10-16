@@ -200,6 +200,7 @@ documentación en inglés, TTS y release). Para retomar, leer
 | V6-05b | Verified | Browser folder copies and remote previews with explicit installation, live progress, cancellation and visible license; Carbon/M3 responsive dialog. |
 | V10-02 | Verified | Private token files, authenticated API/browser access, LAN startup checks and readiness without credential redirects. |
 | V7-01 | Verified | Synthetic CPU measurements compare 10/15/30-minute checkpoints with pinned model hashes and persistent SQLite; the 30-minute default remains unchanged. |
+| V10-05 | Verified | Deterministic bundle byte budgets and 40 Chromium structural accessibility/responsive checks, with bounded coverage documented. |
 | V8-03 | Verified | STT bench reuse and TTS first-completed-chunk latency, render throughput and separate RSS peaks with unavailable values preserved. |
 | V8-04 | Verified | Validated Markdown comparison of saved Edge Lab reports, with measured values and separate memory scopes. |
 | V8-02 | Verified | CPU experiment CLI with child-only affinity/address-space controls, deadlines, process-tree cleanup and separate measured/estimated results; disposable-process tests verified. |
