@@ -12,9 +12,10 @@ import stat
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from errno import EEXIST, ENOSPC, ENOTEMPTY
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Protocol, cast
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
@@ -38,11 +39,20 @@ from voz.application.ports.transcription import (
     TranscriptionFailureCode,
 )
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
+from voz.infrastructure.artifact_download import ArtifactFetcher
 from voz.infrastructure.safe_fs import DirectoryHandle
 
 _MANIFEST_NAME = ".voz-model.json"
 _BLOCK_BYTES = 1024 * 1024
 _Code = ModelInstallationFailureCode
+
+
+@dataclass(frozen=True, slots=True)
+class _Artifact:
+    name: str
+    url: str
+    size_bytes: int
+    sha256: str
 
 
 class SnapshotDownloader(Protocol):
@@ -96,6 +106,123 @@ class FileSystemModelStore:
         self._clock = clock
         self._disk_space = disk_space
         self._network_timeout = network_timeout_seconds
+
+    def fetch_custom_file(
+        self,
+        url: str,
+        directory: Path,
+        item: ModelFile,
+        *,
+        on_bytes: Callable[[int], None],
+        cancelled: CancelCheck,
+    ) -> Path:
+        """Reuse verified downloads; unknown digests are pinned after staging."""
+        self._require_space(item.size_bytes)
+        directory.mkdir(parents=True, exist_ok=True)
+        if item.sha256 is not None:
+            return ArtifactFetcher(
+                directory,
+                label="custom model",
+                timeout_seconds=self._network_timeout,
+            ).fetch(
+                _Artifact(item.name, url, item.size_bytes, item.sha256),
+                on_bytes,
+                cancelled,
+            )
+        self._fetch(url, directory, item, on_bytes, cancelled)
+        return directory / item.name
+
+    def require_custom_space(self, size_bytes: int) -> None:
+        """Check the model volume before copying any custom weights."""
+        self._require_space(size_bytes)
+
+    def publish_custom(
+        self,
+        descriptor: ModelDescriptor,
+        directory: Path,
+        metadata: dict[str, object],
+        *,
+        cancelled: CancelCheck | None = None,
+    ) -> ModelInstallation:
+        """Commit a validated, owned staging tree with its per-file digests."""
+        final = self._directory_for(descriptor)
+        final.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        encoded = json.dumps(metadata)
+        if len(encoded.encode("utf-8")) > 1_048_576:
+            raise ModelInstallationError(
+                _Code.INVALID_SNAPSHOT, "The model manifest is too large."
+            )
+        (directory / ".voz-custom.json").write_text(encoded, encoding="utf-8")
+        # Cache and data roots may live on different volumes. Publish from the
+        # model volume so the final rename remains atomic on every platform.
+        local = final.parent / f".custom-{uuid4().hex}.tmp"
+
+        def copy(source: str, target: str) -> str:
+            with open(source, "rb") as incoming, open(target, "xb") as outgoing:
+                while block := incoming.read(_BLOCK_BYTES):
+                    if cancelled is not None and cancelled():
+                        raise self._cancelled()
+                    outgoing.write(block)
+            return target
+
+        try:
+            self._require_space(self._tree_size(directory, exclusive=False))
+            shutil.copytree(directory, local, symlinks=True, copy_function=copy)
+            if cancelled is not None and cancelled():
+                raise self._cancelled()
+            installed_at = self._commit(local, final, descriptor, self._clock())
+        finally:
+            if local.exists():
+                shutil.rmtree(local)
+        return ModelInstallation(descriptor, installed_at)
+
+    @staticmethod
+    def _custom_intact(directory: Path) -> bool:
+        try:
+            manifest = directory / ".voz-custom.json"
+            if manifest.is_symlink() or manifest.stat().st_size > 1_048_576:
+                return False
+            document = cast(
+                dict[str, object], json.loads(manifest.read_text(encoding="utf-8"))
+            )
+            files = document["files"]
+            if not isinstance(files, list) or not files:
+                return False
+            for item in cast(list[dict[str, object]], files):
+                name = item["name"]
+                if not isinstance(name, str):
+                    return False
+                relative = PurePosixPath(name)
+                if (
+                    relative.is_absolute()
+                    or ".." in relative.parts
+                    or "\\" in name
+                    or relative.as_posix() != name
+                    or any(":" in part for part in relative.parts)
+                ):
+                    return False
+                sha = item.get("sha256")
+                size = item.get("size_bytes")
+                if (
+                    not isinstance(sha, str)
+                    or len(sha) != 64
+                    or any(ch not in "0123456789abcdef" for ch in sha)
+                    or not isinstance(size, int)
+                    or isinstance(size, bool)
+                    or size <= 0
+                ):
+                    return False
+                path = directory / relative
+                if any(
+                    (directory / PurePosixPath(*relative.parts[:i])).is_symlink()
+                    for i in range(1, len(relative.parts) + 1)
+                ):
+                    return False
+                if FileSystemModelStore._regular_size(path) != item["size_bytes"]:
+                    return False
+        except (OSError, ValueError, TypeError, KeyError):
+            return False
+        return True
 
     def install(
         self,
@@ -772,6 +899,10 @@ class FileSystemModelStore:
     ) -> datetime | None:
         loaded = self._load_manifest(directory, descriptor)
         if loaded is None or not self._files_intact(directory, loaded[0].get("files")):
+            return None
+        if descriptor.model_id.startswith("custom-") and not self._custom_intact(
+            directory
+        ):
             return None
         return loaded[1]
 

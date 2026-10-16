@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
+from voz.application.model_manager import ModelStore
 from voz.application.ports.model_installation import (
     CancelCheck,
     ModelFile,
@@ -119,11 +120,13 @@ class ManagedModelCatalog:
         diarization_runtime_available: Callable[[], bool],
         tts_runtime_available: Callable[[], bool] | None = None,
         tts_models: Sequence[TtsModelEntry] = TTS_CATALOG,
+        custom_models: Callable[[], Sequence[ManagedModel]] | None = None,
     ) -> None:
         self._whisper_cpp_available = whisper_cpp_available
         self._diarization_runtime_available = diarization_runtime_available
         self._tts_runtime_available = tts_runtime_available
         self._tts_models = tuple(tts_models)
+        self._custom_models = custom_models
 
     def entries(self) -> tuple[ManagedModel, ...]:
         models = [
@@ -173,6 +176,8 @@ class ManagedModelCatalog:
                 )
                 for e in self._tts_models
             )
+        if self._custom_models is not None:
+            models.extend(self._custom_models())
         return tuple(models)
 
 
@@ -184,10 +189,15 @@ class RoutingModelStore:
         files: FileSystemModelStore,
         diarization: DiarizationModelStore,
         tts: TtsModelStore | None = None,
+        custom: ModelStore | None = None,
     ) -> None:
         self._files = files
         self._diarization = diarization
         self._tts = tts
+        self._custom = custom
+
+    def _custom_store(self, descriptor: ModelDescriptor) -> ModelStore | None:
+        return self._custom if descriptor.model_id.startswith("custom-") else None
 
     @staticmethod
     def _is_diarization(descriptor: ModelDescriptor) -> bool:
@@ -198,6 +208,8 @@ class RoutingModelStore:
         return descriptor.provider_id == TTS_PROVIDER_ID
 
     def is_installed(self, descriptor: ModelDescriptor) -> bool:
+        if custom := self._custom_store(descriptor):
+            return custom.is_installed(descriptor)
         if self._is_diarization(descriptor):
             return self._diarization.is_installed()
         if self._is_tts(descriptor):
@@ -205,6 +217,8 @@ class RoutingModelStore:
         return self._files.is_installed(descriptor)
 
     def disk_usage(self, descriptor: ModelDescriptor) -> int | None:
+        if custom := self._custom_store(descriptor):
+            return custom.disk_usage(descriptor)
         if self._is_tts(descriptor):
             return (
                 None if self._tts is None else self._tts.disk_usage(descriptor.model_id)
@@ -221,11 +235,15 @@ class RoutingModelStore:
         )
 
     def reclaimable_usage(self, descriptor: ModelDescriptor) -> int | None:
+        if custom := self._custom_store(descriptor):
+            return custom.reclaimable_usage(descriptor)
         if self._is_diarization(descriptor) or self._is_tts(descriptor):
             return self.disk_usage(descriptor)  # downloaded files are never shared
         return self._files.reclaimable_usage(descriptor)
 
     def remove(self, descriptor: ModelDescriptor) -> int:
+        if custom := self._custom_store(descriptor):
+            return custom.remove(descriptor)
         if self._is_diarization(descriptor):
             return self._diarization.remove()
         if self._is_tts(descriptor):

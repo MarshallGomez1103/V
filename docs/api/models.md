@@ -71,7 +71,7 @@ HTTP 200. One entry for every catalog model, installed or not.
 | `requires` | Runtime the model needs in order to be used: `whisper-cli` (whisper.cpp), `diarization` (optional extra with sherpa-onnx), `tts` (the sherpa-onnx runtime for speech synthesis) or `null`. |
 | `runtime_available` | `false` if that runtime is missing: the model is listed but the UI does not offer to install it ("requires the diarization extra"). whisper.cpp is not even listed without `whisper-cli`. |
 | `model_id` | Identifier within the provider; for faster-whisper, the same as in `/api/transcription-options`. |
-| `source`, `revision` | Pinned provenance (40-character commit SHA). `null` for diarization and speech synthesis: their artifacts are release assets verified by SHA-256. |
+| `source`, `revision` | Pinned provenance: repository commit SHA or, for custom folder/URL imports, a content-derived revision. Catalog release assets use SHA-256 and may have null source/revision. |
 | `capabilities` | Sorted list of capability strings the model declares (vocabulary below). Always present; never empty. |
 | `profile` | `fast` or `quality`; `null` for diarization and speech synthesis. |
 | `size_bytes` | Sum of the catalog's expected files (what would be downloaded). |
@@ -212,7 +212,7 @@ live **only in memory** (`ModelTaskRunner`, one worker thread and a FIFO queue:
 one heavy task at a time). They are deliberately not durable: if the app closes
 midway, the download resumes by itself from the `.part` files when the user clicks
 install again. When the server shuts down, queued or running tasks are cancelled.
-No response contains paths or URLs.
+No response contains local host paths. Custom imports may expose their accepted public source URL as provenance.
 
 ### `POST /api/models/{key}/install`
 
@@ -295,3 +295,74 @@ not offer to install.
 Deleting a diarization model also answers 409 `model_in_use` while a
 non-terminal job asked for speakers and has not already failed in diarization
 (V0-09b). After a successful deletion the cached diarization engines are closed.
+
+## Custom model imports
+
+`POST /api/models/custom/preview` inspects an explicitly supplied source and
+returns a preview ID, engine/model descriptor, family, declared license, file
+count and total byte size. It does not install or load the model. Local sources
+are read without modifying the originals; remote previews query metadata only.
+
+```json
+{
+  "source_type": "folder",
+  "source": "../voice-models/my-local-model",
+  "engine": "faster-whisper",
+  "family": "ctranslate2",
+  "display_name": "My local model",
+  "license": "unknown"
+}
+```
+
+Supported engines and families are `faster-whisper` / `ctranslate2`,
+`whisper-cpp` / `ggml`, and `sherpa-onnx-tts` / `kitten`, `kokoro`, `vits` or
+`matcha`. The engine must already be installed. `source_type` also accepts
+`huggingface` for a public repository ID and `url` for a standalone GGML file
+or a TTS `.tar.bz2` package. Multi-file models can be supplied as a folder or
+Hugging Face repository. The optional `revision` defaults to `main` for
+repository discovery, then resolves to an immutable commit before import.
+Optional `file_roles` maps known family roles to relative files when automatic
+layout discovery is insufficient.
+
+Confirm the displayed preview through
+`POST /api/models/custom/install` with
+`{"preview_id": "<preview-id>", "confirm": true}`. The response is `202` with
+an ordinary model task. Poll `/api/model-tasks/{id}` for byte progress and
+completion; `/api/model-tasks/{id}/cancel` cancels a pending or running import.
+Previews are process-local and bounded to 100 pending choices; after expiry or
+restart, prepare the source again. Confirmation must be a JSON boolean.
+
+Import copies or downloads allowlisted weights and configuration into owned
+staging, calculates per-file SHA-256 values, and validates loading with the
+installed engine in a separate process. The validation waits for V's shared
+compute slot and releases a resident ASR model first. Cancellation while waiting
+never starts the loader. No model scripts, pickle objects or remote Python code
+are executed. Child stdout/stderr and loader exceptions are not exposed.
+
+Only successful validation publishes the model. Source folders remain intact,
+and failure or cancellation discards the owned staging tree. Each imported file
+has a recorded SHA-256 digest. Repository models retain their resolved commit;
+other imports derive a pinned revision from the content digest. Unpinned local
+previews have null source/revision until import completes. Local host paths are
+not returned as provenance. User-supplied license declarations are distinguished
+from verified catalog licenses; an absent declaration remains `unknown`.
+
+Imports are limited to 10,000 files and 16 GiB of source bytes. TTS archive
+extraction is additionally bounded to 1 GiB. Unsafe archive paths, links,
+devices, duplicate extracted entries and unsupported layouts are rejected. URL credentials,
+query strings and fragments are not accepted. Available disk space is checked
+before copying or downloading. These safeguards do not make native model
+parsers a sandbox; import only weights from sources you trust.
+
+After publication, custom models appear live in `GET /api/models` and the
+corresponding transcription/synthesis options. They use `custom-` model IDs,
+retain their engine's capability declarations, survive restart and use the same
+confirmed deletion and active-job protection as catalog models. Deleting an
+imported model does not delete its source files or existing synthesized audio.
+
+Errors use stable, path-free codes, including `custom_model_invalid`,
+`custom_model_engine_unsupported`, `custom_model_runtime_unavailable`,
+`custom_model_metadata_unavailable`, `custom_model_preview_expired`,
+`custom_model_validation_failed` and `custom_model_validation_timeout`.
+Unconfirmed installation uses `model_install_unconfirmed`; cancellation uses
+`model_installation_cancelled`. Validation errors never echo request values.

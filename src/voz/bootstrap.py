@@ -4,14 +4,14 @@ Framework and infrastructure wiring belongs here so that the domain remains
 independent of transport concerns.
 """
 
-from collections.abc import Callable, Iterable, Sequence
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Generator, Iterable, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
 from types import TracebackType
 from typing import BinaryIO, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -25,12 +25,13 @@ from voz.application.asr_device_selection import (
     select_execution,
 )
 from voz.application.assign_speakers import AssignProviderSpeakers, AssignSpeakers
-from voz.application.compute_slot import ComputeSlot
+from voz.application.compute_slot import ComputeKind, ComputeSlot, SlotWaitCancelled
 from voz.application.create_transcription_job import CreateTranscriptionJob
 from voz.application.edit_segment import EditSegmentText
 from voz.application.estimate_cloud_cost import EstimateCloudTranscription
 from voz.application.export.service import ExportTranscript
 from voz.application.get_transcription_options import GetTranscriptionOptions
+from voz.application.import_custom_model import ImportCustomModel
 from voz.application.import_external_model import ImportExternalModel
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
@@ -38,11 +39,13 @@ from voz.application.library import ListLibrary
 from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.model_tasks import ModelTaskRunner
 from voz.application.normalize_media import NormalizeImportedMedia
+from voz.application.ports.custom_models import CustomModelError
 from voz.application.ports.diarization import (
     DiarizationError,
     DiarizationFailureCode,
     DiarizationProvider,
 )
+from voz.application.ports.model_installation import CancelCheck
 from voz.application.ports.speech_synthesis import SpeechSynthesisProvider
 from voz.application.ports.transcription import (
     TranscriptionCancellationToken,
@@ -138,6 +141,8 @@ from voz.infrastructure.cloud.provider_info import (
     CLOUD_PROVIDER_INFO,
     CLOUD_PROVIDER_LABELS,
 )
+from voz.infrastructure.custom_model_worker import SubprocessModelValidator
+from voz.infrastructure.custom_models import CustomModelCatalog, CustomModelStore
 from voz.infrastructure.desktop_shortcut import LocalDesktopShortcut
 from voz.infrastructure.diarization.availability import SherpaDiarizationAvailability
 from voz.infrastructure.diarization.models import DiarizationModelStore
@@ -342,6 +347,7 @@ def create_app(
     projects = SqliteProjectRepository(resolved_engine)
     # One gate for every check-then-act on active jobs (V0-09c).
     admission = AdmissionGate()
+    compute_slot = ComputeSlot()
     glossaries = SqliteProjectGlossaryRepository(resolved_engine)
     media_assets = SqliteMediaAssetRepository(resolved_engine)
     jobs = SqliteTranscriptionJobRepository(resolved_engine)
@@ -359,7 +365,10 @@ def create_app(
     )
     whisper_cpp_probe = WhisperCppRuntimeProbe()
     diarization_store = DiarizationModelStore(data_root=resolved_paths.data)
-    tts_store = TtsModelStore(data_root=resolved_paths.data)
+    custom_models = CustomModelStore(model_store, cache_root=resolved_paths.cache)
+    tts_store = TtsModelStore(
+        data_root=resolved_paths.data, custom_manifest=custom_models.manifest
+    )
 
     def sherpa_available() -> bool:  # diarization and TTS share the runtime
         return find_spec("sherpa_onnx") is not None
@@ -369,15 +378,13 @@ def create_app(
         whisper_cpp_available=lambda: whisper_cpp_probe.availability().available,
         diarization_runtime_available=sherpa_available,
         tts_runtime_available=sherpa_available,
+        custom_models=custom_models.managed_entries,
     )
-    managed_store = RoutingModelStore(model_store, diarization_store, tts_store)
+    managed_store = RoutingModelStore(
+        model_store, diarization_store, tts_store, custom=custom_models
+    )
     model_catalog = FasterWhisperModelCatalog()
     buzz_cache = BuzzModelCache()
-    model_tasks = ModelTaskRunner(
-        managed_catalog,
-        managed_store,
-        ImportExternalModel(buzz_cache, model_store, model_catalog.entries()),
-    )
     # Cloud providers exist only as explicit, key-gated options (ADR-0006);
     # they are never recommended nor used as a fallback.
     secrets = ProviderSecrets(resolved_paths.config)
@@ -403,6 +410,7 @@ def create_app(
                     *local_catalogs,
                     CloudTranscriptionCatalog(cloud_descriptors, CLOUD_PROVIDER_LABELS),
                     CompatibleModels(compatible_store, ModelCapability.TRANSCRIPTION),
+                    CustomModelCatalog(custom_models, ModelCapability.TRANSCRIPTION),
                 )
             ),
             RoutingRuntimeProbe(
@@ -421,6 +429,33 @@ def create_app(
     # at load time.
     runtimes = SingleRuntimeCache[ModelDescriptor, LocalAsrRuntime](
         idle_seconds=ASR_IDLE_SECONDS
+    )
+
+    @contextmanager
+    def validation_context(cancelled: CancelCheck) -> Generator[None]:
+        class Cancellation:
+            def is_cancelled(self) -> bool:
+                return cancelled()
+
+        try:
+            with compute_slot.hold(
+                ComputeKind.MODEL_VALIDATION, uuid4(), cancellation=Cancellation()
+            ):
+                runtimes.release()
+                yield
+        except SlotWaitCancelled:
+            raise CustomModelError(
+                "model_installation_cancelled", "The import was cancelled."
+            ) from None
+
+    custom_import = ImportCustomModel(
+        custom_models, SubprocessModelValidator(), validation_context=validation_context
+    )
+    model_tasks = ModelTaskRunner(
+        managed_catalog,
+        managed_store,
+        ImportExternalModel(buzz_cache, model_store, model_catalog.entries()),
+        custom=custom_import,
     )
 
     other_providers: dict[str, TranscriptionProvider] = {}
@@ -511,7 +546,6 @@ def create_app(
         runtimes.release()
 
     # One slot for every heavy job in the process: ASR, diarization and TTS.
-    compute_slot = ComputeSlot()
     runner = JobRunner(
         compute_slot=compute_slot,
         jobs=jobs,
@@ -574,6 +608,7 @@ def create_app(
             (
                 InstalledTtsModels(tts_store),
                 CompatibleModels(compatible_store, ModelCapability.SYNTHESIS),
+                CustomModelCatalog(custom_models, ModelCapability.SYNTHESIS),
             )
         )
         if synthesis_catalog is None
@@ -742,6 +777,7 @@ def create_app(
                 admission=admission,
                 synthesis_jobs=synthesis_jobs,
             ),
+            custom=custom_import,
         )
     )
     application.include_router(create_model_tasks_router(model_tasks))

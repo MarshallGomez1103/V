@@ -16,7 +16,9 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from voz.application.import_custom_model import ImportCustomModel
 from voz.application.model_keys import model_key, normalize_key
+from voz.application.ports.custom_models import CustomModelError
 from voz.application.ports.external_models import ExternalModelError
 from voz.application.ports.model_installation import (
     CancelCheck,
@@ -124,6 +126,7 @@ class _Task:
     done_bytes: int = 0
     error_code: str | None = None
     cancel_requested: bool = False
+    custom_preview_id: str | None = None
 
     def view(self) -> ModelTaskView:
         return ModelTaskView(
@@ -151,11 +154,13 @@ class ModelTaskRunner:
         external: _ExternalImport,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        custom: ImportCustomModel | None = None,
     ) -> None:
         self._catalog = catalog
         self._store = store
         self._external = external
         self._clock = clock
+        self._custom = custom
         self._lock = threading.Condition()
         self._tasks: dict[str, _Task] = {}  # insertion order = creation order
         self._queue: deque[_Task] = deque()
@@ -265,6 +270,44 @@ class ModelTaskRunner:
         self.start()
         return task.view()
 
+    def enqueue_custom(self, preview_id: str, *, confirm: bool) -> ModelTaskView:
+        if confirm is not True:
+            raise ModelTaskError(
+                ModelTaskFailureCode.UNCONFIRMED,
+                "Installing a model must be confirmed explicitly.",
+            )
+        if self._custom is None:
+            raise ModelTaskError(
+                ModelTaskFailureCode.FAILED, "Custom model imports are not available."
+            )
+        preview = self._custom.preview(preview_id)
+        with self._lock:
+            if self._stopped:
+                raise ModelTaskError(
+                    ModelTaskFailureCode.FAILED, "The model task runner is stopped."
+                )
+            for task in self._tasks.values():
+                if task.custom_preview_id == preview_id and task.state in _ACTIVE:
+                    return task.view()
+            now = self._clock()
+            task = _Task(
+                uuid4().hex,
+                preview.descriptor,
+                (),
+                "custom",
+                None,
+                "queued",
+                preview.size_bytes,
+                now,
+                now,
+                custom_preview_id=preview_id,
+            )
+            self._tasks[task.id] = task
+            self._queue.append(task)
+            self._lock.notify()
+        self.start()
+        return task.view()
+
     def get(self, task_id: str) -> ModelTaskView:
         with self._lock:
             return self._find(task_id).view()
@@ -331,7 +374,16 @@ class ModelTaskRunner:
 
         state, code = "completed", None
         try:
-            if task.method == "import":
+            if task.custom_preview_id is not None and self._custom is not None:
+                descriptor = self._custom.execute(
+                    task.custom_preview_id,
+                    confirm=True,
+                    progress=progress,
+                    cancelled=cancelled,
+                )
+                with self._lock:
+                    task.descriptor = descriptor
+            elif task.method == "import":
                 self._external.execute(
                     task.descriptor.model_id,
                     task.origin or "buzz",
@@ -349,8 +401,13 @@ class ModelTaskRunner:
                 state, code = "failed", error.code.value
         except ExternalModelError as error:
             state, code = "failed", error.code.value
-        except Exception:  # the worker must survive any adapter bug
-            _LOG.exception("model task crashed")
+        except CustomModelError as error:
+            if error.code == "model_installation_cancelled":
+                state = "cancelled"
+            else:
+                state, code = "failed", error.code
+        except Exception as error:  # the worker must survive any adapter bug
+            _LOG.error("model task crashed (%s)", type(error).__name__)
             state, code = "failed", ModelTaskFailureCode.FAILED
         with self._lock:
             if state == "completed":

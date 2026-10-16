@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from voz.application.model_tasks import (
     ModelTaskError,
@@ -12,6 +12,8 @@ from voz.application.model_tasks import (
     ModelTaskRunner,
     ModelTaskView,
 )
+from voz.application.ports.custom_models import CustomModelError
+from voz.interfaces.api.models import PrivateModelRoute, custom_model_error
 
 _STATUS = {
     ModelTaskFailureCode.UNCONFIRMED: 400,
@@ -34,8 +36,13 @@ class TaskList(BaseModel):
     tasks: list[ModelTaskView]
 
 
+class CustomInstallRequest(BaseModel):
+    preview_id: str = Field(min_length=32, max_length=32, pattern="^[0-9a-f]{32}$")
+    confirm: bool = Field(default=False, strict=True)
+
+
 def create_model_tasks_router(runner: ModelTaskRunner) -> APIRouter:
-    router = APIRouter(prefix="/api", tags=["models"])
+    router = APIRouter(prefix="/api", tags=["models"], route_class=PrivateModelRoute)
 
     def call[T](action: Callable[[], T]) -> T:
         try:
@@ -45,6 +52,21 @@ def create_model_tasks_router(runner: ModelTaskRunner) -> APIRouter:
                 status_code=_STATUS[error.code],
                 detail={"code": error.code, "message": error.user_message},
             ) from None
+        except CustomModelError as error:
+            raise custom_model_error(error) from None
+
+    def install_custom(body: CustomInstallRequest) -> ModelTaskView:
+        return call(
+            lambda: runner.enqueue_custom(body.preview_id, confirm=body.confirm)
+        )
+
+    router.add_api_route(
+        "/models/custom/install",
+        install_custom,
+        methods=["POST"],
+        response_model=ModelTaskView,
+        status_code=202,
+    )
 
     def install(model_id: str, body: InstallRequest) -> ModelTaskView:
         return call(

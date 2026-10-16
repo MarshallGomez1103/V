@@ -14,20 +14,25 @@ checked by size on each ``is_installed`` call, not hashed again.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
 import tarfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
+from typing import Any
 
+from voz.application.ports.custom_models import CustomValidation
 from voz.application.ports.model_installation import (
     CancelCheck,
     ModelInstallationError,
     ModelInstallationFailureCode,
     ProgressCallback,
 )
+from voz.domain.entities.voice import Voice
 from voz.infrastructure.artifact_download import ArtifactFetcher
 from voz.infrastructure.tts.catalog import (
     DATA_DIR_MARKER,
@@ -38,6 +43,7 @@ from voz.infrastructure.tts.catalog import (
 from voz.infrastructure.tts.families import (
     ModelFilesError,
     discover_files,
+    model_config,
     read_voices,
 )
 from voz.infrastructure.tts.subprocess_provider import TtsModelManifest
@@ -46,6 +52,81 @@ _Code = ModelInstallationFailureCode
 _MANIFEST_NAME = ".voz-tts.json"
 _EXTRACTED = "model"
 _MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024  # decompression-bomb guard (largest: 190 MB)
+
+
+@dataclass(frozen=True, slots=True)
+class _ArchiveLayout:
+    root: str
+    files: tuple[tuple[str, str], ...]
+    directories: tuple[tuple[str, str], ...] = ()
+
+
+def validate_custom_tts_load(family: str, files: dict[str, Path]) -> CustomValidation:
+    """Load weights in the import validation child; never called by the server."""
+    sherpa: Any = importlib.import_module("sherpa_onnx")
+    spec = model_config(family, files)
+    family_config = getattr(sherpa, spec.config_class)(**spec.kwargs)
+    config = sherpa.OfflineTtsConfig(
+        model=sherpa.OfflineTtsModelConfig(
+            **{spec.field: family_config}, num_threads=1, provider="cpu"
+        )
+    )
+    if not config.validate():
+        raise ModelFilesError("invalid model configuration")
+    engine = sherpa.OfflineTts(config)
+    count = int(engine.num_speakers)
+    if not 1 <= count <= 4096 or int(engine.sample_rate) <= 0:
+        raise ModelFilesError("invalid model metadata")
+    try:
+        named = {voice.id: voice for voice in read_voices(family, files)}
+    except ModelFilesError:
+        named = {}
+    voices = tuple(
+        named.get(str(sid), Voice(str(sid), f"Speaker {sid}")) for sid in range(count)
+    )
+    languages = tuple(sorted({lang for voice in voices for lang in voice.languages}))
+    return CustomValidation(voices, languages)
+
+
+def extract_custom_archive(
+    archive: Path,
+    target: Path,
+    allowed: Callable[[str], bool],
+    cancelled: CancelCheck,
+) -> None:
+    """Inspect an untrusted tar, then reuse the catalog's bounded safe extractor."""
+    try:
+        with tarfile.open(archive, "r:bz2") as bundle:
+            members: list[tarfile.TarInfo] = []
+            total = 0
+            for info in bundle:
+                if cancelled():
+                    raise ModelInstallationError(
+                        _Code.CANCELLED, "The import was cancelled."
+                    )
+                total += info.size
+                if (
+                    _unsafe(info.name)
+                    or not (info.isdir() or info.isreg())
+                    or total > _MAX_EXTRACTED_BYTES
+                    or len(members) >= 10_000
+                ):
+                    raise _invalid()
+                members.append(info)
+            names = [info.name for info in members if info.isreg()]
+            roots = {PurePosixPath(name).parts[0] for name in names}
+            root = (
+                next(iter(roots))
+                if len(roots) == 1 and all("/" in name for name in names)
+                else ""
+            )
+            relative = [name[len(root) + 1 :] if root else name for name in names]
+            files = tuple((name, name) for name in relative if allowed(name))
+            if not files:
+                raise _invalid()
+        _extract(archive, _ArchiveLayout(root, files), target, cancelled)
+    except (tarfile.TarError, EOFError, IndexError):
+        raise _invalid() from None
 
 
 def _invalid() -> ModelInstallationError:
@@ -85,7 +166,7 @@ def _clear(path: Path) -> int:
 
 def _extract(
     archive: Path,
-    entry: TtsModelEntry,
+    entry: TtsModelEntry | _ArchiveLayout,
     target: Path,
     cancelled: CancelCheck | None,
 ) -> dict[str, int]:
@@ -101,9 +182,9 @@ def _extract(
                 if _unsafe(info.name):
                     raise _invalid()
                 parts = PurePosixPath(info.name).parts
-                if len(parts) < 2 or parts[0] != entry.root:
+                if entry.root and (len(parts) < 2 or parts[0] != entry.root):
                     continue  # the root directory itself or foreign members
-                rel = "/".join(parts[1:])
+                rel = "/".join(parts[1:]) if entry.root else info.name
                 if rel not in wanted and not rel.startswith(trees):
                     continue
                 if cancelled is not None and cancelled():
@@ -150,10 +231,12 @@ class TtsModelStore:
         data_root: Path,
         catalog: Sequence[TtsModelEntry] = TTS_CATALOG,
         network_timeout_seconds: float = 30.0,
+        custom_manifest: Callable[[str], TtsModelManifest | None] | None = None,
     ) -> None:
         self._root = Path(data_root).absolute() / "models" / "tts"
         self._catalog = {entry.model_id: entry for entry in catalog}
         self._timeout = network_timeout_seconds
+        self._custom_manifest = custom_manifest
 
     def _directory(self, entry: TtsModelEntry) -> Path:
         return self._root / entry.model_id
@@ -201,6 +284,8 @@ class TtsModelStore:
     def manifest(self, model_id: str) -> TtsModelManifest | None:
         """What the engine needs for an installed model; ``None`` otherwise."""
         entry = self._catalog.get(model_id)
+        if entry is None and self._custom_manifest is not None:
+            return self._custom_manifest(model_id)
         if entry is None or not self._intact(entry):
             return None
         directory = self._directory(entry)

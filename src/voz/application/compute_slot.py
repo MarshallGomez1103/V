@@ -31,6 +31,7 @@ class ComputeKind(StrEnum):
     TRANSCRIPTION = "transcription"
     DIARIZATION = "diarization"
     SYNTHESIS = "synthesis"
+    MODEL_VALIDATION = "model_validation"
 
 
 @dataclass(frozen=True, slots=True)
