@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from voz.bootstrap import create_app
 from voz.infrastructure.paths import VozPaths
+from voz.infrastructure.server_token import create_server_token
 
 
 def _client(tmp_path: Path, allowed_hosts: tuple[str, ...] = ()) -> TestClient:
@@ -81,6 +82,7 @@ def test_testserver_is_not_in_the_production_allowlist(tmp_path: Path) -> None:
 
 def test_cli_passes_the_bind_host_to_the_guard(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     from voz.interfaces.cli import main
 
@@ -95,10 +97,14 @@ def test_cli_passes_the_bind_host_to_the_guard(
 
         def run(self) -> None: ...
 
-    monkeypatch.setattr(main, "is_server_ready", lambda _url: False)
+    monkeypatch.setattr(main, "is_server_ready", lambda _url, **_kwargs: False)
     monkeypatch.setattr(main, "create_app", fake_create_app)
     monkeypatch.setattr(main.uvicorn, "Server", FakeServer)
 
-    main.run_server(host="192.168.1.20", port=8765, open_browser=False)
+    token_file = tmp_path / "token"
+    create_server_token(token_file)
+    main.run_server(
+        host="192.168.1.20", port=8765, open_browser=False, auth_token_file=token_file
+    )
 
     assert seen["allowed_hosts"] == ("192.168.1.20",)

@@ -34,21 +34,16 @@ limits.
    to a connectable loopback address (`browser_host`). The Vite development
    server also listens on `127.0.0.1` and proxies `/api`
    (`apps/web/vite.config.ts`); no CORS is configured.
-3. **No implicit cloud.** No cloud client exists in the code or in the
-   dependencies (`pyproject.toml`: Alembic, FastAPI, SQLAlchemy, Typer, Uvicorn
-   and the optional `faster-whisper` extra). A future cloud provider can only
-   run if the user chose it for that job, with no automatic fallback from a
-   local failure, with a visible notice that the audio will leave the machine
-   and with keys kept out of SQLite and the logs. All of that is **planned**
-   (Sections 11 and 12 of the [ROADMAP](../../ROADMAP.md)).
-4. **The network is touched in only two ways.**
-   - Installing a model: `FileSystemModelStore.install` requires
-     `confirmed=True` and a 40-character Git revision, and it is the only path
-     that uses `huggingface_hub`. Today no endpoint or command invokes it.
-   - CLI startup polls `GET /api/health` at the URL of its own server in order
-     to open the browser.
-   Transcribing resolves only local installations (`local_files_only=True`);
-   building the provider, importing VOZ or listing options downloads nothing.
+3. **No implicit cloud.** Cloud providers require explicit selection for the
+   job, a visible notice and credentials outside SQLite and logs. Local failures
+   never silently fall back to a cloud provider. Compatible cloud endpoints also
+   require stored consent; see [provider configuration](../api/providers.md).
+4. **Explicit network access.** Confirmed model/runtime installation may download
+   artifacts. Explicitly selected cloud jobs contact their provider. Local
+   transcription resolves installed models with `local_files_only=True`.
+   CLI readiness polls its own health endpoint, without redirects or environment
+   proxies; when authentication is configured, it sends the token in a header.
+   Building providers and listing local options do not download models.
 5. **No telemetry.** There is no sending of metrics, error reports or update
    checks. The web bundle loads no third-party fonts, scripts or images.
 6. **Data under XDG, outside the checkout.** The database, originals,
@@ -61,7 +56,7 @@ limits.
    path. `voz doctor --redact` hides absolute paths in the report.
 8. **Safe errors and logs.** Responses are `{"detail": {"code", "message"}}`
    with stable codes; FFmpeg tracebacks and stderr are not exposed. No secrets
-   are logged (today no keys are handled).
+   are logged.
 9. **A literal transcript is not silently replaced.** VOZ calls no LLM today;
    any future assisted correction must preserve the literal text and be
    presented as a derivative.
@@ -72,18 +67,21 @@ limits.
   confirmation, the download of a model.
 - Offline behavior is the norm, not a special mode.
 - User data is never mixed with the repository.
-- Cloud providers, when they exist, start from an already-defined consent
-  contract.
+- Cloud providers follow an explicit selection and consent contract.
 
 ## Costs and limits
 
-- **There is no authentication.** Loopback is the access control. Whoever passes
-  `--host` with a network address exposes the API, the media and the transcripts
-  to that entire network without credentials. Since V0-04 the CLI prints a
-  warning when binding outside loopback, and with a wildcard bind (`0.0.0.0`,
-  `::`) the Host guard also accepts this machine's own name and addresses
-  (`--allow-host NAME` adds more). A local authentication mode is still
-  **planned** (the master plan mentions `auth-local`).
+- **Optional loopback authentication; required for CLI LAN exposure (V10-02).**
+  The CLI refuses a non-loopback bind without `--auth-token-file`, before trying
+  to reuse an existing server. `v auth-token --output <file>` creates a new
+  private token file without printing its contents. A configured token protects
+  the complete application: API, UI, static files, SSE and media. API clients use
+  Bearer; browsers use Basic with username `v` and the same token. Basic state
+  changes require a matching Origin; the Host guard remains enabled.
+  Authentication provides no encryption or separate user permissions. See the
+  [authentication contract](../api/authentication.md). Default loopback startup
+  continues without a token. Direct ASGI deployments must explicitly configure
+  authentication and network binding; the CLI rule cannot constrain them.
 - **DNS rebinding mitigated (V0-03).** Listening on loopback is not enough: a
   page at `evil.example` can re-resolve its name to `127.0.0.1` and read the API
   as same-origin. `HostGuardMiddleware`
@@ -98,9 +96,8 @@ limits.
   `127.0.0.1:8765`. The security scope is in [SECURITY.md](../../SECURITY.md).
 - There is no `Content-Security-Policy` or hardening headers on the static
   server (master plan section 17): **planned**.
-- Without an exposed model installer, the user must install the model on their
-  own; there is no complete first-run experience until the Model Manager
-  (Section 8).
+- Model installation remains explicit. Custom weights must match a supported
+  installed engine; declaring a license does not verify its terms.
 - Privacy verification of logs is spot-check only (tests of errors without
   paths), not an automatic audit of all messages.
 - Platform rating follows the invariants of AGENTS.md: anything not exercised is
@@ -124,14 +121,14 @@ confirmed".
 
 ### Mandatory local access token from the start
 
-Postponed. It adds friction and a secret-management surface without yet solving
-multi-user use. It will be reassessed together with a future LAN exposure.
+Not required for default loopback use. LAN exposure through the CLI requires
+a private token file; this shared credential does not provide multi-user isolation.
 
 ### Desktop wrapper (Electron/Tauri)
 
 Postponed; see [ADR-0001](0001-modular-monolith.md).
 
-## Current evidence (2026-09-30)
+## Original evidence (2026-09-30)
 
 | Requirement | Code or test |
 | --- | --- |
@@ -145,13 +142,22 @@ Postponed; see [ADR-0001](0001-modular-monolith.md).
 | Generic errors without traceback | `tests/integration/test_media_upload_api.py::test_unexpected_failure_is_generic_without_traceback` |
 | Search for cloud clients or telemetry in `src/voz`, `apps/web/src` and the bundle | Manual `grep` review on 2026-09-30: no results; only XML namespace URLs and React's error text in the bundle. It is not an automated test. |
 
+## Authentication evidence (2026-10-16)
+
+`tests/unit/test_server_auth.py` covers credentials, Origin validation and
+unbuffered ASGI transports. `tests/unit/infrastructure/test_server_token.py`
+covers private token files; `tests/unit/test_cli_server_auth.py` covers LAN
+rejection before reuse and credential handling.
+`tests/integration/test_server_auth_wiring.py` checks the default application
+and preservation of the Host guard.
+
 ## Verification
 
 This decision is considered respected when:
 
 - `voz` without options listens only on `127.0.0.1`;
-- no normal execution path opens a connection to the Internet, except the
-  explicitly confirmed model installation;
+- no normal execution path opens a connection to the Internet, except
+  confirmed installation and explicitly selected cloud processing;
 - no cloud provider exists without explicit selection, notice and key
   management outside SQLite and logs;
 - no HTTP response contains absolute host paths;

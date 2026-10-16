@@ -13,8 +13,9 @@ import urllib.request
 import webbrowser
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from functools import partial
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Annotated, Protocol, cast
 
 import typer
 import uvicorn
@@ -22,6 +23,11 @@ import uvicorn
 from voz.bootstrap import create_app
 from voz.infrastructure.audio.ffmpeg_tools import ensure_ffmpeg
 from voz.infrastructure.paths import resolve_voz_paths
+from voz.infrastructure.server_token import (
+    ServerTokenError,
+    create_server_token,
+    read_server_token,
+)
 from voz.interfaces.api.host_guard import LOOPBACK_HOSTS
 from voz.interfaces.cli.bench import bench_command
 from voz.interfaces.cli.diagnostics_bundle import build_bundle, write_bundle
@@ -42,6 +48,24 @@ class HttpResponse(Protocol):
 
 
 HttpOpen = Callable[..., AbstractContextManager[HttpResponse]]
+
+
+class _NoReadinessRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+_READINESS_OPEN = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), _NoReadinessRedirect()
+).open
 
 app = typer.Typer(
     add_completion=False,
@@ -101,9 +125,9 @@ def exposure_warning(host: str, port: int) -> str:
     """Explain what a non-loopback bind exposes (ADR-0006)."""
     return (
         f"WARNING: VOZ is listening on {host}:{port}, not only on this machine. "
-        "The API, your media and your transcripts are reachable by anyone on "
-        "that network, and there is no authentication. Use it only on a network "
-        "you trust, or bind to 127.0.0.1 (the default). See ADR-0006."
+        "Access requires the server token. HTTP does not encrypt credentials, "
+        "media or transcripts; use a trusted network or encrypted transport. "
+        "See ADR-0006."
     )
 
 
@@ -118,11 +142,17 @@ def allowed_hosts_for(host: str, extra: tuple[str, ...] = ()) -> tuple[str, ...]
 def is_server_ready(
     base_url: str,
     *,
-    http_open: HttpOpen = urllib.request.urlopen,
+    http_open: HttpOpen = _READINESS_OPEN,
+    auth_token: str | None = None,
 ) -> bool:
     """Return whether the VOZ health endpoint confirms readiness."""
     try:
-        with http_open(f"{base_url}/api/health", timeout=0.5) as response:
+        target: str | urllib.request.Request = f"{base_url}/api/health"
+        if auth_token is not None:
+            target = urllib.request.Request(
+                target, headers={"Authorization": f"Bearer {auth_token}"}
+            )
+        with http_open(target, timeout=0.5) as response:
             if response.status != 200:
                 return False
             payload = cast(object, json.loads(response.read()))
@@ -164,11 +194,21 @@ def open_browser_after_ready(
     return browser_open(base_url)
 
 
-def start_browser_opener(base_url: str) -> threading.Thread:
+def start_browser_opener(
+    base_url: str, *, auth_token: str | None = None
+) -> threading.Thread:
     """Start a daemon that waits for readiness without blocking Uvicorn."""
     opener = threading.Thread(
         target=open_browser_after_ready,
         args=(base_url,),
+        kwargs={
+            "ready_wait": partial(
+                wait_until_ready,
+                ready_check=partial(is_server_ready, auth_token=auth_token),
+            )
+        }
+        if auth_token is not None
+        else {},
         name="voz-browser-opener",
         daemon=True,
     )
@@ -182,11 +222,26 @@ def run_server(
     port: int,
     open_browser: bool,
     allow_hosts: tuple[str, ...] = (),
+    auth_token_file: Path | None = None,
 ) -> None:
     """Run Uvicorn in the foreground and stop cleanly on Ctrl+C."""
+    if auth_token_file is None and not is_loopback_host(host):
+        raise typer.BadParameter(
+            "LAN exposure requires --auth-token-file.", param_hint="--auth-token-file"
+        )
+    try:
+        auth_token = (
+            None if auth_token_file is None else read_server_token(auth_token_file)
+        )
+    except ServerTokenError as error:
+        raise typer.BadParameter(str(error), param_hint="--auth-token-file") from None
     base_url = server_url(host, port)
     # A second double-click finds VOZ already serving: reuse it, don't crash.
-    if is_server_ready(base_url):
+    if (
+        is_server_ready(base_url)
+        if auth_token is None
+        else is_server_ready(base_url, auth_token=auth_token)
+    ):
         typer.echo(f"VOZ ya está abierto en {base_url}")
         if open_browser:
             webbrowser.open(base_url)
@@ -194,7 +249,10 @@ def run_server(
     if not is_loopback_host(host):
         typer.echo(exposure_warning(host, port), err=True)
     if open_browser:
-        start_browser_opener(base_url)
+        if auth_token is None:
+            start_browser_opener(base_url)
+        else:
+            start_browser_opener(base_url, auth_token=auth_token)
 
     servers: list[uvicorn.Server] = []
 
@@ -207,6 +265,7 @@ def run_server(
         app=create_app(
             request_shutdown=stop_server,
             allowed_hosts=allowed_hosts_for(host, allow_hosts),
+            auth_token=auth_token,
         ),
         host=host,
         port=port,
@@ -241,6 +300,12 @@ NO_BROWSER_OPTION = typer.Option(
     help="Do not open the web interface automatically.",
 )
 
+AUTH_TOKEN_OPTION = typer.Option(
+    None,
+    "--auth-token-file",
+    help="Private token file; required for any non-loopback bind.",
+)
+
 
 BUNDLE_OPTION = typer.Option(
     None,
@@ -264,6 +329,7 @@ def root(
     port: int = PORT_OPTION,
     no_browser: bool = NO_BROWSER_OPTION,
     allow_host: list[str] | None = ALLOW_HOST_OPTION,
+    auth_token_file: Path | None = AUTH_TOKEN_OPTION,
 ) -> None:
     """Start VOZ locally; ``voz`` without a subcommand behaves like ``voz serve``."""
     prepare_ffmpeg()
@@ -273,6 +339,11 @@ def root(
             port=port,
             open_browser=not no_browser,
             allow_hosts=tuple(allow_host or ()),
+            **(
+                {"auth_token_file": auth_token_file}
+                if auth_token_file is not None
+                else {}
+            ),
         )
 
 
@@ -282,6 +353,7 @@ def serve(
     port: int = PORT_OPTION,
     no_browser: bool = NO_BROWSER_OPTION,
     allow_host: list[str] | None = ALLOW_HOST_OPTION,
+    auth_token_file: Path | None = AUTH_TOKEN_OPTION,
 ) -> None:
     """Start VOZ locally."""
     run_server(
@@ -289,7 +361,18 @@ def serve(
         port=port,
         open_browser=not no_browser,
         allow_hosts=tuple(allow_host or ()),
+        **({"auth_token_file": auth_token_file} if auth_token_file is not None else {}),
     )
+
+
+@app.command("auth-token")
+def auth_token_command(output: Annotated[Path, typer.Option("--output")]) -> None:
+    """Create a new private server token file without displaying its contents."""
+    try:
+        create_server_token(output)
+    except ServerTokenError as error:
+        raise typer.BadParameter(str(error), param_hint="--output") from None
+    typer.echo("Private server token file created.")
 
 
 @app.command()

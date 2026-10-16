@@ -198,6 +198,7 @@ documentación en inglés, TTS y release). Para retomar, leer
 | V5-05 | Verified | Keyboard focus and sample cancellation regressions fixed; Carbon/M3, light/dark and es/en verified at 390 px with deterministic browser inputs. |
 | V6-05a | Verified | Explicit custom-model previews and confirmed background imports, pinned hashes, isolated load validation, live options and confirmed deletion; fake HTTP and default-wiring tests verified. |
 | V6-05b | Verified | Browser folder copies and remote previews with explicit installation, live progress, cancellation and visible license; Carbon/M3 responsive dialog. |
+| V10-02 | Verified | Private token files, authenticated API/browser access, LAN startup checks and readiness without credential redirects. |
 | V8-03 | Verified | STT bench reuse and TTS first-completed-chunk latency, render throughput and separate RSS peaks with unavailable values preserved. |
 | V8-04 | Verified | Validated Markdown comparison of saved Edge Lab reports, with measured values and separate memory scopes. |
 | V8-02 | Verified | CPU experiment CLI with child-only affinity/address-space controls, deadlines, process-tree cleanup and separate measured/estimated results; disposable-process tests verified. |

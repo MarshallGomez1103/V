@@ -208,6 +208,7 @@ from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.providers import create_providers_router
 from voz.interfaces.api.quality_profiles import create_quality_profiles_router
 from voz.interfaces.api.segments import create_segments_router
+from voz.interfaces.api.server_auth import ServerAuthMiddleware
 from voz.interfaces.api.shutdown import create_shutdown_router
 from voz.interfaces.api.speakers import create_speakers_router
 from voz.interfaces.api.synthesis import create_synthesis_router
@@ -321,6 +322,7 @@ def create_app(
     engine: Engine | None = None,
     request_shutdown: Callable[[], None] | None = None,
     allowed_hosts: Iterable[str] = (),
+    auth_token: str | None = None,
     synthesis_providers: Sequence[SpeechSynthesisProvider] | None = None,
     synthesis_catalog: SynthesisModelCatalog | None = None,
 ) -> FastAPI:
@@ -682,6 +684,7 @@ def create_app(
         version=__version__,
         lifespan=lifespan,
     )
+    application.add_middleware(ServerAuthMiddleware, token=auth_token)
     application.add_middleware(
         HostGuardMiddleware, allowed_hosts=(*LOOPBACK_HOSTS, *allowed_hosts)
     )

@@ -58,9 +58,9 @@ voz --no-browser --port 9000
 By default the server listens only on `127.0.0.1`. Passing `--host` with another
 address exposes the service on the network and must be a deliberate decision:
 
-- `voz` prints a warning to stderr whenever the bind address is not loopback:
-  the API, your media and your transcripts become reachable by anyone on that
-  network, and there is no authentication.
+- Non-loopback binds require `--auth-token-file`. Create a new private token
+  with `v auth-token --output ../v-server-token.txt`. The CLI warns that HTTP
+  does not encrypt credentials or data; see [authentication](../api/authentication.md).
 - The server checks the `Host` header of every request (any port is accepted;
   only the name matters) and answers `400` with the error code
   `host_not_allowed` when the name is not allowed. Always accepted: `127.0.0.1`,
@@ -68,7 +68,7 @@ address exposes the service on the network and must be a deliberate decision:
   with the repeatable `--allow-host` option. With a wildcard bind (`0.0.0.0` or
   `::`), this machine's own host name and IP addresses are accepted too. To reach
   V under another name, add it explicitly, for example
-  `voz --host 0.0.0.0 --allow-host my-pc.local`.
+  `voz --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.local`.
 
 The rationale is in [ADR-0006](../adr/0006-local-first-privacy.md). If you hit
 `host_not_allowed`, see [Troubleshooting](../troubleshooting.md).

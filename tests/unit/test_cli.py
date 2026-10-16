@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import TracebackType
 from typing import cast
 
 import pytest
 from typer.testing import CliRunner
 
+from voz.infrastructure.server_token import create_server_token
 from voz.interfaces.cli.main import (
     app as cli_app,
 )
@@ -197,7 +199,7 @@ def test_run_server_reuses_a_running_voz_instead_of_binding_again(
     assert "VOZ ya está abierto" in capsys.readouterr().out
 
 
-def _not_ready(_url: str) -> bool:
+def _not_ready(_url: str, *, auth_token: str | None = None) -> bool:
     return False
 
 
@@ -227,17 +229,22 @@ def test_run_server_warns_on_stderr_when_exposed_beyond_loopback(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     host: str,
+    tmp_path: Path,
 ) -> None:
     from voz.interfaces.cli import main
 
     _stub_server(monkeypatch)
     monkeypatch.setattr(main, "local_addresses", lambda: ())
+    token_file = tmp_path / "token"
+    create_server_token(token_file)
 
-    main.run_server(host=host, port=8765, open_browser=False)
+    main.run_server(
+        host=host, port=8765, open_browser=False, auth_token_file=token_file
+    )
 
     captured = capsys.readouterr()
     assert "WARNING" in captured.err
-    assert "no authentication" in captured.err
+    assert "requires the server token" in captured.err
     assert host in captured.err
     assert "WARNING" not in captured.out
 
@@ -261,15 +268,21 @@ def test_run_server_does_not_warn_on_loopback(
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "::"])
 def test_wildcard_bind_allows_this_machines_own_addresses(
-    monkeypatch: pytest.MonkeyPatch, host: str
+    monkeypatch: pytest.MonkeyPatch, host: str, tmp_path: Path
 ) -> None:
     from voz.interfaces.cli import main
 
     seen = _stub_server(monkeypatch)
     monkeypatch.setattr(main, "local_addresses", lambda: ("192.168.1.20", "mi-pc"))
 
+    token_file = tmp_path / "token"
+    create_server_token(token_file)
     main.run_server(
-        host=host, port=8765, open_browser=False, allow_hosts=("mi-pc.local",)
+        host=host,
+        port=8765,
+        open_browser=False,
+        allow_hosts=("mi-pc.local",),
+        auth_token_file=token_file,
     )
 
     allowed = cast(tuple[str, ...], seen["allowed_hosts"])
@@ -279,13 +292,18 @@ def test_wildcard_bind_allows_this_machines_own_addresses(
 
 def test_concrete_bind_does_not_add_machine_addresses(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     from voz.interfaces.cli import main
 
     seen = _stub_server(monkeypatch)
     monkeypatch.setattr(main, "local_addresses", lambda: ("10.0.0.5",))
 
-    main.run_server(host="192.168.1.20", port=8765, open_browser=False)
+    token_file = tmp_path / "token"
+    create_server_token(token_file)
+    main.run_server(
+        host="192.168.1.20", port=8765, open_browser=False, auth_token_file=token_file
+    )
 
     assert seen["allowed_hosts"] == ("192.168.1.20",)
 

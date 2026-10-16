@@ -66,7 +66,7 @@ If you reach V under another name (a DNS alias, a reverse proxy, another
 machine's name), add it explicitly; the option is repeatable:
 
 ```bash
-voz --host 0.0.0.0 --allow-host my-pc.local --allow-host my-pc
+voz --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.local --allow-host my-pc
 ```
 
 Reason: [ADR-0006](adr/0006-local-first-privacy.md).
@@ -75,9 +75,10 @@ Reason: [ADR-0006](adr/0006-local-first-privacy.md).
 
 If the bind address is not loopback (`127.0.0.1`, `::1`, `localhost`), `voz`
 prints to stderr that V is listening beyond this machine. That is expected, not an
-error: the API, your media and your transcripts are reachable by anyone on that
-network, and **there is no authentication**. Use it only on a network you trust,
-or go back to the default (`127.0.0.1`).
+error. A non-loopback bind requires `--auth-token-file`; create the file first
+with `v auth-token --output ../v-server-token.txt`. Credentials protect access
+but HTTP does not encrypt traffic. See [authentication](api/authentication.md),
+or return to the default (`127.0.0.1`).
 
 ## FFmpeg
 

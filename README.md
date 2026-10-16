@@ -179,10 +179,11 @@ unambiguous ([ADR-0009](docs/adr/0009-rename-to-v.md)).
 Other options:
 
 - `--port N` changes the port.
-- `--host ADDRESS` binds to another address. **V has no authentication.** Anyone
-  who can reach that address can read and delete your transcripts, so bind to a
-  LAN address only when you intend to, on a network you trust. V prints a
-  warning when you do.
+- `--host ADDRESS` binds to another address. Non-loopback binds require
+  `--auth-token-file FILE`. Create a private credential with
+  `v auth-token --output ../v-server-token.txt`; use it as a Bearer token for
+  API clients, or as the password for browser username `v`. HTTP does not
+  encrypt traffic. See [authentication](docs/api/authentication.md).
 - `--allow-host NAME` (repeatable) adds a hostname to the accepted `Host`
   headers, for example `my-pc.local`. See
   [Troubleshooting](docs/troubleshooting.md) if you see `host_not_allowed`.

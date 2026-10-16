@@ -6,8 +6,7 @@ V (formerly VOZ) is a local-first application: it is installed and run on one
 person's machine, serves on `http://127.0.0.1:8765` by default, and needs no
 account or remote service to work (see [README.md](README.md) and the product
 invariants in [AGENTS.md](AGENTS.md)). This policy covers the code in this
-repository: the command-line entry point (`voz` today; a `v` alias is
-planned), the local FastAPI server, the web frontend, and the infrastructure
+repository: the command-line entry points (`v` and `voz`), the local FastAPI server, the web frontend, and the infrastructure
 adapters (FFmpeg, SQLite persistence, transcription providers).
 
 Out of scope: optional third-party cloud providers (their own security is up
@@ -27,11 +26,12 @@ when judging a report:
   rejects any request whose `Host` is not `127.0.0.1`, `localhost`, `[::1]` or
   a name the user passed explicitly (`--host`, `--allow-host`). See
   [ADR-0006](docs/adr/0006-local-first-privacy.md).
-- **No authentication when exposed.** If the user passes `--host` with a
-  network address, the API, the media and the transcripts are reachable by
-  everyone on that network, with no credentials. That is documented behavior,
-  not a vulnerability by itself. A local authentication mode is planned, not
-  implemented.
+- **Shared-token authentication.** CLI binds outside loopback require a private
+  token file. A configured token protects API, UI, static assets and streams;
+  Basic browser state changes also require a matching Origin. Default loopback
+  use remains unauthenticated. A token does not encrypt HTTP or isolate users.
+  Direct ASGI deployments must explicitly configure authentication. See the
+  [authentication contract](docs/api/authentication.md).
 - **Uploads are untrusted input.** Media files go through the FFmpeg ingestion
   pipeline; originals are immutable and derived files are stored separately
   ([ADR-0003](docs/adr/0003-ffmpeg-ingestion.md)).
@@ -60,9 +60,8 @@ report instead:
 
 - UI bugs with no impact on confidentiality, integrity or availability;
 - failures of a feature already marked experimental in `ROADMAP.md`;
-- the lack of authentication when the user deliberately exposes the server
-  with `--host`, or access by other local users and processes on the same
-  machine (both are documented limits);
+- access by other local users and processes when optional loopback
+  authentication is disabled (a documented limit);
 - vulnerabilities that exist only in a third-party provider, fork or
   unofficial build.
 
