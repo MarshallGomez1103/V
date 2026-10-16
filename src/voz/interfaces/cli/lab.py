@@ -18,6 +18,7 @@ from voz.application.edge_lab import (
     decode_definition,
 )
 from voz.infrastructure.constrained_process import ConstrainedProcess, outside_checkout
+from voz.interfaces.cli.lab_results import register_results_command
 
 
 def load_definition(path: Path) -> ExperimentDefinition:
@@ -79,6 +80,7 @@ def create_lab_app(executor: ExperimentExecutor | None = None) -> typer.Typer:
 
     app.callback()(_lab)
     app.command("run")(_run)
+    register_results_command(app)
     return app
 
 

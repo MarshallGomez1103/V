@@ -160,3 +160,11 @@ def test_main_cli_registers_lab_run() -> None:
     result = CliRunner().invoke(app, ["lab", "run", "--help"])
     assert result.exit_code == 0, result.output
     assert "definition" in result.output.lower()
+
+
+def test_main_cli_registers_lab_compare() -> None:
+    from voz.interfaces.cli.main import app
+
+    result = CliRunner().invoke(app, ["lab", "compare", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "reports" in result.output.lower()

@@ -182,6 +182,9 @@ observations remain null with a reason. See
 [benchmark definitions](edge-lab-benchmarks.md) for precise scope and comparison
 rules; these metrics are not validated hardware performance results.
 
+Use [`v lab compare`](edge-lab-results.md) to render saved reports as a
+Markdown comparison table without running another experiment.
+
 Failed and interrupted runs return empty measurements and preserve readiness
 observations when available. An allocation failure is not automatically diagnosed
 as physical RAM exhaustion; no OOM attribution is fabricated. Output excludes
