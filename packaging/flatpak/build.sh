@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# S15.13: prototipo de Flatpak de VOZ (usa el CPython y el FFmpeg del runtime).
+# Build the experimental V Flatpak using the runtime's CPython and FFmpeg.
 #
-# Uso: packaging/flatpak/build.sh [wheel]
-#   wheel            wheel a empaquetar (por defecto se construye uno desde HEAD)
-# Variables:
-#   VOZ_EXTRAS       extras a incluir, p. ej. "asr-local" (por defecto ninguno)
-#   VOZ_WORK         directorio de trabajo (por defecto un mktemp; nunca el repo)
-#   VOZ_OUT          directorio del .flatpak resultante (por defecto $VOZ_WORK/out)
-# Instala la app SOLO en la instalacion de usuario (--user) para poder probarla:
-#   flatpak run dev.voz.Voz --no-browser   |   packaging/common/smoke.sh flatpak run dev.voz.Voz
-#   flatpak uninstall --user -y dev.voz.Voz     (para retirarla)
-# Necesita: flatpak, org.flatpak.Builder y org.freedesktop.Sdk//25.08 (--user), y red.
+# Usage: packaging/flatpak/build.sh [wheel]
+#   wheel            wheel to package (defaults to a build from HEAD)
+# Environment:
+#   VOZ_EXTRAS       optional extras, e.g. "asr-local" (defaults to none)
+#   VOZ_WORK         work directory (defaults to mktemp; never the checkout)
+#   VOZ_OUT          bundle directory (defaults to $VOZ_WORK/out)
+# Creates a local bundle without installing the application on the host.
+# Requires flatpak, org.flatpak.Builder, org.freedesktop.Sdk//25.08 (--user),
+# and network access for build dependencies.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -19,7 +18,7 @@ work="${VOZ_WORK:-$(mktemp -d)}"
 out="${VOZ_OUT:-$work/out}"
 extras="${VOZ_EXTRAS:-}"
 mkdir -p "$work" "$out"
-echo "trabajo: $work"
+echo "Work directory: $work"
 
 wheel="${1:-}"
 if [[ -z "$wheel" ]]; then
@@ -31,23 +30,24 @@ if [[ -z "$wheel" ]]; then
 fi
 
 stage="$work/stage"
-[[ ! -e "$stage" ]] || { echo "$stage ya existe; usa un VOZ_WORK nuevo" >&2; exit 1; }
+[[ ! -e "$stage" ]] || { echo "Stage already exists; use a fresh VOZ_WORK" >&2; exit 1; }
 mkdir -p "$stage"
 cp "$wheel" "$stage/"
-cp "$here/common/voz.svg" "$here/flatpak/dev.voz.Voz.metainfo.xml" "$stage/"
-sed 's/^Icon=voz$/Icon=dev.voz.Voz/' "$here/common/voz.desktop" >"$stage/dev.voz.Voz.desktop"
+cp "$here/common/v.svg" "$stage/io.github.marshallgomez1103.v.svg"
+cp "$here/flatpak/io.github.marshallgomez1103.v.metainfo.xml" "$stage/"
+sed 's/^Icon=v$/Icon=io.github.marshallgomez1103.v/' "$here/common/v.desktop" >"$stage/io.github.marshallgomez1103.v.desktop"
 spec=""
 [[ -n "$extras" ]] && spec="[$extras]"
-sed "s/EXTRAS_SPEC/$spec/" "$here/flatpak/dev.voz.Voz.yml" >"$work/dev.voz.Voz.yml"
+sed "s/EXTRAS_SPEC/$spec/" "$here/flatpak/io.github.marshallgomez1103.v.yml" >"$work/io.github.marshallgomez1103.v.yml"
 
 t0=$SECONDS
 cd "$work"
-flatpak run --user org.flatpak.Builder --user --force-clean --install \
+flatpak run --user org.flatpak.Builder --user --force-clean \
   --disable-rofiles-fuse --repo="$work/repo" --state-dir="$work/state" \
-  build dev.voz.Voz.yml >"$work/flatpak-builder.log" 2>&1 ||
+  build io.github.marshallgomez1103.v.yml >"$work/flatpak-builder.log" 2>&1 ||
   { tail -40 "$work/flatpak-builder.log" >&2; exit 1; }
-echo "flatpak-builder en $((SECONDS - t0)) s"
+echo "flatpak-builder completed in $((SECONDS - t0)) s"
 
-name="VOZ-$(basename "$wheel" | cut -d- -f2)${extras:+-$extras}-x86_64.flatpak"
-flatpak build-bundle "$work/repo" "$out/$name" dev.voz.Voz >/dev/null
+name="V-$(basename "$wheel" | cut -d- -f2)${extras:+-$extras}-x86_64.flatpak"
+flatpak build-bundle "$work/repo" "$out/$name" io.github.marshallgomez1103.v >/dev/null
 ls -l "$out/$name"

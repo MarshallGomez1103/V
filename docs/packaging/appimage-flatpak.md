@@ -1,37 +1,49 @@
 # AppImage and Flatpak: measured prototypes (S15.12, S15.13)
 
-Status: **working prototypes, not published and not supported** (AGENTS.md:
-anything not exercised on a platform is experimental). They were built and tested
-on 2026-09-30 only on Bazzite (Fedora Atomic) x86-64 with an RTX 4060 Laptop,
-wheel `voz_transcriber-0.1.0` built from `HEAD`. There is no CI for these
-formats.
+Status: **experimental prototypes, not published or supported**. The current
+recipes use the V brand. Packaging tests exercise staging and command forwarding
+with local tool substitutes; they do not build or run an AppImage or Flatpak.
+A real wheel extracted into an AppDir was also started with the existing Python
+environment: `/api/health` and `/` returned 200 and API shutdown exited with 0.
+This does not verify standalone CPython, FUSE or a complete AppImage.
+Native Windows/macOS launcher verification is also pending.
+
+The measurements below describe the **2026-09-30 builds**, before the rename,
+on Bazzite (Fedora Atomic) x86-64 with an RTX 4060 Laptop and wheel
+`voz_transcriber-0.1.0`. They are not measurements of the current recipes.
+There is no CI for these formats.
 
 Reproducible recipes in `packaging/`:
 
 | File | Purpose |
 | --- | --- |
 | `packaging/appimage/build.sh`, `AppRun` | AppImage: standalone CPython (uv) + wheel + dependencies in `usr/lib/voz` |
-| `packaging/flatpak/build.sh`, `dev.voz.Voz.yml`, `dev.voz.Voz.metainfo.xml` | Flatpak on `org.freedesktop.Platform//25.08` |
-| `packaging/common/smoke.sh` | Starts the package with `--no-browser`, measures the time to `/api/health` 200, checks `/` and the stop with SIGINT |
-| `packaging/common/voz.desktop`, `voz.svg` | Shared launcher and icon |
+| `packaging/flatpak/build.sh`, `io.github.marshallgomez1103.v.yml`, `io.github.marshallgomez1103.v.metainfo.xml` | Flatpak on `org.freedesktop.Platform//25.08` |
+| `packaging/common/smoke.sh` | Starts the package with `--no-browser`, measures the time to `/api/health` 200, checks `/` and requests graceful shutdown |
+| `packaging/common/v.desktop`, `v.svg` | Shared launcher and icon |
 
 ```bash
 packaging/appimage/build.sh [wheel]            # VOZ_EXTRAS=asr-local, VOZ_FFMPEG_DIR=<dir with static ffmpeg/ffprobe>
-packaging/flatpak/build.sh [wheel]             # VOZ_EXTRAS=asr-local; installs with --user
-packaging/common/smoke.sh ./VOZ-0.1.0-x86_64.AppImage
-packaging/common/smoke.sh flatpak run dev.voz.Voz
+packaging/flatpak/build.sh [wheel]             # VOZ_EXTRAS=asr-local; builds without installing
+packaging/common/smoke.sh ./V-0.1.0-x86_64.AppImage
 ```
+
+`smoke.sh` gives the child a temporary HOME and XDG directories, checks both
+HTTP endpoints, requests `POST /api/shutdown` with the action header and requires
+HTTP 202 plus exit 0 within a deadline. Signals clean up failed runs. It rejects
+Flatpak commands: a sandbox launch with disposable storage has not been verified.
 
 Both scripts work in `VOZ_WORK` (a `mktemp -d` by default; never the repo), start
 from `git archive HEAD` if not given a wheel, and need network access (PyPI, uv's
 standalone CPython, `appimagetool`, the `org.flatpak.Builder` extension and the
-`--user` SDK). The `dev.voz.Voz` ID is provisional and not registered. These
-prototypes were built before the rename to V; artifact names keep the historical
-`VOZ-*` spelling, the `VOZ_*` environment variables are unchanged on purpose, and
-the final Flatpak ID will be decided later (slice V10-04,
-[ADR-0009](../adr/0009-rename-to-v.md)).
+`--user` SDK). Flatpak uses `io.github.marshallgomez1103.v`; this is the
+application identifier, not a website or network address. Artifact names use
+`V-*`; the Python package,
+distribution and `VOZ_*` environment variables retain their compatibility names
+([ADR-0009](../adr/0009-rename-to-v.md)). The Flatpak build produces a bundle
+without installing it into the host's user installation.
 
-## Measured results
+## Historical measured results (2026-09-30)
 
 Startup = process launched with empty XDG directories until `/api/health` 200
 (database migration included), 3 repetitions per variant where indicated.
@@ -86,11 +98,13 @@ declares `--share=network`, which also enables the cloud providers only if the
 user chooses them; it still listens on `127.0.0.1`, but the sandbox no longer
 isolates the network.
 
-**XDG.** V already honors XDG. Flatpak sets `XDG_*` to `~/.var/app/dev.voz.Voz/`:
+**XDG.** V already honors XDG. Flatpak sets `XDG_*` to `~/.var/app/io.github.marshallgomez1103.v/`:
 the data (database, projects, multi-GB models) ends up **separate** from that of
 `uv tool install` and is not shared. The AppImage uses the host's normal XDG
 paths, that is, the same data as a `uv` install. Originals are uploaded from the
-browser, so filesystem access is not requested.
+browser, so filesystem access is not requested. The old prototype used
+`dev.voz.Voz`, which has a separate Flatpak data namespace. There is no automatic
+migration or deletion of either namespace.
 
 **GPU/CUDA.** In Flatpak, `--device=all` is needed (`/dev/nvidia*`;
 `--device=dri` is not enough) along with the

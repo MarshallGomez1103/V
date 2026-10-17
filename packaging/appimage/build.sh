@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# S15.12: prototipo de AppImage de VOZ (CPython standalone + wheel + dependencias).
+# V AppImage prototype (standalone CPython + wheel + dependencies).
 #
 # Uso: packaging/appimage/build.sh [wheel]
 #   wheel            wheel a empaquetar (por defecto se construye uno desde HEAD)
@@ -34,7 +34,7 @@ wheel="$(realpath "$wheel")"
 spec="$wheel"
 [[ -n "$extras" ]] && spec="voz-transcriber[$extras] @ file://$wheel"
 
-appdir="$work/VOZ.AppDir"
+appdir="$work/V.AppDir"
 [[ ! -e "$appdir" ]] || { echo "$appdir ya existe; usa un VOZ_WORK nuevo" >&2; exit 1; }
 mkdir -p "$appdir/usr/lib/voz" "$appdir/usr/bin"
 
@@ -56,9 +56,9 @@ if [[ -n "${VOZ_FFMPEG_DIR:-}" ]]; then
 fi
 
 install -m755 "$here/appimage/AppRun" "$appdir/AppRun"
-install -m644 "$here/common/voz.desktop" "$appdir/voz.desktop"
-install -m644 "$here/common/voz.svg" "$appdir/voz.svg"
-ln -sf voz.svg "$appdir/.DirIcon"
+install -m644 "$here/common/v.desktop" "$appdir/v.desktop"
+install -m644 "$here/common/v.svg" "$appdir/v.svg"
+ln -sf v.svg "$appdir/.DirIcon"
 
 tool="${APPIMAGETOOL:-}"
 if [[ -z "$tool" ]]; then
@@ -70,7 +70,7 @@ if [[ -z "$tool" ]]; then
   }
 fi
 
-name="VOZ-$(python3 -c 'import re,sys; print(re.search(r"-(\d[^-]*)-", sys.argv[1].rsplit("/",1)[1]).group(1))' "$wheel")${extras:+-$extras}-x86_64.AppImage"
+name="V-$(python3 -c 'import re,sys; print(re.search(r"-(\d[^-]*)-", sys.argv[1].rsplit("/",1)[1]).group(1))' "$wheel")${extras:+-$extras}-x86_64.AppImage"
 t1=$SECONDS
 ARCH=x86_64 "$tool" --appimage-extract-and-run "$appdir" "$out/$name" >"$work/appimagetool.log" 2>&1 ||
   { cat "$work/appimagetool.log" >&2; exit 1; }

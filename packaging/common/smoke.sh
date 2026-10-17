@@ -1,54 +1,109 @@
 #!/usr/bin/env bash
-# Prueba de humo de un empaquetado: arranca el comando dado con XDG temporales y
-# mide el tiempo hasta que /api/health responde 200 (la UI en / también).
-# Uso: packaging/common/smoke.sh <comando...>   p. ej. ./VOZ-0.1.0-x86_64.AppImage
-# El comando recibe `--no-browser --port <libre>` al final.
-# Flatpak: packaging/common/smoke.sh flatpak run dev.voz.Voz (usa su propio XDG en ~/.var/app).
+# Smoke a V package with disposable HOME/XDG state and a bounded shutdown.
+# Usage: packaging/common/smoke.sh ./V.AppImage [arguments...]
+# Flatpak is refused until sandbox state and instance cleanup are verified.
 set -euo pipefail
+exec python3 - "$@" <<'PY'
+import math
+import os
+from pathlib import Path
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 
-work="$(mktemp -d)"
-pid=""
-flatpak_app=""
-[[ "${1:-}" == flatpak ]] && flatpak_app="${*: -1}"
-cleanup() {
-  [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
-  # matar `flatpak run` no termina la app del sandbox (quedaban instancias vivas)
-  [[ -n "$flatpak_app" ]] && flatpak kill "$flatpak_app" 2>/dev/null || true
-  rm -rf "$work"
-}
-trap cleanup EXIT
-mkdir -p "$work"/{config,data,cache,state,cwd}
-# Flatpak fija su propio XDG y localiza la app via XDG_DATA_HOME: no se reasigna.
-if [[ "$1" != flatpak ]]; then
-  export XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data"
-  export XDG_CACHE_HOME="$work/cache" XDG_STATE_HOME="$work/state"
-fi
-cd "$work/cwd"
-
-port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-start=$(date +%s.%N)
-"$@" --no-browser --port "$port" >"$work/server.log" 2>&1 &
-pid=$!
-
-status() { # <ruta> -> estado HTTP o 0
-  python3 - "http://127.0.0.1:$port$1" <<'PY'
-import sys, urllib.request
+command = sys.argv[1:]
+def interrupted(signum, frame):
+    raise KeyboardInterrupt
+signal.signal(signal.SIGTERM, interrupted)
+if not command:
+    sys.exit("Usage: packaging/common/smoke.sh <command...>")
+if Path(command[0]).name == "flatpak":
+    sys.exit("Flatpak smoke requires verified sandbox isolation; not launched.")
 try:
-    print(urllib.request.urlopen(sys.argv[1], timeout=2).status)
-except OSError:
-    print(0)
-PY
-}
+    timeout = float(os.environ.get("VOZ_SMOKE_TIMEOUT", "30"))
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError
+except ValueError:
+    sys.exit("VOZ_SMOKE_TIMEOUT must be a positive finite number.")
 
-for _ in $(seq 1 300); do
-  [[ "$(status /api/health)" == 200 ]] && break
-  kill -0 "$pid" 2>/dev/null || { cat "$work/server.log" >&2; exit 1; }
-  sleep 0.1
-done
-[[ "$(status /api/health)" == 200 ]] || { echo "/api/health no respondió 200" >&2; cat "$work/server.log" >&2; exit 1; }
-end=$(date +%s.%N)
-[[ "$(status /)" == 200 ]] || { echo "/ no respondió 200" >&2; exit 1; }
-printf 'ok  /api/health 200 en %.2f s (puerto %s)\n' "$(echo "$end - $start" | bc -l)" "$port"
-kill -INT "$pid"
-wait "$pid" && echo "ok  parada limpia (exit 0)" || echo "parada con exit $?"
-pid=""
+# ponytail: one local process group; Flatpak needs separate sandbox supervision.
+with tempfile.TemporaryDirectory(prefix="v-smoke-") as work:
+    env = os.environ.copy()
+    for key, directory in {
+        "HOME": "home", "XDG_CONFIG_HOME": "config", "XDG_DATA_HOME": "data",
+        "XDG_CACHE_HOME": "cache", "XDG_STATE_HOME": "state",
+        "XDG_RUNTIME_DIR": "runtime",
+    }.items():
+        path = Path(work, directory)
+        path.mkdir(mode=0o700)
+        env[key] = str(path)
+    cwd = Path(work, "cwd")
+    cwd.mkdir()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    # Resolve relative executable paths before entering the disposable cwd.
+    if "/" in command[0]:
+        command[0] = str(Path(command[0]).resolve())
+    with Path(work, "server.log").open("w+") as log:
+        process = subprocess.Popen(
+            [*command, "--no-browser", "--port", str(port)], env=env, cwd=cwd,
+            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
+        )
+        try:
+            started = time.monotonic()
+            deadline = started + timeout
+            # Ignore host proxy settings for the loopback probe.
+            http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            for route in ("/api/health", "/"):
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if process.poll() is not None:
+                        raise RuntimeError("Server exited before smoke completed.")
+                    if remaining <= 0:
+                        raise RuntimeError(f"{route} did not respond 200 before deadline.")
+                    try:
+                        with http.open(f"http://127.0.0.1:{port}{route}",
+                                       timeout=min(0.2, remaining)) as response:
+                            if response.status == 200:
+                                break
+                    except (OSError, urllib.error.URLError):
+                        pass
+                    time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+            print(f"ok  /api/health and / 200 in {time.monotonic() - started:.2f} s")
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/shutdown", method="POST",
+                headers={"X-VOZ-Action": "shutdown"},
+            )
+            with http.open(request, timeout=min(timeout, 5)) as response:
+                if response.status != 202:
+                    raise RuntimeError("Server did not accept shutdown (expected 202).")
+            if process.wait(timeout=min(timeout, 5)) != 0:
+                raise RuntimeError("Server shutdown returned a nonzero exit code.")
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                pass
+            else:
+                raise RuntimeError("Server shutdown left child processes alive.")
+            print("ok  clean shutdown (exit 0)")
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, KeyboardInterrupt) as error:
+            print(f"Smoke failed: {error}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.killpg(process.pid, sig)
+                except ProcessLookupError:
+                    break
+                try:
+                    process.wait(timeout=min(timeout, 1))
+                except subprocess.TimeoutExpired:
+                    pass
+            process.wait(timeout=1)
+PY

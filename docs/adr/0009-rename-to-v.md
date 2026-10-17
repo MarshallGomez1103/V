@@ -13,9 +13,8 @@
 
 The project started as **VOZ**, a local transcriber. Its scope is growing into
 a local voice harness: any speech-to-text or text-to-speech model the user
-chooses, downloaded and run on their own hardware. The owner approved a new
-public name, **V** (subtitle "Local Voice AI"), and has already renamed the
-repository to `MarshallGomez1103/V`.
+chooses, downloaded and run on their own hardware. The public name is now **V**
+(subtitle "Local Voice AI"), with repository `MarshallGomez1103/V`.
 
 The old name is spread across the tree (figures from `git grep`, excluding the
 compiled bundle in `src/voz/static`):
@@ -67,8 +66,8 @@ contract unchanged (strategy B of the rename analysis).
    - export format identifier `voz.transcript`, version 1;
    - environment variables `VOZ_*`, with **no** `V_*` alias: a single-letter
      prefix collides too easily with unrelated variables;
-   - Flatpak application id (currently the provisional, unregistered
-     `dev.voz.Voz`), decided later in slice V10-04.
+   - Flatpak identity was deferred at this decision date; the packaging
+     update below records the new identifier separately.
 5. **History is not rewritten.** Past CHANGELOG entries and existing ADRs keep
    the VOZ name in their historical text.
 6. **Any future full internal migration** (package, XDG paths, database file,
@@ -129,10 +128,10 @@ environment.
 | UI, `<title>`, PWA manifest | VOZ | V | Display only |
 | `authors` in `pyproject.toml` | `VOZ contributors` | `V contributors` | Metadata only |
 | Project URLs | `.../voz` | `.../V` | Metadata only |
-| Flatpak app id | `dev.voz.Voz` (provisional) | to be decided (V10-04) | Not published yet |
+| Flatpak app id | `dev.voz.Voz` (provisional) | `io.github.marshallgomez1103.v` (V10-04) | Separate Flatpak data namespace; no automatic migration |
 | CHANGELOG history and ADR-0001 to ADR-0008 | VOZ | VOZ | Not rewritten |
 
-## Current evidence (2026-10-11)
+## Implementation snapshot (2026-10-11)
 
 This ADR records a decision; the implementation lands in later slices and is
 **planned** until then.
@@ -148,6 +147,18 @@ This ADR records a decision; the implementation lands in later slices and is
 | Desktop entry `Name=V` | **planned**, V1-05 |
 | English README and docs | **planned**, V1-06 to V1-09 |
 | `authors` and project URLs | done, V1-10 and V1-11 (`pyproject.toml`) |
+
+## Flatpak identity (2026-10-16)
+
+The V packaging recipes use `io.github.marshallgomez1103.v` consistently in the
+manifest, metainfo, desktop entry and icon. This identifier names an application;
+it does not create a website or change the loopback server address.
+
+Flatpak assigns each application its own XDG namespace. The new identifier has
+separate storage from the prototype `dev.voz.Voz`. No existing data is moved or
+deleted, and the internal `voz/` directory names remain unchanged. Packaging
+staging is tested locally; complete package builds and native Windows/macOS
+verification remain pending.
 
 ## Verification
 

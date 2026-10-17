@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=VOZ
-GenericName=Transcriber
-Comment=Local-first workspace for long-form transcription
-Exec=voz
-Icon=voz
+Name=V
+GenericName=Local Voice AI
+Comment=Local-first voice workspace
+Exec=v
+Icon=v
 Terminal=false
 Categories=AudioVideo;Audio;
 Keywords=transcription;speech;whisper;

@@ -23,6 +23,27 @@ From a checkout, the equivalent of "clone and double-click" is:
 uv run --extra asr-local --extra diarization voz
 ```
 
+## Launchers and native verification
+
+Use `Start-V-Windows.bat` on Windows or `Start-V-macOS.command` on macOS.
+The `Iniciar-*` names remain compatibility wrappers for one release. Both
+launchers use the `voz` alias, which also works in environments created before
+the `v` entry point existed.
+
+Shell forwarding tests on Linux use a local `uv` substitute. They check paths
+with spaces and argument forwarding without installing software. They do not
+verify Windows batch execution, macOS Finder, Gatekeeper or native shortcuts.
+
+Before treating either platform as supported, check on that platform:
+
+1. Open the checkout from a path containing spaces and double-click its V launcher.
+2. Confirm the browser shows V and a second launch reuses the running server.
+3. Create the desktop shortcut, open V through it, then remove the shortcut.
+4. Close V from the UI and confirm the server stops without a remaining process.
+5. Repeat with the legacy launcher; confirm projects remain available.
+
+These native checks are pending; the launchers are experimental.
+
 ## Automatic FFmpeg
 
 V needs `ffmpeg` and `ffprobe`. If they are not on the `PATH`, at startup it

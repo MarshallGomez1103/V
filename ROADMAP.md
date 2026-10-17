@@ -185,11 +185,9 @@ S11 (salvo S11.09), S12, S14.02/07/13, S15.10 y S16.19. Siguiente (5c): S13
 calidad, badge CLOUD (S11.09), S15.06, S16.02.
 
 
-Desde 2026-10-10 el trabajo activo es el Programa V (marca V, endurecimiento,
-documentación en inglés, TTS y release). Para retomar, leer
-`.ai/v-plan/HANDOFF.md`, `.ai/v-plan/STATUS.md` y
-`.ai/v-plan/AGENT-PROTOCOL.md` (privados, fuera de Git). Línea base: HEAD
-1186908 = `origin/main`; pytest 1612 passed / 3 skipped, vitest 543.
+Desde 2026-10-10 el Programa V cubre marca, endurecimiento, documentación en
+inglés, TTS y preparación de release. La tabla siguiente describe el alcance
+verificado y las limitaciones pendientes.
 
 ## Voice engine extensions
 
@@ -203,6 +201,7 @@ documentación en inglés, TTS y release). Para retomar, leer
 | V7-01 | Verified | Synthetic CPU measurements compare 10/15/30-minute checkpoints with pinned model hashes and persistent SQLite; the 30-minute default remains unchanged. |
 | V10-01 | Verified | Same-origin CSP and response hardening, dependency patches with no added packages, installed-environment audits and secret-history review. |
 | V10-07 | Verified | Local OpenAI-compatible models, transcription and WAV speech endpoints. |
+| V10-04 | Verified locally; native packages pending | V-branded recipes, Flatpak ID io.github.marshallgomez1103.v and isolated HTTP/shutdown smoke; complete AppImage/Flatpak builds and native Windows/macOS checks pending. |
 | V10-05 | Verified | Deterministic bundle byte budgets and 40 Chromium structural accessibility/responsive checks, with bounded coverage documented. |
 | V8-03 | Verified | STT bench reuse and TTS first-completed-chunk latency, render throughput and separate RSS peaks with unavailable values preserved. |
 | V8-04 | Verified | Validated Markdown comparison of saved Edge Lab reports, with measured values and separate memory scopes. |
