@@ -57,6 +57,7 @@ from voz.interfaces.api.models import create_models_router
 class Validator:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.roles: list[dict[str, str]] = []
         self.error: Exception | None = None
 
     def validate(
@@ -68,7 +69,7 @@ class Validator:
         file_roles: dict[str, str],
         cancelled: CancelCheck,
     ) -> CustomValidation:
-        del file_roles
+        self.roles.append(dict(file_roles))
         assert directory.is_dir() and not cancelled()
         self.calls.append((engine, family))
         if self.error:
@@ -1071,3 +1072,345 @@ sys.exit(main())
 def test_sherpa_asr_preserves_license_metadata(name: str) -> None:
     assert custom_models.allowed_file("sherpa-onnx-asr", name)
     assert not custom_models.allowed_file("sherpa-onnx-asr", "nested/" + name)
+
+
+@pytest.mark.parametrize(
+    ("repo", "weights", "engine", "family", "roles"),
+    [
+        (
+            "ct2-model",
+            {"model.bin", "config.json", "tokenizer.json"},
+            "faster-whisper",
+            "ctranslate2",
+            {},
+        ),
+        ("ggml-model", {"ggml-tiny.bin"}, "whisper-cpp", "ggml", {}),
+        (
+            "whisper-onnx",
+            {"tiny-encoder.int8.onnx", "tiny-decoder.int8.onnx", "tokens.txt"},
+            "sherpa-onnx-asr",
+            "whisper",
+            {
+                "encoder": "tiny-encoder.int8.onnx",
+                "decoder": "tiny-decoder.int8.onnx",
+                "tokens": "tokens.txt",
+            },
+        ),
+        (
+            "kitten-model",
+            {"model.onnx", "tokens.txt", "voices.bin", "espeak-ng-data/phontab"},
+            "sherpa-onnx-tts",
+            "kitten",
+            {},
+        ),
+        (
+            "kokoro-model",
+            {"model.onnx", "tokens.txt", "voices.bin", "espeak-ng-data/phontab"},
+            "sherpa-onnx-tts",
+            "kokoro",
+            {},
+        ),
+        ("piper-vits", {"model.onnx", "tokens.txt"}, "sherpa-onnx-tts", "vits", {}),
+    ],
+)
+def test_auto_hf_previews_metadata_only_then_validates_and_pins_on_confirmation(
+    tmp_path: Path,
+    repo: str,
+    weights: set[str],
+    engine: str,
+    family: str,
+    roles: dict[str, str],
+) -> None:
+    files, _, validator, _ = stores(tmp_path)
+    revision = "b" * 40
+    metadata = f"/api/models/org/{repo}/revision/main?blobs=true"
+    prefix = f"/org/{repo}/resolve/{revision}/"
+    bodies = {name: b"synthetic weights" for name in weights}
+    document = {
+        "sha": revision,
+        "siblings": [
+            {
+                "rfilename": name,
+                "size": len(body),
+                "lfs": {"sha256": hashlib.sha256(body).hexdigest()},
+            }
+            for name, body in bodies.items()
+        ]
+        + [{"rfilename": "untrusted.py"}, {"rfilename": "unsafe.pkl"}],
+    }
+    payloads = {metadata: json.dumps(document).encode()}
+    payloads.update({prefix + name: body for name, body in bodies.items()})
+    with server(payloads) as (base, calls):
+        store = CustomModelStore(
+            files,
+            cache_root=tmp_path / "cache",
+            hf_base_url=base,
+            runtime_available=lambda _: True,
+        )
+        importer = ImportCustomModel(store, validator)
+        preview = importer.prepare(
+            request(
+                "org/" + repo,
+                source_type="huggingface",
+                engine="auto",
+                family="",
+                display_name="",
+            )
+        )
+        assert preview.descriptor.provider_id == engine and preview.family == family
+        assert preview.descriptor.display_name == repo
+        assert preview.descriptor.revision == revision and preview.license == "unknown"
+        assert preview.file_count == len(weights)
+        assert calls == [("GET", metadata)] and validator.calls == []
+        assert not (tmp_path / "cache/custom-models").exists()
+        with pytest.raises(CustomModelError, match="confirmed explicitly"):
+            importer.execute(preview.id, confirm=False)
+        assert calls == [("GET", metadata)]
+        descriptor = importer.execute(preview.id, confirm=True)
+        assert validator.calls == [(engine, family)] and validator.roles == [roles]
+        assert len(calls) == len(weights) + 1
+        assert not any(path.endswith((".py", ".pkl")) for _, path in calls)
+    record = json.loads(
+        (files.resolve_path(descriptor) / ".voz-custom.json").read_text()
+    )
+    assert record["file_roles"] == roles and record["license"] == "unknown"
+    assert all(len(item["sha256"]) == 64 for item in record["files"])
+    assert descriptor.source == "org/" + repo and descriptor.revision == revision
+
+
+@pytest.mark.parametrize(
+    ("names", "code"),
+    [
+        (
+            {"model.safetensors", "config.json", "tokenizer.json"},
+            "custom_model_engine_unsupported",
+        ),
+        ({"pytorch_model.bin", "config.json"}, "custom_model_engine_unsupported"),
+        ({"model.gguf"}, "custom_model_engine_unsupported"),
+        ({"random.onnx", "tokens.txt"}, "custom_model_engine_unsupported"),
+        ({"ggml-a.bin", "ggml-b.bin"}, "custom_model_detection_ambiguous"),
+        (
+            {"encoder.onnx", "encoder.int8.onnx", "decoder.onnx", "tokens.txt"},
+            "custom_model_detection_ambiguous",
+        ),
+        (
+            {"model.bin", "config.json", "tokenizer.json", "ggml-a.bin"},
+            "custom_model_detection_ambiguous",
+        ),
+    ],
+)
+def test_auto_hf_rejects_unsupported_or_ambiguous_without_weight_gets(
+    tmp_path: Path,
+    names: set[str],
+    code: str,
+) -> None:
+    files, _, validator, _ = stores(tmp_path)
+    metadata = "/api/models/org/Qwen-model/revision/main?blobs=true"
+    doc = {
+        "sha": "c" * 40,
+        "siblings": [{"rfilename": name, "size": 10} for name in names],
+    }
+    with server({metadata: json.dumps(doc).encode()}) as (base, calls):
+        store = CustomModelStore(
+            files,
+            cache_root=tmp_path / "cache",
+            hf_base_url=base,
+            runtime_available=lambda _: True,
+        )
+        with pytest.raises(CustomModelError) as raised:
+            store.prepare(
+                request(
+                    "org/Qwen-model",
+                    source_type="huggingface",
+                    engine="auto",
+                    family="",
+                    display_name="",
+                )
+            )
+        assert raised.value.code == code
+        assert calls == [("GET", metadata)] and validator.calls == []
+        assert not (tmp_path / "cache/custom-models").exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "engine", "family"),
+    [
+        ("ggml-custom.bin", "whisper-cpp", "ggml"),
+        ("sherpa-onnx-whisper-tiny.tar.bz2", "sherpa-onnx-asr", "whisper"),
+        ("kokoro-v1.tar.bz2", "sherpa-onnx-tts", "kokoro"),
+        ("kitten-nano.tar.bz2", "sherpa-onnx-tts", "kitten"),
+        ("piper-voice.tar.bz2", "sherpa-onnx-tts", "vits"),
+    ],
+)
+def test_auto_direct_url_only_heads_explicit_supported_format(
+    tmp_path: Path,
+    name: str,
+    engine: str,
+    family: str,
+) -> None:
+    _, store, validator, _ = stores(tmp_path)
+    with server({"/" + name: b"not validated weights"}) as (base, calls):
+        plan = store.prepare(
+            request(
+                base + "/" + name,
+                source_type="url",
+                engine="auto",
+                family="",
+                display_name="",
+            )
+        )
+        assert plan.preview.descriptor.provider_id == engine
+        assert plan.preview.family == family and plan.preview.license == "unknown"
+        assert calls == [("HEAD", "/" + name)] and validator.calls == []
+        assert not (tmp_path / "cache/custom-models").exists()
+
+
+@pytest.mark.parametrize(
+    "name", ["arbitrary.onnx", "model.safetensors", "voice.tar.bz2"]
+)
+def test_auto_unknown_url_is_rejected_without_network(
+    tmp_path: Path, name: str
+) -> None:
+    _, store, _, _ = stores(tmp_path)
+    with server({"/" + name: b"unknown"}) as (base, calls):
+        with pytest.raises(CustomModelError) as raised:
+            store.prepare(
+                request(
+                    base + "/" + name,
+                    source_type="url",
+                    engine="auto",
+                    family="",
+                    display_name="",
+                )
+            )
+        assert raised.value.code == "custom_model_engine_unsupported"
+        assert not calls
+
+
+def test_auto_runtime_unavailable_checks_metadata_but_never_fetches_weights(
+    tmp_path: Path,
+) -> None:
+    files, _, _, _ = stores(tmp_path)
+    metadata = "/api/models/org/ct2/revision/main?blobs=true"
+    doc = {
+        "sha": "c" * 40,
+        "siblings": [
+            {"rfilename": name, "size": 10}
+            for name in ("model.bin", "config.json", "tokenizer.json")
+        ],
+    }
+    with server({metadata: json.dumps(doc).encode()}) as (base, calls):
+        store = CustomModelStore(
+            files,
+            cache_root=tmp_path / "cache",
+            hf_base_url=base,
+            runtime_available=lambda _: False,
+        )
+        with pytest.raises(CustomModelError) as raised:
+            store.prepare(
+                request(
+                    "org/ct2",
+                    source_type="huggingface",
+                    engine="auto",
+                    family="",
+                    display_name="",
+                )
+            )
+        assert raised.value.code == "custom_model_runtime_unavailable"
+        assert calls == [("GET", metadata)]
+
+
+def test_link_only_api_request_defaults_to_auto_and_safe_derived_name(
+    tmp_path: Path,
+) -> None:
+    _, _, validator, importer = stores(tmp_path)
+    app = FastAPI()
+    app.include_router(create_models_router(Mock(), Mock(), custom=importer))
+    with server({"/ggml-custom.bin": b"synthetic ggml"}) as (base, calls):
+        response = cast(httpx.Client, TestClient(app)).post(
+            "/api/models/custom/preview",
+            json={"source_type": "url", "source": base + "/ggml-custom.bin"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["descriptor"]["provider_id"] == "whisper-cpp"
+        assert response.json()["descriptor"]["display_name"] == "ggml-custom"
+        assert calls == [("HEAD", "/ggml-custom.bin")] and validator.calls == []
+        assert str(tmp_path) not in response.text
+
+
+def test_auto_archive_hint_still_requires_successful_load_validation(
+    tmp_path: Path,
+) -> None:
+    files, store, validator, importer = stores(tmp_path)
+    validator.error = CustomModelError(
+        "custom_model_validation_failed", "Cannot load weights."
+    )
+    with server({"/piper-voice.tar.bz2": archive()}) as (base, calls):
+        preview = importer.prepare(
+            request(
+                base + "/piper-voice.tar.bz2",
+                source_type="url",
+                engine="auto",
+                family="",
+                display_name="",
+            )
+        )
+        assert calls == [("HEAD", "/piper-voice.tar.bz2")] and not validator.calls
+        with pytest.raises(CustomModelError) as raised:
+            importer.execute(preview.id, confirm=True)
+        assert raised.value.code == "custom_model_validation_failed"
+        assert calls == [
+            ("HEAD", "/piper-voice.tar.bz2"),
+            ("GET", "/piper-voice.tar.bz2"),
+        ]
+    assert validator.calls == [("sherpa-onnx-tts", "vits")]
+    assert files.registered_descriptors() == () and store.managed_entries() == ()
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_auto_hf_checksum_and_cancellation_fail_before_validation(
+    tmp_path: Path,
+    cancelled: bool,
+) -> None:
+    files, _, validator, _ = stores(tmp_path)
+    metadata = "/api/models/org/model/revision/main?blobs=true"
+    prefix = "/org/model/resolve/" + "d" * 40 + "/ggml-model.bin"
+    body = b"fake weights"
+    doc = {
+        "sha": "d" * 40,
+        "siblings": [
+            {
+                "rfilename": "ggml-model.bin",
+                "size": len(body),
+                "lfs": {"sha256": "0" * 64},
+            }
+        ],
+    }
+    with server({metadata: json.dumps(doc).encode(), prefix: body}) as (base, calls):
+        store = CustomModelStore(
+            files,
+            cache_root=tmp_path / "cache",
+            hf_base_url=base,
+            runtime_available=lambda _: True,
+        )
+        importer = ImportCustomModel(store, validator)
+        preview = importer.prepare(
+            request(
+                "org/model",
+                source_type="huggingface",
+                engine="auto",
+                family="",
+                display_name="",
+            )
+        )
+        with pytest.raises((CustomModelError, ModelInstallationError)):
+            importer.execute(preview.id, confirm=True, cancelled=lambda: cancelled)
+        assert calls == [("GET", metadata)] + ([] if cancelled else [("GET", prefix)])
+    assert not validator.calls and not files.registered_descriptors()
+
+
+def test_auto_folder_remains_manual_without_scanning(tmp_path: Path) -> None:
+    _, store, _, _ = stores(tmp_path)
+    with pytest.raises(CustomModelError) as raised:
+        store.prepare(request(tmp_path / "not-scanned", engine="auto", family=""))
+    assert raised.value.code == "custom_model_engine_unsupported"

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +35,12 @@ function file(path: string, data: string): File {
   return result
 }
 
+function renderManual(ui: ReactElement) {
+  const view = render(ui)
+  fireEvent.click(screen.getByRole('button', { name: /Configuración manual|Manual configuration/ }))
+  return view
+}
+
 function fillFolder() {
   fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'faster-whisper' } })
   fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'ctranslate2' } })
@@ -62,8 +69,80 @@ beforeEach(() => {
 afterEach(() => { cleanup(); Reflect.deleteProperty(HTMLInputElement.prototype, 'webkitdirectory') })
 
 describe('AddModelDialog', () => {
+  it.each([
+    ['https://huggingface.co/org/voice-model', 'huggingface'],
+    ['org/voice-model', 'huggingface'],
+    ['http://127.0.0.1/voice-model.tar.bz2', 'url'],
+  ])('checks %s with automatic format detection before confirming any install', async (source, sourceType) => {
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    expect(screen.queryByLabelText('Motor')).toBeNull()
+    expect(screen.queryByLabelText('Familia')).toBeNull()
+    const submit = screen.getByRole<HTMLButtonElement>('button', { name: 'Comprobar enlace' })
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Enlace de descarga o repositorio de Hugging Face'), { target: { value: source } })
+    expect(submit.disabled).toBe(false)
+    expect(api.previewCustomModel).not.toHaveBeenCalled()
+    fireEvent.click(submit)
+    await screen.findByRole('button', { name: 'Confirmar e instalar' })
+    expect(api.previewCustomModel).toHaveBeenCalledWith({
+      engine: 'auto', family: '', display_name: '', license: 'unknown', file_roles: {},
+      source_type: sourceType, source, revision: 'main',
+    }, expect.any(AbortSignal))
+    expect(screen.getByText(/Formato sugerido/)).toBeTruthy()
+    expect(screen.queryByText(/todavía no se ha validado con pesos reales/)).toBeNull()
+    expect(api.createCustomModelUpload).not.toHaveBeenCalled()
+    expect(api.installCustomModel).not.toHaveBeenCalled()
+  })
+
+  it('marks only the experimental ASR preview with its real-weight validation limit', async () => {
+    vi.mocked(api.previewCustomModel).mockResolvedValue({ ...PREVIEW,
+      family: 'whisper', descriptor: { ...PREVIEW.descriptor, provider_id: 'sherpa-onnx-asr' },
+    })
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Enlace de descarga o repositorio de Hugging Face'), { target: { value: 'org/model' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar enlace' }))
+    await screen.findByText(/todavía no se ha validado con pesos reales/)
+  })
+
+  it('explains ambiguous format detection and allows manual configuration without installing', async () => {
+    vi.mocked(api.previewCustomModel).mockRejectedValue(api.customModelError('custom_model_detection_ambiguous'))
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Enlace de descarga o repositorio de Hugging Face'), { target: { value: 'org/model' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar enlace' }))
+    await screen.findByText(/No se pudo determinar un único formato compatible/)
+    fireEvent.click(screen.getByRole('button', { name: /Configuración manual|Manual configuration/ }))
+    expect(screen.getByLabelText('Motor')).toBeTruthy()
+    expect(screen.getByLabelText<HTMLInputElement>('Repositorio de Hugging Face').value).toBe('org/model')
+    expect(api.installCustomModel).not.toHaveBeenCalled()
+  })
+
+  it('explains unsupported formats without installing anything', async () => {
+    vi.mocked(api.previewCustomModel).mockRejectedValue(api.customModelError('custom_model_engine_unsupported'))
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Enlace de descarga o repositorio de Hugging Face'), { target: { value: 'org/model' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar enlace' }))
+    await screen.findByText(/El enlace no contiene un formato compatible con los motores de V/)
+    expect(api.installCustomModel).not.toHaveBeenCalled()
+  })
+
+  it('selects the only family for a manually chosen engine and keeps TTS explicit', () => {
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'faster-whisper' } })
+    expect(screen.getByLabelText<HTMLSelectElement>('Familia').value).toBe('ctranslate2')
+    fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'sherpa-onnx-tts' } })
+    expect(screen.getByLabelText<HTMLSelectElement>('Familia').value).toBe('')
+  })
+
+  it('uses English guidance for link imports', () => {
+    setLang('en')
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    expect(screen.getByLabelText('Download link or Hugging Face repository')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Check link' })).toBeTruthy()
+    expect(screen.getByText(/downloaded to this computer/)).toBeTruthy()
+  })
+
   it('imports Whisper ONNX from the explorer with explicit encoder, decoder and tokens roles', async () => {
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['sherpa-onnx-asr']} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['sherpa-onnx-asr']} />)
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'sherpa-onnx ASR' }).disabled).toBe(false)
     fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'sherpa-onnx-asr' } })
     fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'whisper' } })
@@ -89,8 +168,8 @@ describe('AddModelDialog', () => {
     }), expect.any(AbortSignal))
   })
 
-  it('requires explicit engine/family and shows selected size before any transfer', async () => {
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+  it('requires a manual engine and shows selected size before any transfer', async () => {
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Copiar archivos y revisar' }).disabled).toBe(true)
     fillFolder()
     expect(screen.getByText('3 archivos · 8 B', { exact: false })).toBeTruthy()
@@ -104,7 +183,7 @@ describe('AddModelDialog', () => {
 
   it('uploads only compatible files, reviews license/size, then confirms and refreshes completed models once', async () => {
     const completed = vi.fn()
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={completed} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={completed} />)
     fillFolder()
     fireEvent.click(screen.getByRole('button', { name: 'Copiar archivos y revisar' }))
     await screen.findByRole('button', { name: 'Confirmar e instalar' })
@@ -124,7 +203,7 @@ describe('AddModelDialog', () => {
   })
 
   it('supports Hugging Face metadata preview without folder upload', async () => {
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     fireEvent.change(screen.getByLabelText('Origen del modelo'), { target: { value: 'huggingface' } })
     fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'faster-whisper' } })
     fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'ctranslate2' } })
@@ -137,7 +216,7 @@ describe('AddModelDialog', () => {
   })
 
   it('supports TTS URL and requires Matcha acoustic/vocoder roles', async () => {
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     fireEvent.change(screen.getByLabelText('Origen del modelo'), { target: { value: 'url' } })
     fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'sherpa-onnx-tts' } })
     fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'matcha' } })
@@ -153,7 +232,7 @@ describe('AddModelDialog', () => {
 
   it('cancels an active job and cleans the folder after terminal state', async () => {
     const completed = vi.fn()
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={completed} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={completed} />)
     fillFolder()
     fireEvent.click(screen.getByRole('button', { name: 'Copiar archivos y revisar' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Confirmar e instalar' }))
@@ -174,7 +253,7 @@ describe('AddModelDialog', () => {
       })
     })
     const close = vi.fn()
-    render(<AddModelDialog onClose={close} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={close} onCompleted={vi.fn()} />)
     fillFolder()
     fireEvent.click(screen.getByRole('button', { name: 'Copiar archivos y revisar' }))
     await screen.findByText('Copiando archivos a V…')
@@ -189,7 +268,7 @@ describe('AddModelDialog', () => {
     let resolve!: (value: api.CustomModelUploadReceipt) => void
     vi.mocked(api.createCustomModelUpload).mockImplementation(() => new Promise((done) => { resolve = done }))
     const close = vi.fn()
-    render(<AddModelDialog onClose={close} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={close} onCompleted={vi.fn()} />)
     fillFolder()
     fireEvent.click(screen.getByRole('button', { name: 'Copiar archivos y revisar' }))
     await waitFor(() => { expect(resolve).toBeDefined() })
@@ -201,7 +280,7 @@ describe('AddModelDialog', () => {
 
   it('never renders raw server errors and lets the user retry', async () => {
     vi.mocked(api.previewCustomModelUpload).mockRejectedValueOnce(new Error('/private/SECRET raw'))
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     fillFolder()
     fireEvent.click(screen.getByRole('button', { name: 'Copiar archivos y revisar' }))
     await screen.findByText('No se pudo importar el modelo. Revisa los datos y vuelve a intentarlo.')
@@ -218,7 +297,7 @@ describe('AddModelDialog', () => {
       advance = options?.onProgress
       return new Promise<void>((resolve) => { finish = resolve })
     })
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     fillFolder()
     fireEvent.click(screen.getByRole('button', { name: 'Copiar archivos y revisar' }))
     await waitFor(() => { expect(advance).toBeDefined() })
@@ -233,7 +312,7 @@ describe('AddModelDialog', () => {
     const opener = document.createElement('button')
     document.body.append(opener)
     opener.focus()
-    const view = render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    const view = renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     expect(screen.getByRole('dialog', { name: 'Add a custom model' })).toBeTruthy()
     expect(screen.getByLabelText('Engine')).toBeTruthy()
     await act(async () => { await Promise.resolve() })
@@ -244,14 +323,14 @@ describe('AddModelDialog', () => {
 
   it('reports unsupported folder selection without accepting a host path', async () => {
     Reflect.deleteProperty(HTMLInputElement.prototype, 'webkitdirectory')
-    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     expect(screen.getByText(/Este navegador no permite elegir carpetas/)).toBeTruthy()
     expect(screen.queryByLabelText(/ruta.*servidor/i)).toBeNull()
     await act(async () => { await Promise.resolve() })
   })
 
   it('disables unavailable engines and reports missing runtimes', async () => {
-    const view = render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['whisper-cpp']} />)
+    const view = renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['whisper-cpp']} />)
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'Faster Whisper' }).disabled).toBe(true)
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'whisper.cpp' }).disabled).toBe(false)
     view.rerender(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={[]} />)

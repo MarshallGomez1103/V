@@ -123,6 +123,7 @@ describe('ModelManager', () => {
     render(<ModelManager />)
     await waitFor(() => { expect(document.querySelector('.voz-models__disk')).not.toBeNull() })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Añadir modelo propio' })); await Promise.resolve() })
+    fireEvent.click(screen.getByRole('button', { name: 'Configuración manual' }))
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'sherpa-onnx ASR' }).disabled).toBe(false)
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'Faster Whisper' }).disabled).toBe(true)
   })
@@ -134,6 +135,7 @@ describe('ModelManager', () => {
     render(<ModelManager />)
     await screen.findByRole('heading', { name: 'Transcripción' })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Añadir modelo propio' })); await Promise.resolve() })
+    fireEvent.click(screen.getByRole('button', { name: 'Configuración manual' }))
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'Faster Whisper' }).disabled).toBe(custom_engines !== undefined)
   })
 

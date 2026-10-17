@@ -49,6 +49,7 @@ from voz.infrastructure.asr.sherpa_onnx_options import (
 )
 from voz.infrastructure.asr.whisper_cpp import locate_whisper_cli
 from voz.infrastructure.asr.whisper_cpp_catalog import whisper_cpp_catalog
+from voz.infrastructure.custom_model_detection import detect_download, detect_repository
 from voz.infrastructure.model_registry import ENGINE_CAPABILITIES, ManagedModel
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.tts.families import discover_files, model_config
@@ -193,7 +194,7 @@ class CustomModelStore:
     def runtime_available(self, engine: str) -> bool:
         return self._runtime_available(engine)
 
-    def prepare(self, request: CustomModelRequest) -> CustomModelPlan:
+    def _check_engine(self, request: CustomModelRequest) -> None:
         if request.family not in _FAMILIES.get(request.engine, set()):
             raise CustomModelError(
                 "custom_model_engine_unsupported",
@@ -204,6 +205,16 @@ class CustomModelStore:
                 "custom_model_runtime_unavailable",
                 "The selected model engine is not installed.",
             )
+
+    def prepare(self, request: CustomModelRequest) -> CustomModelPlan:
+        automatic = request.engine == "auto"
+        if automatic and request.source_type not in {"url", "huggingface"}:
+            raise CustomModelError(
+                "custom_model_engine_unsupported",
+                "Select the engine and family manually for local folders.",
+            )
+        if not automatic:
+            self._check_engine(request)
         if (
             not request.license.strip()
             or len(request.license) > 512
@@ -221,6 +232,12 @@ class CustomModelStore:
             elif request.source_type == "url":
                 url = _url(request.source)
                 name = PurePosixPath(urlsplit(url).path).name
+                if automatic:
+                    engine, family, roles = detect_download(name)
+                    request = replace(
+                        request, engine=engine, family=family, file_roles=roles
+                    )
+                    self._check_engine(request)
                 if not (
                     (
                         request.engine == "whisper-cpp"
@@ -234,12 +251,17 @@ class CustomModelStore:
                     raise _invalid()
                 items = (CustomModelFile(name, self._remote_size(url), url=url),)
             elif request.source_type == "huggingface":
-                source, revision, items = self._huggingface(request)
+                source, revision, items, request = self._huggingface(request)
             else:
                 raise _invalid()
             total = sum(item.size_bytes for item in items)
             if not items or not 0 < total <= _MAX_BYTES or len(items) > _MAX_FILES:
                 raise _invalid()
+            if not request.display_name and request.source_type != "folder":
+                name = PurePosixPath(urlsplit(request.source).path).name
+                name = re.sub(r"\.(?:tar\.bz2|bin)$", "", name)
+                name = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-._")[:128]
+                request = replace(request, display_name=name or "Custom model")
             descriptor = ModelDescriptor(
                 provider_id=request.engine,
                 model_id="custom-" + token,
@@ -305,7 +327,7 @@ class CustomModelStore:
 
     def _huggingface(
         self, request: CustomModelRequest
-    ) -> tuple[str, str, tuple[CustomModelFile, ...]]:
+    ) -> tuple[str, str, tuple[CustomModelFile, ...], CustomModelRequest]:
         repo = request.source
         if repo.startswith("https://huggingface.co/"):
             repo = urlsplit(_url(repo)).path.strip("/")
@@ -337,6 +359,8 @@ class CustomModelStore:
                 or len(cast(list[object], siblings)) > _MAX_FILES
             ):
                 raise _invalid()
+            entries: list[dict[str, object]] = []
+            names: set[str] = set()
             for raw_item in cast(list[object], siblings):
                 if not isinstance(raw_item, dict):
                     raise _invalid()
@@ -344,7 +368,27 @@ class CustomModelStore:
                 name = item["rfilename"]
                 if not isinstance(name, str) or not safe_relative(name):
                     raise _invalid()
+                entries.append(item)
+                names.add(name)
+            automatic = request.engine == "auto"
+            if automatic:
+                engine, family, roles = detect_repository(names, repo)
+                request = replace(
+                    request, engine=engine, family=family, file_roles=roles
+                )
+                self._check_engine(request)
+            for item in entries:
+                name = cast(str, item["rfilename"])
                 if not allowed_file(request.engine, name):
+                    continue
+                if (
+                    automatic
+                    and request.engine == "sherpa-onnx-asr"
+                    and (
+                        name not in request.file_roles.values()
+                        and name not in {"LICENSE", "MODEL_CARD"}
+                    )
+                ):
                     continue
                 raw_lfs = item.get("lfs")
                 if raw_lfs is not None and not isinstance(raw_lfs, dict):
@@ -377,7 +421,7 @@ class CustomModelStore:
             ) from None
         if len({item.name for item in items}) != len(items):
             raise _invalid()
-        return repo, revision, tuple(items)
+        return repo, revision, tuple(items), request
 
     def stage(
         self,

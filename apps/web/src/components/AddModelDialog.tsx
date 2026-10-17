@@ -8,7 +8,7 @@ import {
   type CustomModelMetadata, type CustomModelPreview,
 } from '../api/customModels'
 import { isAbortError } from '../api/errors'
-import { cancelModelTask, ModelApiError, type TaskView } from '../api/models'
+import { cancelModelTask, capabilityLabel, ModelApiError, type TaskView } from '../api/models'
 import { isActiveTask, useModelTasks } from '../hooks/useModelTasks'
 import { useI18n } from '../i18n/i18n'
 import { formatBytes } from '../lib/formatBytes'
@@ -40,6 +40,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
   const uploadId = useRef<string | null>(null)
   const jobRef = useRef<TaskView | null>(null)
   const notified = useRef<string | null>(null)
+  const [manual, setManual] = useState(false)
   const [sourceType, setSourceType] = useState<Source>('folder')
   const [source, setSource] = useState('')
   const [revision, setRevision] = useState('main')
@@ -108,6 +109,9 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
   const failureText = (caught: unknown) => caught instanceof ModelApiError
     ? customModelError(caught.code).message : t('addModel.error')
 
+  const selectedSourceType = manual ? sourceType
+    : /^(?:https:\/\/huggingface\.co\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/.test(source.trim()) ? 'huggingface' : 'url'
+
   const review = async () => {
     if (phase !== 'form') return
     setError(null)
@@ -117,14 +121,15 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
     if (!await cleanupUpload()) { if (mounted.current) setPhase('form'); return }
     if (aborter.signal.aborted || !mounted.current) return
     const metadata: CustomModelMetadata = {
-      engine, family, display_name: name.trim(), license: license.trim() || 'unknown',
-      file_roles: engine === 'sherpa-onnx-asr'
+      engine: manual ? engine : 'auto', family: manual ? family : '',
+      display_name: name.trim(), license: license.trim() || 'unknown',
+      file_roles: !manual ? {} : engine === 'sherpa-onnx-asr'
         ? { encoder: encoder.trim(), decoder: decoder.trim(), tokens: tokens.trim() }
         : family === 'matcha' ? { acoustic_model: acoustic.trim(), vocoder: vocoder.trim(), tokens: tokens.trim() } : {},
     }
     try {
       let prepared: CustomModelPreview
-      if (sourceType === 'folder') {
+      if (selectedSourceType === 'folder') {
         if (selection === null) return
         setPhase('uploading')
         setDoneBytes(0)
@@ -145,7 +150,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
         prepared = await previewCustomModelUpload(receipt.id, aborter.signal)
       } else {
         setPhase('preparing')
-        prepared = await previewCustomModel({ ...metadata, source_type: sourceType, source: source.trim(), revision: revision.trim() || 'main' }, aborter.signal)
+        prepared = await previewCustomModel({ ...metadata, source_type: selectedSourceType, source: source.trim(), revision: revision.trim() || 'main' }, aborter.signal)
       }
       if (!aborter.signal.aborted && mounted.current) { setPreview(prepared); setPhase('preview') }
     } catch (caught: unknown) {
@@ -189,7 +194,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
     if (await cleanupUpload()) onClose()
   }
 
-  const canReview = Boolean(engine && family && name.trim()
+  const canReview = !manual ? Boolean(source.trim()) : Boolean(engine && family && name.trim()
     && (availableEngines === undefined || availableEngines.includes(engine))
     && (sourceType === 'folder' ? folderSupported && selection !== null : source.trim())
     && (family !== 'matcha' || (acoustic.trim() && vocoder.trim() && tokens.trim()))
@@ -214,84 +219,104 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
       preventCloseOnClickOutside onRequestClose={() => { void close() }}>
       {phase === 'form' ? (
         <form className="voz-add-model__form" onSubmit={(event) => { event.preventDefault(); if (canReview) void review() }}>
-          <Select id={id + '-source'} labelText={t('addModel.source')} value={sourceType}
-            onChange={(event) => { setSourceType(event.target.value as Source); setSource(''); setError(null) }}>
-            <SelectItem value="folder" text={t('addModel.folder')} />
-            <SelectItem value="huggingface" text={t('addModel.hf')} />
-            <SelectItem value="url" text={t('addModel.url')} />
-          </Select>
-          <Select id={id + '-engine'} labelText={t('addModel.engine')} value={engine}
-            onChange={(event) => { setEngine(event.target.value); setFamily('') }}>
-            <SelectItem value="" text={t('addModel.choose')} />
-            <SelectItem value="faster-whisper" text="Faster Whisper" disabled={availableEngines !== undefined && !availableEngines.includes('faster-whisper')} />
-            <SelectItem value="whisper-cpp" text="whisper.cpp" disabled={availableEngines !== undefined && !availableEngines.includes('whisper-cpp')} />
-            <SelectItem value="sherpa-onnx-tts" text="sherpa-onnx TTS" disabled={availableEngines !== undefined && !availableEngines.includes('sherpa-onnx-tts')} />
-            <SelectItem value="sherpa-onnx-asr" text="sherpa-onnx ASR" disabled={availableEngines !== undefined && !availableEngines.includes('sherpa-onnx-asr')} />
-          </Select>
-          {availableEngines !== undefined && !availableEngines.some((item) => Object.hasOwn(FAMILIES, item))
-            ? <Notice kind="warning" title={t('addModel.noEngines')} /> : null}
-          <Select id={id + '-family'} labelText={t('addModel.family')} value={family} disabled={!engine}
-            onChange={(event) => { setFamily(event.target.value) }}>
-            <SelectItem value="" text={t('addModel.choose')} />
-            {(FAMILIES[engine] ?? []).map((item) => <SelectItem key={item} value={item} text={item} />)}
-          </Select>
-          <TextInput id={id + '-name'} labelText={t('addModel.name')} value={name} maxLength={128}
-            onChange={(event) => { setName(event.target.value) }} required />
-          <TextInput id={id + '-license'} labelText={t('addModel.license')} helperText={t('addModel.licenseHelp')}
-            value={license} maxLength={512} onChange={(event) => { setLicense(event.target.value) }} />
-          {sourceType === 'folder' ? (
-            <div className="voz-add-model__folder">
-              <label htmlFor={id + '-folder'}>{t('addModel.folder')}</label>
-              <input id={id + '-folder'} type="file" multiple {...{ webkitdirectory: '' }} disabled={!folderSupported}
-                onChange={(event) => { setFiles(Array.from(event.target.files ?? [])); setError(null) }} />
-              <p className="voz-field-note">{t('addModel.folderHelp')}</p>
-              {!folderSupported ? <Notice kind="warning" title={t('addModel.folderUnsupported')} /> : null}
-              {selection !== null ? (
-                <>
-                  <p role="status">{t('addModel.selected', { count: selection.files.length, size: formatBytes(selection.totalBytes) })}</p>
-                  {selection.ignoredCount > 0 ? <p className="voz-field-note">{t('addModel.excluded', { count: selection.ignoredCount })}</p> : null}
-                </>
-              ) : files.length > 0 && engine ? <Notice kind="error" title={t('addModel.error')} /> : null}
-            </div>
+          <Button kind="ghost" type="button" onClick={() => { if (!manual && source.trim()) setSourceType(selectedSourceType); setManual(!manual); setError(null) }}>
+            {t(manual ? 'addModel.guided' : 'addModel.manual')}
+          </Button>
+          {!manual ? (
+            <>
+              <TextInput id={id + '-link'} labelText={t('addModel.link')} helperText={t('addModel.linkHelp')}
+                value={source} maxLength={2048} autoComplete="off" spellCheck={false}
+                onChange={(event) => { setSource(event.target.value); setError(null) }} required />
+              <TextInput id={id + '-optional-name'} labelText={t('addModel.optionalName')} value={name} maxLength={128}
+                onChange={(event) => { setName(event.target.value) }} />
+              <TextInput id={id + '-optional-license'} labelText={t('addModel.license')} helperText={t('addModel.licenseHelp')}
+                value={license} maxLength={512} onChange={(event) => { setLicense(event.target.value) }} />
+            </>
           ) : (
             <>
-              <TextInput id={id + '-remote'} labelText={t(sourceType === 'url' ? 'addModel.url' : 'addModel.hf')}
-                value={source} maxLength={2048} autoComplete="off" spellCheck={false}
-                onChange={(event) => { setSource(event.target.value) }} required />
-              {sourceType === 'huggingface' ? <TextInput id={id + '-revision'} labelText={t('addModel.revision')}
-                value={revision} maxLength={255} onChange={(event) => { setRevision(event.target.value) }} />
-                : <p className="voz-field-note">{t('addModel.urlHelp')}</p>}
+              <Select id={id + '-source'} labelText={t('addModel.source')} value={sourceType}
+                onChange={(event) => { setSourceType(event.target.value as Source); setSource(''); setError(null) }}>
+                <SelectItem value="folder" text={t('addModel.folder')} />
+                <SelectItem value="huggingface" text={t('addModel.hf')} />
+                <SelectItem value="url" text={t('addModel.url')} />
+              </Select>
+              <Select id={id + '-engine'} labelText={t('addModel.engine')} value={engine}
+                onChange={(event) => { const next = event.target.value; setEngine(next); setFamily(FAMILIES[next]?.length === 1 ? FAMILIES[next][0] ?? '' : '') }}>
+                <SelectItem value="" text={t('addModel.choose')} />
+                <SelectItem value="faster-whisper" text="Faster Whisper" disabled={availableEngines !== undefined && !availableEngines.includes('faster-whisper')} />
+                <SelectItem value="whisper-cpp" text="whisper.cpp" disabled={availableEngines !== undefined && !availableEngines.includes('whisper-cpp')} />
+                <SelectItem value="sherpa-onnx-tts" text="sherpa-onnx TTS" disabled={availableEngines !== undefined && !availableEngines.includes('sherpa-onnx-tts')} />
+                <SelectItem value="sherpa-onnx-asr" text="sherpa-onnx ASR" disabled={availableEngines !== undefined && !availableEngines.includes('sherpa-onnx-asr')} />
+              </Select>
+              {availableEngines !== undefined && !availableEngines.some((item) => Object.hasOwn(FAMILIES, item))
+                ? <Notice kind="warning" title={t('addModel.noEngines')} /> : null}
+              <Select id={id + '-family'} labelText={t('addModel.family')} value={family} disabled={!engine}
+                onChange={(event) => { setFamily(event.target.value) }}>
+                <SelectItem value="" text={t('addModel.choose')} />
+                {(FAMILIES[engine] ?? []).map((item) => <SelectItem key={item} value={item} text={item} />)}
+              </Select>
+              <TextInput id={id + '-name'} labelText={t('addModel.name')} value={name} maxLength={128}
+                onChange={(event) => { setName(event.target.value) }} required />
+              <TextInput id={id + '-license'} labelText={t('addModel.license')} helperText={t('addModel.licenseHelp')}
+                value={license} maxLength={512} onChange={(event) => { setLicense(event.target.value) }} />
+              {sourceType === 'folder' ? (
+                <div className="voz-add-model__folder">
+                  <label htmlFor={id + '-folder'}>{t('addModel.folder')}</label>
+                  <input id={id + '-folder'} type="file" multiple {...{ webkitdirectory: '' }} disabled={!folderSupported}
+                    onChange={(event) => { setFiles(Array.from(event.target.files ?? [])); setError(null) }} />
+                  <p className="voz-field-note">{t('addModel.folderHelp')}</p>
+                  {!folderSupported ? <Notice kind="warning" title={t('addModel.folderUnsupported')} /> : null}
+                  {selection !== null ? (
+                    <>
+                      <p role="status">{t('addModel.selected', { count: selection.files.length, size: formatBytes(selection.totalBytes) })}</p>
+                      {selection.ignoredCount > 0 ? <p className="voz-field-note">{t('addModel.excluded', { count: selection.ignoredCount })}</p> : null}
+                    </>
+                  ) : files.length > 0 && engine ? <Notice kind="error" title={t('addModel.error')} /> : null}
+                </div>
+              ) : (
+                <>
+                  <TextInput id={id + '-remote'} labelText={t(sourceType === 'url' ? 'addModel.url' : 'addModel.hf')}
+                    value={source} maxLength={2048} autoComplete="off" spellCheck={false}
+                    onChange={(event) => { setSource(event.target.value) }} required />
+                  {sourceType === 'huggingface' ? <TextInput id={id + '-revision'} labelText={t('addModel.revision')}
+                    value={revision} maxLength={255} onChange={(event) => { setRevision(event.target.value) }} />
+                    : <p className="voz-field-note">{t('addModel.urlHelp')}</p>}
+                </>
+              )}
+              {family === 'matcha' ? (
+                <>
+                  <TextInput id={id + '-acoustic'} labelText={t('addModel.acoustic')} value={acoustic} maxLength={512}
+                    onChange={(event) => { setAcoustic(event.target.value) }} required />
+                  <TextInput id={id + '-vocoder'} labelText={t('addModel.vocoder')} value={vocoder} maxLength={512}
+                    onChange={(event) => { setVocoder(event.target.value) }} required />
+                  <TextInput id={id + '-tokens'} labelText={t('addModel.tokens')} value={tokens} maxLength={512}
+                    onChange={(event) => { setTokens(event.target.value) }} required />
+                </>
+              ) : null}
+              {engine === 'sherpa-onnx-asr' && family === 'whisper' ? (
+                <>
+                  <TextInput id={id + '-encoder'} labelText={t('addModel.encoder')} value={encoder} maxLength={512}
+                    onChange={(event) => { setEncoder(event.target.value) }} required />
+                  <TextInput id={id + '-decoder'} labelText={t('addModel.decoder')} value={decoder} maxLength={512}
+                    onChange={(event) => { setDecoder(event.target.value) }} required />
+                  <TextInput id={id + '-asr-tokens'} labelText={t('addModel.asrTokens')} value={tokens} maxLength={512}
+                    onChange={(event) => { setTokens(event.target.value) }} required />
+                </>
+              ) : null}
             </>
           )}
-          {family === 'matcha' ? (
-            <>
-              <TextInput id={id + '-acoustic'} labelText={t('addModel.acoustic')} value={acoustic} maxLength={512}
-                onChange={(event) => { setAcoustic(event.target.value) }} required />
-              <TextInput id={id + '-vocoder'} labelText={t('addModel.vocoder')} value={vocoder} maxLength={512}
-                onChange={(event) => { setVocoder(event.target.value) }} required />
-              <TextInput id={id + '-tokens'} labelText={t('addModel.tokens')} value={tokens} maxLength={512}
-                onChange={(event) => { setTokens(event.target.value) }} required />
-            </>
-          ) : null}
-          {engine === 'sherpa-onnx-asr' && family === 'whisper' ? (
-            <>
-              <TextInput id={id + '-encoder'} labelText={t('addModel.encoder')} value={encoder} maxLength={512}
-                onChange={(event) => { setEncoder(event.target.value) }} required />
-              <TextInput id={id + '-decoder'} labelText={t('addModel.decoder')} value={decoder} maxLength={512}
-                onChange={(event) => { setDecoder(event.target.value) }} required />
-              <TextInput id={id + '-asr-tokens'} labelText={t('addModel.asrTokens')} value={tokens} maxLength={512}
-                onChange={(event) => { setTokens(event.target.value) }} required />
-            </>
-          ) : null}
-          <Button type="submit" disabled={!canReview}>{t(sourceType === 'folder' ? 'addModel.copyReview' : 'addModel.review')}</Button>
+          <Button type="submit" disabled={!canReview}>{t(!manual ? 'addModel.checkLink' : sourceType === 'folder' ? 'addModel.copyReview' : 'addModel.review')}</Button>
         </form>
       ) : phase === 'preview' && preview !== null ? (
         <div className="voz-add-model__preview">
           <p>{t('addModel.preview')}</p>
           <p>{t('addModel.selected', { count: preview.file_count, size: formatBytes(preview.size_bytes) })}</p>
           <p>{preview.descriptor.display_name} · {preview.descriptor.provider_id} · {preview.family}</p>
+          <p>{preview.descriptor.capabilities.map((capability) => capabilityLabel(capability, t)).join(' · ')}</p>
+          <p className="voz-field-note">{t('addModel.suggested')}</p>
+          {preview.descriptor.provider_id === 'sherpa-onnx-asr' ? <p className="voz-field-note">{t('addModel.experimental')}</p> : null}
           <p>{licenseLabel(preview.license)}</p>
-          {sourceType === 'folder' ? <p className="voz-field-note">{t('addModel.expiry')}</p> : null}
+          {selectedSourceType === 'folder' ? <p className="voz-field-note">{t('addModel.expiry')}</p> : null}
           <div className="voz-add-model__actions">
             <Button onClick={() => { void install() }}>{t('addModel.install')}</Button>
             <Button kind="ghost" onClick={() => { void cleanupUpload().then((clean) => { if (clean) { setPreview(null); setPhase('form'); setError(null) } }) }}>{t('addModel.back')}</Button>

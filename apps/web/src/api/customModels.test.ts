@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  createCustomModelUpload, discardCustomModelUpload, installCustomModel,
+  createCustomModelUpload, customModelError, discardCustomModelUpload, installCustomModel,
   previewCustomModel, previewCustomModelUpload, selectFolderFiles,
   uploadCustomModelFile,
 } from './customModels'
@@ -26,6 +26,10 @@ function folderFile(path: string, contents = 'abcd'): File {
 }
 
 describe('custom model client', () => {
+  it('preserves the safe ambiguous-format error for manual recovery', () => {
+    expect(customModelError('custom_model_detection_ambiguous').code).toBe('custom_model_detection_ambiguous')
+  })
+
   it('selects only top-level ASR ONNX weights and tokens from the explorer', () => {
     const selected = selectFolderFiles([
       folderFile('Private folder/tiny-encoder.int8.onnx'),

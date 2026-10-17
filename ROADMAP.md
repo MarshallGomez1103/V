@@ -195,6 +195,8 @@ verificado y las limitaciones pendientes.
 | --- | --- | --- |
 | V5-05 | Verified | Keyboard focus and sample cancellation regressions fixed; Carbon/M3, light/dark and es/en verified at 390 px with deterministic browser inputs. |
 | V6-05a | Verified | Explicit custom-model previews and confirmed background imports, pinned hashes, isolated load validation, live options and confirmed deletion; fake HTTP and default-wiring tests verified. |
+| V6-05c | Verified | Link-first custom-model preview with bounded metadata detection, explicit download confirmation, manual fallback and real-browser STT/TTS flows using synthetic weights. |
+| V6-07R | Verified (source review) | Current local STT/TTS model comparison, per-artifact licenses and engine compatibility; no new inference or quality measurements. |
 | V6-06 | Verified (experimental) | Whisper ONNX CPU custom imports, private cancellable child and complete 30-second windows; fake provider contracts and browser folder flow verified, real weights unverified. |
 | V6-05b | Verified | Browser folder copies and remote previews with explicit installation, live progress, cancellation and visible license; Carbon/M3 responsive dialog. |
 | V10-02 | Verified | Private token files, authenticated API/browser access, LAN startup checks and readiness without credential redirects. |

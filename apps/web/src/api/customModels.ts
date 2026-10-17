@@ -36,7 +36,7 @@ export interface SelectedModelFile { name: string; file: File }
 const BASE = '/api/models/custom'
 const MAX_BYTES = 16 * 1024 ** 3
 const SAFE_CODES = new Set([
-  'custom_model_invalid', 'custom_model_engine_unsupported',
+  'custom_model_invalid', 'custom_model_engine_unsupported', 'custom_model_detection_ambiguous',
   'custom_model_runtime_unavailable', 'custom_model_metadata_unavailable',
   'custom_model_preview_expired', 'custom_model_upload_expired',
   'custom_model_upload_incomplete', 'custom_model_upload_limit',

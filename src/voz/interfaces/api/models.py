@@ -50,9 +50,9 @@ class PrivateModelRoute(APIRoute):
 class CustomPreviewRequest(BaseModel):
     source_type: Literal["folder", "url", "huggingface"]
     source: str = Field(max_length=2048)
-    engine: str = Field(max_length=64)
-    family: str = Field(max_length=64)
-    display_name: str = Field(max_length=128)
+    engine: str = Field(default="auto", max_length=64)
+    family: str = Field(default="", max_length=64)
+    display_name: str = Field(default="", max_length=128)
     license: str = Field(default="unknown", max_length=512)
     revision: str = Field(default="main", max_length=255)
     file_roles: dict[str, str] = Field(default_factory=dict[str, str], max_length=32)

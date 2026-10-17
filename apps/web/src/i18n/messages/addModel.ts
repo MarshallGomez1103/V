@@ -1,6 +1,17 @@
 import type { Catalog } from '../messages'
 
 export const addModel = {
+  'addModel.manual': ['Configuración manual', 'Manual configuration'],
+  'addModel.guided': ['Usar enlace con detección automática', 'Use a link with automatic detection'],
+  'addModel.link': ['Enlace de descarga o repositorio de Hugging Face', 'Download link or Hugging Face repository'],
+  'addModel.linkHelp': ['Pega un enlace de archivo o un repositorio (organización/modelo). Al confirmar, se descargará en este PC. V solo admite pesos compatibles con sus motores y nunca ejecuta código del repositorio.', 'Paste a file link or repository (organization/model). After confirmation, it will be downloaded to this computer. V only accepts weights compatible with its engines and never runs repository code.'],
+  'addModel.optionalName': ['Nombre del modelo (opcional)', 'Model name (optional)'],
+  'addModel.checkLink': ['Comprobar enlace', 'Check link'],
+  'addModel.experimental': ['Whisper ONNX es experimental; todavía no se ha validado con pesos reales.', 'Whisper ONNX is experimental; it has not yet been validated with real weights.'],
+  'addModel.suggested': ['Formato sugerido; se comprobará cargando el modelo al instalar.', 'Suggested format; the model will be checked by loading it during installation.'],
+  'err.model.custom_model_engine_unsupported': ['El enlace no contiene un formato compatible con los motores de V. Revisa el formato o usa Configuración manual; añadir un enlace no añade un motor nuevo.', 'The link does not contain a format supported by V engines. Check the format or use Manual configuration; adding a link does not add a new engine.'],
+  'err.model.custom_model_runtime_unavailable': ['El modelo necesita un motor que no está disponible. Revisa los motores instalados antes de importarlo.', 'The model needs an engine that is not available. Check the installed engines before importing it.'],
+  'err.model.custom_model_detection_ambiguous': ['No se pudo determinar un único formato compatible. Usa Configuración manual para elegir el motor y la familia.', 'Could not determine a single compatible format. Use Manual configuration to choose the engine and family.'],
   'addModel.title': ['Añadir modelo propio', 'Add a custom model'],
   'addModel.source': ['Origen del modelo', 'Model source'],
   'addModel.folder': ['Elegir carpeta', 'Choose a folder'],

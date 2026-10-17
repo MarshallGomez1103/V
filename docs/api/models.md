@@ -298,6 +298,47 @@ non-terminal job asked for speakers and has not already failed in diarization
 
 ## Custom model imports
 
+The dialog starts with a download link or Hugging Face repository. Paste a source,
+choose **Check link**, review its suggested format, size and license, then confirm
+the download to this computer. **Manual configuration** retains explicit engine,
+family, relative file roles and browser-selected folders.
+
+### Link-only preview
+
+The same preview endpoint accepts a remote source without engine, family or
+name; omitted values default to `auto`, an empty family and a derived safe name:
+
+```json
+{"source_type": "huggingface", "source": "organization/model"}
+```
+
+A full `https://huggingface.co/organization/model` URL is also accepted. For a
+direct file link, use `source_type: "url"`. The server reads bounded repository
+metadata or sends a HEAD request; it does not download weights at this stage.
+The response keeps the usual preview contract and contains a concrete engine
+and family when detection succeeds.
+
+Automatic detection recognizes complete CTranslate2 Whisper layouts, one Whisper
+GGML file, or an unambiguous Whisper ONNX encoder/decoder/tokens set. TTS detection
+requires both an identifiable supported family and the expected files. Direct
+`.tar.bz2` archive names can suggest Whisper ONNX, Kitten, Kokoro or VITS/Piper;
+that name is only a hint, not proof of the archive's contents. Generic archives
+and ambiguous repositories require manual configuration. Matcha's acoustic and
+vocoder roles remain manual. The chosen engine must already be available.
+
+`custom_model_detection_ambiguous` and `custom_model_engine_unsupported` return
+HTTP 422 with safe feedback. Detection never adds a new model architecture or
+runtime. In particular, arbitrary Safetensors, GGUF or ONNX files are not
+necessarily compatible. License metadata is not inferred from filenames or
+repository names; an absent declaration remains unknown.
+
+Only explicit installation downloads the selected files, checks their digests
+and validates loading in the isolated process before publishing the model. See
+[model selection and compatibility](../research/voice-models.md) for available
+families and possible future engines.
+
+### Explicit metadata and installation
+
 `POST /api/models/custom/preview` inspects an explicitly supplied source and
 returns a preview ID, engine/model descriptor, family, declared license, file
 count and total byte size. It does not install or load the model. Local sources
@@ -363,7 +404,8 @@ confirmed deletion and active-job protection as catalog models. Deleting an
 imported model does not delete its source files or existing synthesized audio.
 
 Errors use stable, path-free codes, including `custom_model_invalid`,
-`custom_model_engine_unsupported`, `custom_model_runtime_unavailable`,
+`custom_model_engine_unsupported`, `custom_model_detection_ambiguous`,
+`custom_model_runtime_unavailable`,
 `custom_model_metadata_unavailable`, `custom_model_preview_expired`,
 `custom_model_validation_failed` and `custom_model_validation_timeout`.
 Unconfirmed installation uses `model_install_unconfirmed`; cancellation uses
