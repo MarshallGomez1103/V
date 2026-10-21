@@ -494,9 +494,11 @@ vulnerabilities privately as SECURITY.md describes, never in an issue.
 
 ## Roadmap
 
-The plan for what comes next is in [ROADMAP.md](ROADMAP.md) (currently written
-in Spanish). Everything below is **planned and does not exist yet**:
+The plan for what comes next is in [ROADMAP.md](ROADMAP.md). Everything below
+is **planned and does not exist yet**:
 
+- Real-time speech to text: live transcription from a microphone or audio
+  stream, local first.
 - A first tagged release, with packaged installers.
 
 Plans can change; do not rely on any of this until it appears in the
