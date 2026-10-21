@@ -844,6 +844,10 @@ def test_real_faster_whisper_loader_contract_never_uses_network_or_remote_code(
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="process-group cleanup (os.killpg) is POSIX-only; Windows uses child.kill()",
+)
 def test_exited_child_process_group_cleanup_tolerates_race(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

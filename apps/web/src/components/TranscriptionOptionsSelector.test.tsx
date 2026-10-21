@@ -429,7 +429,11 @@ describe('TranscriptionOptionsSelector', () => {
         name: /entiendo que el audio sale de mi equipo/i,
       })
       expect(checkbox).toHaveProperty('checked', false)
-      expect(onConsent).toHaveBeenLastCalledWith(false)
+      // El aviso al padre sale de un efecto pasivo: en un runner lento React cede
+      // entre el commit (checkbox visible) y ese efecto, así que se espera.
+      await waitFor(() => {
+        expect(onConsent).toHaveBeenLastCalledWith(false)
+      })
       expect(await screen.findByText(/costo estimado: 5 min/i)).toBeDefined()
       expect(screen.getByText(/0,03 usd/i)).toBeDefined()
       expect(fetchMock.mock.calls[1]?.[0]).toBe(

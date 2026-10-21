@@ -187,7 +187,8 @@ def test_tool_timeout_is_a_failure_without_traceback(tmp_path: Path) -> None:
 
 def fake_v(directory: Path, name: str = "v") -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    executable = directory / name
+    # Windows' shutil.which only finds names with a PATHEXT suffix (v.exe).
+    executable = directory / (name + ".exe" if os.name == "nt" else name)
     # Never executed: the check must only compare paths.
     executable.write_text("#!/bin/sh\necho foreign-v-ran >&2\nexit 99\n")
     executable.chmod(0o755)
@@ -254,6 +255,22 @@ def test_own_v_next_to_interpreter_is_ok(tmp_path: Path) -> None:
         tmp_path,
         which=path_which(venv_bin),
         python_executable=str(venv_bin / "python"),
+    )
+
+    assert v_check(report) == ("ok", "`v` en PATH es el de V")
+
+
+def test_own_v_exe_next_to_interpreter_is_ok(tmp_path: Path) -> None:
+    # Windows: the console script is v.exe, and which("v") returns that name.
+    scripts = tmp_path / "venv" / "Scripts"
+    scripts.mkdir(parents=True)
+    own = scripts / "v.exe"
+    own.write_bytes(b"")  # never executed: only paths are compared
+
+    report = healthy_report(
+        tmp_path,
+        which=lambda name: str(own) if name == "v" else fake_which(name),
+        python_executable=str(scripts / "python.exe"),
     )
 
     assert v_check(report) == ("ok", "`v` en PATH es el de V")

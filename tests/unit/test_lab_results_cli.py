@@ -75,7 +75,11 @@ def test_unsuccessful_measurements_are_invalid_without_partial_output(
 
 
 @pytest.mark.parametrize(
-    "content", ["bad-private-input", "NaN", "{}", " " * (MAX_RESULT_BYTES + 1)]
+    "content",
+    ["bad-private-input", "NaN", "{}", " " * (MAX_RESULT_BYTES + 1)],
+    # Short ids: the oversize payload as an id overflows Windows' 32767-char
+    # limit for PYTEST_CURRENT_TEST and errors the test at setup.
+    ids=["private-text", "nan", "empty-object", "oversize"],
 )
 def test_invalid_report_returns_two_without_partial_table_or_private_echo(
     tmp_path: Path, content: str
@@ -108,6 +112,7 @@ def test_report_loader_expands_home(
 ) -> None:
     path = report_file(tmp_path, "report.json")
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what expanduser reads on Windows
     assert load_report(Path("~/report.json")) == path.read_bytes()
 
 

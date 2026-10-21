@@ -78,8 +78,33 @@ class Harness:
         return int(self.pid_file.read_text())
 
     def assert_child_gone(self) -> None:
-        with pytest.raises(ProcessLookupError):
-            os.kill(self.child_pid(), 0)
+        assert not _alive(self.child_pid())
+
+
+def _alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        # os.kill(pid, 0) sends CTRL_C_EVENT on Windows (WinError 87), so ask the
+        # kernel: no handle means no process; a signalled handle means it exited.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) != 0  # 0: WAIT_OBJECT_0
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 @pytest.fixture

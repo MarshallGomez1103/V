@@ -25,8 +25,8 @@ STATE_KEYS = (
     "XDG_RUNTIME_DIR",
 )
 SERVER = r"""
-import argparse, json, os, signal, subprocess, sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import argparse, json, os, signal, socketserver, subprocess, sys
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -77,12 +77,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
     def log_message(self, *args):
         pass
-HTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
+# TCPServer, not HTTPServer: HTTPServer.server_bind does a reverse DNS lookup
+# (socket.getfqdn), which can stall on macOS runners past the smoke deadline.
+socketserver.TCPServer(("127.0.0.1", args.port), Handler).serve_forever()
 """.replace("__STATE_KEYS__", repr(STATE_KEYS))
 
 
 def run_smoke(
-    tmp_path: Path, mode: str
+    tmp_path: Path, mode: str, deadline: float = 0.8
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
     server = tmp_path / "fake V server.py"
     server.write_text(SERVER)
@@ -96,7 +98,7 @@ def run_smoke(
         **{key: str(host) for key in STATE_KEYS},
         "SMOKE_RECORD": str(record),
         "SMOKE_MODE": mode,
-        "VOZ_SMOKE_TIMEOUT": "0.8",
+        "VOZ_SMOKE_TIMEOUT": str(deadline),
     }
     result = subprocess.run(
         ["bash", str(SMOKE), sys.executable, str(server)],
@@ -104,7 +106,7 @@ def run_smoke(
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
-        timeout=6,
+        timeout=deadline + 5,
     )
     assert marker.read_text() == "untouched"
     assert list(host.iterdir()) == [marker]
@@ -120,7 +122,8 @@ def run_smoke(
 
 
 def test_smoke_isolates_home_xdg_cwd_and_stops_its_child(tmp_path: Path) -> None:
-    result, state = run_smoke(tmp_path, "child")
+    # A ready server ends the smoke at once; the margin only covers slow runners.
+    result, state = run_smoke(tmp_path, "child", deadline=10)
     assert result.returncode == 0, result.stderr
     assert "clean shutdown" in result.stdout
     assert state["args"]["no_browser"] is True
@@ -133,7 +136,7 @@ def test_smoke_isolates_home_xdg_cwd_and_stops_its_child(tmp_path: Path) -> None
 
 
 def test_smoke_uses_api_shutdown_instead_of_sigint(tmp_path: Path) -> None:
-    result, state = run_smoke(tmp_path, "api-stop")
+    result, state = run_smoke(tmp_path, "api-stop", deadline=10)
     assert result.returncode == 0, result.stderr
     assert state["shutdown_header"] == "shutdown"
     assert "clean shutdown" in result.stdout

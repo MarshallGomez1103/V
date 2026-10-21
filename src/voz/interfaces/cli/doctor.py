@@ -131,7 +131,9 @@ def _check_v_command(which: Which, python_executable: str) -> DoctorCheck:
     voz = which("voz")
     if voz is not None:
         own_dirs.append(Path(voz).parent)
-    if any(_same_file(Path(found), directory / "v") for directory in own_dirs):
+    # Compare by the found name: on Windows it is v.exe, not v.
+    found_path = Path(found)
+    if any(_same_file(found_path, d / found_path.name) for d in own_dirs):
         return DoctorCheck(name, "ok", "`v` en PATH es el de V")
     return DoctorCheck(
         name,

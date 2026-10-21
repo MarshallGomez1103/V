@@ -93,6 +93,9 @@ def test_rejects_unsafe_or_ambiguous_definition(
         b"{}",
         b" " * (MAX_DEFINITION_BYTES + 1),
     ],
+    # Short ids: the oversize payload as an id overflows Windows' 32767-char
+    # limit for PYTEST_CURRENT_TEST and errors the test at setup.
+    ids=["duplicate-key", "array", "not-utf8", "empty-object", "oversize"],
 )
 def test_decode_is_bounded_and_rejects_duplicate_keys(content: bytes) -> None:
     with pytest.raises(LabError) as raised:

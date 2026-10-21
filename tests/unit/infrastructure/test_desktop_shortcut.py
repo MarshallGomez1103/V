@@ -240,6 +240,9 @@ def test_real_launchers_exist_and_old_names_delegate_to_them() -> None:
         assert "DEPRECATED" in text and new in text, old
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="Linux .desktop entry: POSIX paths, not built on Windows"
+)
 def test_moving_the_checkout_makes_the_shortcut_broken_not_fine(
     tmp_path: Path,
 ) -> None:
@@ -271,6 +274,9 @@ def _at(
     )
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="Linux .desktop entry: POSIX paths, not built on Windows"
+)
 def test_refresh_regenerates_a_broken_shortcut_for_the_current_checkout(
     tmp_path: Path,
 ) -> None:
