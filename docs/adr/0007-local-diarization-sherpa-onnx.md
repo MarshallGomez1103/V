@@ -93,7 +93,17 @@ different engine only needs to implement `DiarizationProvider`. The manifest
 compares the pinned sources, so a different catalog forces a clean
 reinstallation.
 
-## Current evidence (2026-09-30)
+## Threshold evidence update (2026-10-19)
+
+The 0.3 threshold and synthetic result above record the original decision.
+The current implementation uses `DEFAULT_THRESHOLD = 0.4`; this update does
+not change it. The [reproducible threshold comparison](../benchmarks.md#measured-results-2026-10-19)
+completed ten CPU trials on synthetic ABA and AAA corpora. Every threshold
+from 0.3 through 0.7 returned one raw cluster and one cluster after cleanup.
+This corpus did not separate the two ABA voice variants and provides no
+evidence for changing the current default or claiming real-conversation quality.
+
+## Initial evidence (2026-09-30)
 
 | Requirement | Code or test |
 | --- | --- |
