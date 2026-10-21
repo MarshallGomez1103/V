@@ -1,13 +1,14 @@
 # V
 
-**Local Voice AI** (formerly VOZ)
+**Local Voice AI**
 
 V is a local-first application that runs speech models on your own computer.
-Today it transcribes long recordings (classes, interviews, meetings) into
-editable, speaker-labelled transcripts. Local processing keeps your audio on
-your machine by default. It also generates speech with installed voice models.
-It is a local web app: you start a server on your machine and use it from your
-browser.
+It transcribes long recordings (classes, interviews, meetings) into editable,
+speaker-labelled transcripts, and it generates speech with installed voice
+models. Local processing keeps your audio on your machine by default. V is a
+local web app: you start a server on your machine and use it from your browser.
+
+![V transcript workspace: editable segments labelled by speaker, audio player with waveform and a speaker timeline.](docs/assets/screenshots/v-workspace.png)
 
 > **Status:** pre-release. No version has been published or tagged; the tree
 > version is `0.1.0`. Expect rough edges, and see
@@ -23,6 +24,7 @@ browser.
 - [Hardware requirements](#hardware-requirements)
 - [Engines and models](#engines-and-models)
 - [Privacy and offline use](#privacy-and-offline-use)
+- [Known limitations](#known-limitations)
 - [Architecture](#architecture)
   - [Technology stack](#technology-stack)
   - [How it works](#how-it-works)
@@ -66,9 +68,10 @@ verified detail).
   from the home screen. Each transcript has its own permalink.
 - **Export** to TXT, Markdown, SRT, VTT and canonical JSON, with a preview and
   options for timestamps and grouping by speaker.
-- **Model Manager**: installs and removes models on request, reuses a
-  compatible model cache already on the machine (for example Buzz's), and
-  recommends a model for your hardware.
+- **Model Manager**: installs and removes models on request, adds a compatible
+  model from a pasted Hugging Face or direct download link after showing its
+  detected format, size and license, reuses a compatible model cache already on
+  the machine (for example Buzz's), and recommends a model for your hardware.
 - **Quality profiles and glossary**: reproducible profiles (`default`,
   `academic` with a silence filter), a per-project glossary, hallucination
   warnings, and `voz bench` to measure speed and error rate
@@ -85,31 +88,32 @@ verified detail).
 
 ## Screenshots
 
-These were captured on Linux with faster-whisper `turbo` on a GPU, using demo
-data. Some were taken before the rename to V, so the title bar still reads
-"VOZ". [docs/demo.md](docs/demo.md) explains how they are regenerated.
+Real captures of the current interface on Linux, with synthetic demo audio and
+local models (faster-whisper `base` on the GPU, Kokoro and speaker separation
+on the CPU). [docs/demo.md](docs/demo.md) describes the data and how to
+regenerate them.
 
-![Transcript workspace in the dark Carbon theme: processing stages, editable segments with speaker labels, properties, speaker list, review queue, audio player with waveform and a speaker timeline.](docs/assets/screenshots/m3-carbon-dark-es-workspace.png)
-
-![The same transcript workspace in the dark Material 3 skin.](docs/assets/screenshots/m3-m3-dark-es-workspace.png)
-
-| Library (Material 3, English) | Model Manager |
+| Speakers and playback | Export |
 | --- | --- |
-| ![Home screen listing saved transcripts with status, duration and speaker count, in the light Material 3 skin and in English.](docs/assets/screenshots/m3-m3-light-en-home.png) | ![Model Manager listing faster-whisper models with install state, size and license, plus the speaker separation model.](docs/assets/screenshots/11-gestor-modelos.png) |
+| ![Playback controls with waveform and speaker timeline next to the Speakers panel showing renamed speakers, talk time and share.](docs/assets/screenshots/v-speakers-playback.png) | ![Export transcript dialog with Markdown selected, timestamps and speaker grouping enabled, and a live preview.](docs/assets/screenshots/v-export.png) |
+| **Speech generation** | **Library (Material 3 skin)** |
+| ![Text to speech screen with model, language and voice selected and a generated English clip ready to play or download.](docs/assets/screenshots/v-speech.png) | ![V home screen with the Material 3 skin, listing three saved demo transcripts with date, duration, status and speaker count.](docs/assets/screenshots/v-library-material3.png) |
 
-![Export dialog offering TXT, Markdown, SRT, VTT and JSON, with timestamp and speaker-grouping options and a live preview.](docs/assets/screenshots/13-exportar.png)
+The Model Manager is shown under [Engines and models](#engines-and-models).
 
 ## Supported platforms
 
-| Platform | Verification level |
-| --- | --- |
-| Linux (Bazzite / Fedora Atomic, x86-64, NVIDIA RTX 4060 Laptop) | Verified by hand. This is the only platform where V has been used end to end. |
-| Windows 10/11 x86-64 | Automated tests only: CI runs the full backend suite and starts the real server on `windows-latest`. Not yet used by hand, so treat it as **experimental**. |
-| macOS 13 or later | Automated tests only (CI on `macos-latest`). Not yet used by hand, so treat it as **experimental**. Runs on the CPU. |
-| Other Linux distributions | Not tried. The steps are generic. |
+| Platform | Instructions and launchers | Verified |
+| --- | --- | --- |
+| Linux (Bazzite / Fedora Atomic, x86-64, NVIDIA RTX 4060 Laptop) | Yes | **Yes**, by hand, end to end. The only verified platform. |
+| Other Linux distributions (x86-64) | Yes, generic steps | No. |
+| Windows 10/11 x86-64 | Yes | No. A CI job runs the backend tests on `windows-latest`; it is not a hand test and its current result is on the Actions page. **Experimental.** |
+| macOS 13 or later | Yes | No. A CI job runs the backend tests on `macos-latest`; same caveat. CPU only. **Experimental.** |
 
-CUDA is likewise labelled experimental beyond the one GPU above. If something
-fails on your machine, open an issue with the output of `voz doctor --redact`.
+"Instructions" means the steps and launchers exist in this repository, not
+that they were exercised on that system. CUDA is likewise experimental beyond
+the one GPU above. If something fails on your machine, open an issue with the
+output of `voz doctor --redact` (check it before posting: issues are public).
 
 ## Installation
 
@@ -120,7 +124,9 @@ You do not need to install Python, Node or FFmpeg yourself.
 1. Get the project: clone it with [GitHub Desktop](https://desktop.github.com)
    (`https://github.com/MarshallGomez1103/V`) or download the ZIP from GitHub
    (*Code, Download ZIP*) and unzip it.
-2. Open the folder and double-click the launcher for your system:
+2. Open the folder and double-click the launcher for your system (only the
+   Linux one has been verified by hand; see
+   [Supported platforms](#supported-platforms)):
 
    | System | Launcher |
    | --- | --- |
@@ -199,7 +205,9 @@ Other options:
 
 ## Hardware requirements
 
-V needs an x86-64 machine (or Apple Silicon on macOS), enough free disk for
+V has been verified on one x86-64 Linux machine; Windows and macOS are
+unverified (see [Supported platforms](#supported-platforms)). It needs enough
+free disk for
 the models (from 78 MB for `tiny` to 3.1 GB for `large-v3`), and enough RAM or
 VRAM for the model you choose. An NVIDIA GPU with a working CUDA 12 driver is
 optional; without one V transcribes on the CPU, which works but is slow for
@@ -242,6 +250,16 @@ Details: [docs/models.md](docs/models.md), [docs/buzz.md](docs/buzz.md).
 Model weights are not part of this repository and carry their own licenses
 ([Licensing](#licensing)).
 
+To add a model that is not in the catalog, open **Models → Add a custom model**, paste a
+Hugging Face repository or a direct download link and choose **Check link**.
+Checking reads only metadata; V shows the detected format, download size and
+license, and downloads the weights only after you confirm. The weights must
+match an engine V already supports.
+
+| Model Manager | Add a model from a link |
+| --- | --- |
+| ![Model manager listing Faster Whisper models with install status, size and license.](docs/assets/screenshots/v-models.png) | ![Add a custom model dialog after checking a Hugging Face link: detected format, file count, size and license, before anything is installed.](docs/assets/screenshots/v-model-import-url.png) |
+
 ### CPU, GPU and speech languages
 
 The model selector shows declared **CPU**, **GPU** or **CPU and GPU**
@@ -253,8 +271,8 @@ Sherpa ASR and TTS currently use the CPU; remote providers run on their server.
 
 For speech generation, choose **Model → Language → Voice**. Kokoro multilingual
 includes Spanish, English, Portuguese and French voices; each was exercised with
-a short CPU synthesis sample. Piper Claude adds a compact Spanish option and
-Kitten Mini adds English voices. Models are installed separately in Model
+a short CPU synthesis sample. Piper (`es_MX-claude`, the upstream voice name)
+adds a compact Spanish option and Kitten Mini adds English voices. Models are installed separately in Model
 Manager; weights are not bundled. NeMo/Parakeet transcription requires **Auto**
 for language and has decoding-window timestamps rather than aligned words.
 
@@ -280,6 +298,27 @@ for the limits of the local CPU/GPU and multilingual checks.
 
 The rationale is in [ADR-0006](docs/adr/0006-local-first-privacy.md). Never
 commit recordings, transcripts, models, databases or API keys.
+
+## Known limitations
+
+- **Pre-release.** No tagged version, packaged installer or published release
+  exists yet. The AppImage and Flatpak recipes in [packaging/](packaging/) are
+  build recipes, not published packages.
+- **One verified platform.** Only the Linux machine in
+  [Supported platforms](#supported-platforms) has been used end to end;
+  Windows, macOS, other GPUs and single-board computers are unverified.
+- **Quality is not benchmarked broadly.** Speaker separation has no measured
+  diarization error rate (DER), and generated voices had no listening
+  evaluation; see the limits in [Benchmarks](docs/benchmarks.md). Review
+  transcripts before relying on them.
+- **CPU-only engines.** sherpa-onnx transcription and speech generation run on
+  the CPU. NeMo/Parakeet gives decoding-window timestamps, not aligned words,
+  and Whisper ONNX has not been verified with real weights.
+- **Model files are trusted input.** Checksums detect changed downloads but do
+  not prove a model is harmless; import models only from publishers you trust
+  ([SECURITY.md](SECURITY.md)).
+- **Cloud and OpenAI-compatible providers are experimental** and send audio or
+  text to that server only when you select them.
 
 ## Architecture
 
@@ -421,7 +460,8 @@ before changing code.
 ## Security
 
 See [SECURITY.md](SECURITY.md) for scope and how to report a vulnerability.
-Please do not put exploit details in a public issue.
+Issues, pull requests and their attachments are public: report
+vulnerabilities privately as SECURITY.md describes, never in an issue.
 
 ## Licensing
 

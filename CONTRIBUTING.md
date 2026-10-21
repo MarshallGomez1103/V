@@ -1,15 +1,13 @@
 # Contributing to V
 
-Thank you for your interest in V (formerly VOZ), a local-first voice tool.
+Thank you for your interest in V, a local-first voice tool.
 This document summarizes the workflow the repository actually uses, so that an
 outside contribution follows the same rules as the maintainers and the AI
 agents that already work here.
 
 > **Project status:** V has no public release yet and no formal process for
-> accepting external contributions. The GitHub repository is private. This
-> guide describes the workflow planned for when the project opens up (see
-> section 16 of [ROADMAP.md](ROADMAP.md)). If you have collaborator access
-> today, follow it anyway: it is the same one the maintainers use.
+> accepting external contributions (see section 16 of [ROADMAP.md](ROADMAP.md)).
+> This guide is the workflow the maintainers use; follow it for any change.
 
 ## Naming note
 

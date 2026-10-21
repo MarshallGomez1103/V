@@ -2,7 +2,7 @@
 
 ## Scope
 
-V (formerly VOZ) is a local-first application: it is installed and run on one
+V is a local-first application: it is installed and run on one
 person's machine, serves on `http://127.0.0.1:8765` by default, and needs no
 account or remote service to work (see [README.md](README.md) and the product
 invariants in [AGENTS.md](AGENTS.md)). This policy covers the code in this
