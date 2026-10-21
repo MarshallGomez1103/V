@@ -26,7 +26,7 @@ const FAMILIES: Record<string, readonly string[]> = {
   'faster-whisper': ['ctranslate2'],
   'whisper-cpp': ['ggml'],
   'sherpa-onnx-tts': ['kitten', 'kokoro', 'vits', 'matcha'],
-  'sherpa-onnx-asr': ['whisper'],
+  'sherpa-onnx-asr': ['whisper', 'nemo_transducer'],
 }
 type Phase = 'form' | 'uploading' | 'preparing' | 'preview' | 'starting' | 'job'
 type Source = 'folder' | 'huggingface' | 'url'
@@ -53,6 +53,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
   const [tokens, setTokens] = useState('tokens.txt')
   const [encoder, setEncoder] = useState('')
   const [decoder, setDecoder] = useState('')
+  const [joiner, setJoiner] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [phase, setPhase] = useState<Phase>('form')
   const [preview, setPreview] = useState<CustomModelPreview | null>(null)
@@ -124,7 +125,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
       engine: manual ? engine : 'auto', family: manual ? family : '',
       display_name: name.trim(), license: license.trim() || 'unknown',
       file_roles: !manual ? {} : engine === 'sherpa-onnx-asr'
-        ? { encoder: encoder.trim(), decoder: decoder.trim(), tokens: tokens.trim() }
+        ? { encoder: encoder.trim(), decoder: decoder.trim(), tokens: tokens.trim(), ...(family === 'nemo_transducer' ? { joiner: joiner.trim() } : {}) }
         : family === 'matcha' ? { acoustic_model: acoustic.trim(), vocoder: vocoder.trim(), tokens: tokens.trim() } : {},
     }
     try {
@@ -199,8 +200,8 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
     && (sourceType === 'folder' ? folderSupported && selection !== null : source.trim())
     && (family !== 'matcha' || (acoustic.trim() && vocoder.trim() && tokens.trim()))
     && (engine !== 'sherpa-onnx-asr' || (
-      encoder.trim() && decoder.trim() && tokens.trim()
-      && (sourceType !== 'folder' || [encoder, decoder, tokens].every((role) => selection?.files.some(({ name }) => name === role.trim())))
+      encoder.trim() && decoder.trim() && tokens.trim() && (family !== 'nemo_transducer' || joiner.trim())
+      && (sourceType !== 'folder' || [encoder, decoder, tokens, ...(family === 'nemo_transducer' ? [joiner] : [])].every((role) => selection?.files.some(({ name }) => name === role.trim())))
     )))
   const licenseLabel = (value: string) => value.toLowerCase() === 'unknown'
     ? t('addModel.unknown') : t('addModel.declared', { license: value.replace(/^User-declared: /, '') })
@@ -293,14 +294,19 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
                     onChange={(event) => { setTokens(event.target.value) }} required />
                 </>
               ) : null}
-              {engine === 'sherpa-onnx-asr' && family === 'whisper' ? (
+              {engine === 'sherpa-onnx-asr' && (family === 'whisper' || family === 'nemo_transducer') ? (
                 <>
                   <TextInput id={id + '-encoder'} labelText={t('addModel.encoder')} value={encoder} maxLength={512}
                     onChange={(event) => { setEncoder(event.target.value) }} required />
                   <TextInput id={id + '-decoder'} labelText={t('addModel.decoder')} value={decoder} maxLength={512}
                     onChange={(event) => { setDecoder(event.target.value) }} required />
+                  {family === 'nemo_transducer' ? (
+                    <TextInput id={id + '-joiner'} labelText={t('addModel.joiner')} value={joiner} maxLength={512}
+                      onChange={(event) => { setJoiner(event.target.value) }} required />
+                  ) : null}
                   <TextInput id={id + '-asr-tokens'} labelText={t('addModel.asrTokens')} value={tokens} maxLength={512}
                     onChange={(event) => { setTokens(event.target.value) }} required />
+                  {family === 'nemo_transducer' ? <p className="voz-field-note">{t('addModel.nemoLanguage')}</p> : null}
                 </>
               ) : null}
             </>

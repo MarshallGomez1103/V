@@ -26,6 +26,7 @@ export interface SynthesisModel {
   runtime_ready: boolean
   languages: string[]
   voices: SynthesisVoice[]
+  capabilities?: string[]
 }
 
 export interface SynthesisOptions {
@@ -154,6 +155,7 @@ function isModel(value: unknown): value is SynthesisModel {
     isString(value.display_name) &&
     typeof value.runtime_ready === 'boolean' &&
     isStringList(value.languages) &&
+    (value.capabilities === undefined || isStringList(value.capabilities)) &&
     Array.isArray(value.voices) &&
     value.voices.every(isVoice)
   )

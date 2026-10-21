@@ -21,7 +21,7 @@ import type { MessageKey } from '../i18n/messages'
 import { compareModelIds } from '../lib/modelOrder'
 import { CloudBadge } from './CloudBadge'
 import { Busy } from './Busy'
-import { DeviceLabel, PrecisionLabel, ProcessingProfileLabel } from './TechTerms'
+import { ComputeCapabilitiesLabel, DeviceLabel, PrecisionLabel, ProcessingProfileLabel } from './TechTerms'
 import { Term } from './Hint'
 import { Notice } from './Notice'
 import './TranscriptionOptionsSelector.scss'
@@ -48,6 +48,12 @@ export interface TranscriptionOptionsSelectorProps {
 type CloudAwareOption = TranscriptionOption & {
   cloud?: boolean
   provider_label?: string | null
+}
+
+function fallbackMessage(reason: string): MessageKey {
+  if (reason === 'cuda_unavailable') return 'opt.fallback.cudaUnavailable'
+  if (reason === 'cuda_precision_unsupported') return 'opt.fallback.cudaPrecision'
+  return 'opt.fallback.generic'
 }
 
 function providerName(option: CloudAwareOption): string {
@@ -289,14 +295,14 @@ export function TranscriptionOptionsSelector({
                       <span>
                         {t('opt.model')}: {option.model_id}
                       </span>
-                      {option.profile ? (
+                      {!cloud && option.profile ? (
                         <span>
                           <Term definition="opt.profile.def" plain>{t('opt.profile')}</Term>
                           {': '}
                           <ProcessingProfileLabel name={option.profile.name} plain />
                         </span>
                       ) : null}
-                      {option.execution ? (
+                      {!cloud && option.execution ? (
                         <span>
                           <Term definition="opt.execution.def" plain>{t('opt.execution')}</Term>
                           {': '}
@@ -306,10 +312,20 @@ export function TranscriptionOptionsSelector({
                           {option.execution.fallback_reason ? (
                             <>
                               {' '}
-                              (<Term definition="opt.fallback.def" plain>{t('opt.fallback')}</Term>)
+                              <span>{t(fallbackMessage(option.execution.fallback_reason))}</span>
                             </>
                           ) : null}
                         </span>
+                      ) : null}
+                    </span>
+                    <span className="voz-option__meta">
+                      {cloud ? t('opt.devices.remote') : (
+                        <ComputeCapabilitiesLabel capabilities={option.capabilities} />
+                      )}
+                      {!cloud && option.profile?.device_preference === 'gpu_preferred' ? (
+                        <span>{t('opt.policy.automatic')}</span>
+                      ) : !cloud && option.profile?.device_preference === 'cpu_only' ? (
+                        <span>{t('opt.policy.cpu')}</span>
                       ) : null}
                     </span>
                   </span>

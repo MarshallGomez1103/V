@@ -12,6 +12,7 @@ import {
 } from '../lib/speakChoice'
 import { CloudBadge } from './CloudBadge'
 import { Notice } from './Notice'
+import { ComputeCapabilitiesLabel } from './TechTerms'
 
 interface SpeakVoicePickerProps {
   id: string
@@ -81,6 +82,8 @@ export function SpeakVoicePicker({ id, options, choice, disabled = false, onChan
         <Notice kind="warning" title={t('speak.cloud.title')} subtitle={t('speak.cloud.notice')}>
           <CloudBadge plain />
         </Notice>
+      ) : choice.model.capabilities?.some((capability) => capability === 'cpu' || capability === 'gpu') ? (
+        <p className="voz-field-note"><ComputeCapabilitiesLabel capabilities={choice.model.capabilities} /></p>
       ) : null}
       {multiLanguage ? (
         <Select

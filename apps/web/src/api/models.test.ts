@@ -124,6 +124,17 @@ describe('api/models', () => {
     await expect(getModels()).rejects.toMatchObject({ code: 'invalid_response' })
   })
 
+  it('conserva espacio recuperable cero y compartido nulo', async () => {
+    const payload = { models: [{ ...MODEL, reclaimable_bytes: 0, shared_bytes: null }], disk: { models_bytes: 0, free_bytes: null } }
+    stubFetch(jsonResponse(200, payload))
+    await expect(getModels()).resolves.toEqual(payload)
+  })
+
+  it.each(['reclaimable_bytes', 'shared_bytes'])('rechaza bytes opcionales mal formados (%s)', async (field) => {
+    stubFetch(jsonResponse(200, { models: [{ ...MODEL, [field]: '4000' }], disk: { models_bytes: 0, free_bytes: null } }))
+    await expect(getModels()).rejects.toMatchObject({ code: 'invalid_response' })
+  })
+
   it('getModels acepta un kind nuevo (síntesis) sin invalidar la lista', async () => {
     const disk = { models_bytes: 0, free_bytes: null }
     const voice = { ...MODEL, kind: 'tts', capabilities: ['synthesis'] }

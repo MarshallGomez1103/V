@@ -91,6 +91,10 @@ export const models = {
     'Se liberarán {size} de disco. Tus transcripciones se conservan, pero no podrás volver a usar este modelo hasta instalarlo otra vez.',
     '{size} of disk will be freed. Your transcripts are kept, but you will not be able to use this model again until you install it again.',
   ],
+  'mm.delete.bodyUnknown': [
+    'Se eliminará esta instalación local. Tus transcripciones se conservan, pero no podrás volver a usar este modelo hasta instalarlo otra vez.',
+    'This local installation will be removed. Your transcripts are kept, but you will not be able to use this model again until you install it again.',
+  ],
   'mm.delete.confirmLabel': ['Para confirmar, escribe', 'To confirm, type'],
   'mm.sort.asc': [
     'Ordenar las filas por {header} de forma ascendente',

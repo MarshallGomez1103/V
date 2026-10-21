@@ -346,6 +346,42 @@ describe('ModelManager', () => {
     })
   })
 
+  it.each([0, 4000])('el borrado muestra solo espacio recuperable, no archivos compartidos (%s)', async (reclaimable_bytes) => {
+    const shared = { ...model({ model_id: 'tiny', installed: true, disk_bytes: 77_003_619 }), reclaimable_bytes, shared_bytes: 77_003_619 - reclaimable_bytes }
+    stubApi(models([shared]), tasks([]))
+    render(<ModelManager />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/Se liberarán/).textContent).toContain(reclaimable_bytes === 0 ? '0\u00a0B' : '4\u00a0kB')
+    expect(within(dialog).queryByText(/77\sMB/)).toBeNull()
+  })
+
+  it.each([
+    ['es', undefined, 'Se eliminará esta instalación local.'],
+    ['en', null, 'This local installation will be removed.'],
+  ] as const)('sin espacio recuperable conocido no promete bytes (%s)', async (lang, reclaimable_bytes, text) => {
+    setLang(lang)
+    const unknown = { ...model({ model_id: 'tiny', installed: true, disk_bytes: 77_003_619 }), ...(reclaimable_bytes === undefined ? {} : { reclaimable_bytes }) }
+    stubApi(models([unknown]), tasks([]))
+    render(<ModelManager />)
+    fireEvent.click(await screen.findByRole('button', { name: lang === 'es' ? 'Eliminar' : 'Delete' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(text, { exact: false })).toBeDefined()
+    expect(within(dialog).queryByText(/Se liberarán|will be freed|77\sMB/)).toBeNull()
+  })
+
+  it.each([
+    [null, 'GitHub'],
+    ['https://models.example/voice.tar.bz2', 'https://models.example/voice.tar.bz2'],
+  ])('la descarga TTS describe su fuente real (%s)', async (source, from) => {
+    stubApi(models([model({ model_id: 'piper-test', key: 'sherpa-onnx-tts:piper-test', provider_id: 'sherpa-onnx-tts', kind: 'tts', profile: null, source, capabilities: ['synthesis'] })]), tasks([]))
+    render(<ModelManager />)
+    fireEvent.click(await screen.findByRole('button', { name: /Descargar \(1,6/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/Se descargarán/).textContent).toContain('desde ' + from)
+    expect(within(dialog).queryByText(/HuggingFace/)).toBeNull()
+  })
+
   it('exige escribir el id para eliminar y refresca al borrar', async () => {
     let deleteUrl = ''
     let deleted = false

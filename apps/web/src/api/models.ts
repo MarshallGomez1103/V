@@ -34,6 +34,8 @@ export interface ModelView {
   size_bytes: number
   installed: boolean
   disk_bytes: number | null
+  reclaimable_bytes?: number | null
+  shared_bytes?: number | null
   external: ExternalSource[]
 }
 
@@ -164,6 +166,11 @@ function isNullableNumber(value: unknown): value is number | null {
   return value === null || typeof value === 'number'
 }
 
+function isOptionalByteCount(value: unknown): boolean {
+  return value === undefined || value === null ||
+    (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+}
+
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
@@ -189,6 +196,8 @@ function isModelView(value: unknown): value is ModelView {
     typeof value.size_bytes === 'number' &&
     typeof value.installed === 'boolean' &&
     isNullableNumber(value.disk_bytes) &&
+    isOptionalByteCount(value.reclaimable_bytes) &&
+    isOptionalByteCount(value.shared_bytes) &&
     Array.isArray(value.external) &&
     value.external.every(
       (entry) => isRecord(entry) && typeof entry.origin === 'string',

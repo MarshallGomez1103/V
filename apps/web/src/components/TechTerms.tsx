@@ -58,3 +58,12 @@ export function ProcessingProfileLabel({ name, plain = false }: { name: string; 
     <>{name}</>
   )
 }
+
+/** Solo capacidades declaradas por la API; no prueba disponibilidad ni ejecución. */
+export function ComputeCapabilitiesLabel({ capabilities }: { capabilities?: readonly string[] }) {
+  const { t } = useI18n()
+  const cpu = capabilities?.includes('cpu')
+  const gpu = capabilities?.includes('gpu')
+  const key = cpu && gpu ? 'opt.devices.both' : cpu ? 'opt.devices.cpu' : gpu ? 'opt.devices.gpu' : null
+  return key === null ? null : <>{t(key)}</>
+}

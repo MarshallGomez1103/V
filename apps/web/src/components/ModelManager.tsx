@@ -164,7 +164,9 @@ function DownloadDialog({
   const { t } = useI18n()
   const insufficient = freeBytes !== null && freeBytes < model.size_bytes
   const from =
-    model.kind === 'diarization' ? 'GitHub' : 'HuggingFace (' + String(model.source) + ')'
+    model.source === null ? 'GitHub'
+      : /^https?:\/\//.test(model.source) ? model.source
+        : 'HuggingFace (' + model.source + ')'
   const capabilities = capabilityLabels(model, t)
   const source =
     model.source === null
@@ -261,7 +263,9 @@ function DeleteDialog({
         submit()
       }}
     >
-      <p>{t('mm.delete.body', { size: formatBytes(model.disk_bytes ?? model.size_bytes) })}</p>
+      <p>{model.reclaimable_bytes == null
+        ? t('mm.delete.bodyUnknown')
+        : t('mm.delete.body', { size: formatBytes(model.reclaimable_bytes) })}</p>
       <TextInput
         id={inputId}
         data-modal-primary-focus

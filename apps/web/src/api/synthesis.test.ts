@@ -85,6 +85,17 @@ describe('api/synthesis', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/synthesis/options')
   })
 
+  it('conserva capacidades opcionales y admite capacidades futuras', async () => {
+    const body = { ...OPTIONS, models: [{ ...OPTIONS.models[0], capabilities: ['cpu', 'gpu', 'future_device'] }] }
+    stubFetch(jsonResponse(200, body))
+    await expect(getSynthesisOptions()).resolves.toEqual(body)
+  })
+
+  it.each([null, 'cpu', [1]])('rechaza capacidades presentes mal formadas (%s)', async (capabilities) => {
+    stubFetch(jsonResponse(200, { ...OPTIONS, models: [{ ...OPTIONS.models[0], capabilities }] }))
+    await expect(getSynthesisOptions()).rejects.toMatchObject({ code: 'invalid_response' })
+  })
+
   it('acepta opciones sin motores ni modelos', async () => {
     stubFetch(jsonResponse(200, { ...OPTIONS, providers: [], models: [] }))
     await expect(getSynthesisOptions()).resolves.toMatchObject({ models: [] })

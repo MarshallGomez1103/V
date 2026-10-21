@@ -8,6 +8,7 @@ import {
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { setLang } from '../i18n/i18n'
 import type { TranscriptionOption } from '../api/transcriptionOptions'
 import { TranscriptionOptionsSelector } from './TranscriptionOptionsSelector'
 
@@ -31,6 +32,7 @@ it('reports selected metadata for opaque ASR IDs and clears it when the option d
 
 afterEach(() => {
   cleanup()
+  setLang('es')
   vi.unstubAllGlobals()
 })
 
@@ -102,6 +104,46 @@ function stubFetch(...responses: Response[]) {
 }
 
 describe('TranscriptionOptionsSelector', () => {
+  it.each([
+    ['es', 'Automático: GPU compatible, CPU de respaldo', 'Compatible con CPU y GPU (una a la vez)', 'Selección inicial: GPU (CUDA)'],
+    ['en', 'Automatic: compatible GPU, CPU fallback', 'Supports CPU and GPU (one at a time)', 'Initial selection: GPU (CUDA)'],
+  ] as const)('explica capacidades, política y selección inicial (%s)', async (lang, policy, capabilities, initial) => {
+    setLang(lang)
+    stubFetch(jsonResponse(200, { options: [READY] }))
+    render(<TranscriptionOptionsSelector value={READY.option_id} onChange={vi.fn()} />)
+    const radio = await screen.findByRole('radio', { name: /turbo/i })
+    expect(screen.getByText(policy)).toBeDefined()
+    expect(screen.getByText(capabilities)).toBeDefined()
+    expect(radio.closest('.cds--radio-tile__wrapper')?.textContent).toContain(initial)
+  })
+
+  it.each([
+    ['cuda_unavailable', 'GPU CUDA no disponible; se usará CPU.'],
+    ['cuda_precision_unsupported', 'La GPU no admite la precisión del perfil; se usará CPU.'],
+    ['/private/driver/problem', 'El dispositivo preferido no está disponible; se usará la alternativa indicada.'],
+  ])('explica el respaldo sin exponer detalles internos (%s)', async (reason, description) => {
+    stubFetch(jsonResponse(200, { options: [option({ option_id: 'fallback', execution: { device: 'cpu', precision: 'int8', fallback_reason: reason } })] }))
+    render(<TranscriptionOptionsSelector value="fallback" onChange={vi.fn()} />)
+    expect(await screen.findByText(description)).toBeDefined()
+    expect(screen.queryByText(reason, { exact: false })).toBeNull()
+  })
+
+  it('un perfil CPU no ofrece automático aunque el motor admita GPU', async () => {
+    const cpu = option({ option_id: 'cpu', profile: { ...READY.profile!, device_preference: 'cpu_only' }, execution: { device: 'cpu', precision: 'int8', fallback_reason: null } })
+    stubFetch(jsonResponse(200, { options: [cpu] }))
+    render(<TranscriptionOptionsSelector value="cpu" onChange={vi.fn()} />)
+    expect(await screen.findByText('Perfil: solo CPU')).toBeDefined()
+    expect(screen.queryByText(/Automático:/)).toBeNull()
+  })
+
+  it('una opción remota no describe GPU o CPU del equipo', async () => {
+    stubFetch(jsonResponse(200, { options: [{ ...READY, cloud: true, provider_label: 'Remoto' }] }))
+    render(<TranscriptionOptionsSelector value={READY.option_id} onChange={vi.fn()} />)
+    await screen.findByRole('radio', { name: /turbo/i })
+    expect(screen.getByText('Procesamiento remoto')).toBeDefined()
+    expect(screen.queryByText(/Automático:|Compatible con CPU|Selección inicial:/)).toBeNull()
+  })
+
   it('lista una opción recomendada y otra bloqueada con razones en español', async () => {
     const fetchMock = stubFetch(jsonResponse(200, { options: [READY, BLOCKED] }))
     const onChange = vi.fn()
@@ -117,7 +159,7 @@ describe('TranscriptionOptionsSelector', () => {
     expect(screen.getByText('Recomendado')).toBeDefined()
     expect(ready.closest('.cds--radio-tile__wrapper')?.textContent).toContain('Perfil: Rápido')
     expect(screen.getByTitle(/prioriza la velocidad/i)).toBeDefined()
-    expect(ready.closest('.cds--radio-tile__wrapper')?.textContent).toContain('Ejecución: GPU (CUDA) · float16')
+    expect(ready.closest('.cds--radio-tile__wrapper')?.textContent).toContain('Selección inicial: GPU (CUDA) · float16')
     expect(screen.getByTitle(/tarjeta gráfica nvidia/i)).toBeDefined()
 
     // La opción no disponible no es elegible: va en la lista plegada con su motivo.

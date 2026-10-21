@@ -89,19 +89,19 @@ describe('AddModelDialog', () => {
       source_type: sourceType, source, revision: 'main',
     }, expect.any(AbortSignal))
     expect(screen.getByText(/Formato sugerido/)).toBeTruthy()
-    expect(screen.queryByText(/todavía no se ha validado con pesos reales/)).toBeNull()
+    expect(screen.queryByText(/La validación al instalar no mide la calidad/)).toBeNull()
     expect(api.createCustomModelUpload).not.toHaveBeenCalled()
     expect(api.installCustomModel).not.toHaveBeenCalled()
   })
 
-  it('marks only the experimental ASR preview with its real-weight validation limit', async () => {
+  it('marks the experimental ASR preview without treating loading as quality validation', async () => {
     vi.mocked(api.previewCustomModel).mockResolvedValue({ ...PREVIEW,
       family: 'whisper', descriptor: { ...PREVIEW.descriptor, provider_id: 'sherpa-onnx-asr' },
     })
     render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
     fireEvent.change(screen.getByLabelText('Enlace de descarga o repositorio de Hugging Face'), { target: { value: 'org/model' } })
     fireEvent.click(screen.getByRole('button', { name: 'Comprobar enlace' }))
-    await screen.findByText(/todavía no se ha validado con pesos reales/)
+    await screen.findByText(/La validación al instalar no mide la calidad/)
   })
 
   it('explains ambiguous format detection and allows manual configuration without installing', async () => {
@@ -154,17 +154,43 @@ describe('AddModelDialog', () => {
     ] } })
     const submit = screen.getByRole<HTMLButtonElement>('button', { name: 'Copiar archivos y revisar' })
     expect(submit.disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('Archivo encoder relativo (Whisper ONNX)'), { target: { value: 'tiny-encoder.int8.onnx' } })
-    fireEvent.change(screen.getByLabelText('Archivo decoder relativo (Whisper ONNX)'), { target: { value: 'tiny-decoder.onnx' } })
+    fireEvent.change(screen.getByLabelText('Archivo encoder relativo (Sherpa ONNX ASR)'), { target: { value: 'tiny-encoder.int8.onnx' } })
+    fireEvent.change(screen.getByLabelText('Archivo decoder relativo (Sherpa ONNX ASR)'), { target: { value: 'tiny-decoder.onnx' } })
     expect(submit.disabled).toBe(false)
-    fireEvent.change(screen.getByLabelText('Archivo de tokens relativo (Whisper ONNX)'), { target: { value: 'missing.txt' } })
+    fireEvent.change(screen.getByLabelText('Archivo de tokens relativo (Sherpa ONNX ASR)'), { target: { value: 'missing.txt' } })
     expect(submit.disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('Archivo de tokens relativo (Whisper ONNX)'), { target: { value: 'tokens.txt' } })
+    fireEvent.change(screen.getByLabelText('Archivo de tokens relativo (Sherpa ONNX ASR)'), { target: { value: 'tokens.txt' } })
     fireEvent.click(submit)
     await screen.findByRole('button', { name: 'Confirmar e instalar' })
     expect(api.createCustomModelUpload).toHaveBeenCalledWith(expect.objectContaining({
       engine: 'sherpa-onnx-asr', family: 'whisper',
       file_roles: { encoder: 'tiny-encoder.int8.onnx', decoder: 'tiny-decoder.onnx', tokens: 'tokens.txt' },
+    }), expect.any(AbortSignal))
+  })
+
+  it('imports NeMo only with all four roles present in the selected folder', async () => {
+    renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['sherpa-onnx-asr']} />)
+    fireEvent.change(screen.getByLabelText('Motor'), { target: { value: 'sherpa-onnx-asr' } })
+    fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'nemo_transducer' } })
+    fireEvent.change(screen.getByLabelText('Nombre del modelo'), { target: { value: 'Parakeet ONNX' } })
+    fireEvent.change(screen.getByLabelText('Elegir carpeta'), { target: { files: [
+      file('Voice/encoder.int8.onnx', 'a'), file('Voice/decoder.onnx', 'b'),
+      file('Voice/joiner.int8.onnx', 'c'), file('Voice/tokens.txt', 'd'),
+    ] } })
+    const submit = screen.getByRole<HTMLButtonElement>('button', { name: 'Copiar archivos y revisar' })
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Archivo encoder relativo (Sherpa ONNX ASR)'), { target: { value: 'encoder.int8.onnx' } })
+    fireEvent.change(screen.getByLabelText('Archivo decoder relativo (Sherpa ONNX ASR)'), { target: { value: 'decoder.onnx' } })
+    fireEvent.change(screen.getByLabelText('Archivo joiner relativo (NeMo transducer)'), { target: { value: 'missing.onnx' } })
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Archivo joiner relativo (NeMo transducer)'), { target: { value: 'joiner.int8.onnx' } })
+    expect(submit.disabled).toBe(false)
+    fireEvent.click(submit)
+    await screen.findByRole('button', { name: 'Confirmar e instalar' })
+    expect(api.createCustomModelUpload).toHaveBeenCalledWith(expect.objectContaining({
+      engine: 'sherpa-onnx-asr', family: 'nemo_transducer', file_roles: {
+        encoder: 'encoder.int8.onnx', decoder: 'decoder.onnx', joiner: 'joiner.int8.onnx', tokens: 'tokens.txt',
+      },
     }), expect.any(AbortSignal))
   })
 
