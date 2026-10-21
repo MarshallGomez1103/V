@@ -22,13 +22,16 @@ vi.mock('./StyleInstructions', () => ({ StyleInstructions: ({ value, onChange }:
 vi.mock('./DiarizationOptions', () => ({ DiarizationOptions: ({ onChange }: { onChange: (value: DiarizationRequest) => void }) => (
   <input type="checkbox" aria-label="Diarization control" onChange={(event) => { onChange({ enabled: event.target.checked, speakers: {} }) }} />
 ) }))
-vi.mock('./TranscriptionOptionsSelector', () => ({ TranscriptionOptionsSelector: ({ onChange, onSelectedOptionChange }: {
+vi.mock('./TranscriptionOptionsSelector', () => ({ TranscriptionOptionsSelector: ({ onChange, onSelectedOptionChange, onCloudConsentChange }: {
   onChange: (id: string | null) => void
-  onSelectedOptionChange?: (option: { provider_id: string } | null) => void
+  onSelectedOptionChange?: (option: { provider_id: string; cloud?: boolean } | null) => void
+  onCloudConsentChange?: (ok: boolean) => void
 }) => (
   <>
-    <button onClick={() => { onChange('opaque-fw'); onSelectedOptionChange?.({ provider_id: 'faster-whisper' }) }}>Choose FW</button>
-    <button onClick={() => { onChange('opaque-asr'); onSelectedOptionChange?.({ provider_id: 'sherpa-onnx-asr' }) }}>Choose ASR</button>
+    <button onClick={() => { onChange('opaque-fw'); onSelectedOptionChange?.({ provider_id: 'faster-whisper' }); onCloudConsentChange?.(true) }}>Choose FW</button>
+    <button onClick={() => { onChange('opaque-asr'); onSelectedOptionChange?.({ provider_id: 'sherpa-onnx-asr' }); onCloudConsentChange?.(true) }}>Choose ASR</button>
+    <button onClick={() => { onChange('opaque-cloud'); onSelectedOptionChange?.({ provider_id: 'openai', cloud: true }); onCloudConsentChange?.(false) }}>Choose cloud</button>
+    <button onClick={() => { onCloudConsentChange?.(true) }}>Consent cloud</button>
   </>
 ) }))
 
@@ -76,5 +79,26 @@ describe('NewTranscription ASR restrictions', () => {
     render(<NewTranscription header={null} modelsVersion={0} initialImported={IMPORTED} onCreated={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Choose ASR' }))
     expect(screen.getByText(/experimental.*profiles.*prompts.*glossar/i)).toBeTruthy()
+  })
+})
+
+describe('NewTranscription cloud consent', () => {
+  it('blocks a cloud option until consent and then sends it explicitly', async () => {
+    render(<NewTranscription header={null} modelsVersion={0} initialImported={IMPORTED} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Choose cloud' }))
+    expect(screen.getByRole('button', { name: 'Transcribir' }).hasAttribute('disabled')).toBe(true)
+    expect(createJob).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Consent cloud' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribir' }))
+    await waitFor(() => { expect(createJob).toHaveBeenCalledOnce() })
+    expect(vi.mocked(createJob).mock.calls[0]?.[0]).toMatchObject({ option_id: 'opaque-cloud', cloud_consent: true })
+  })
+
+  it('does not send the consent field for a local option', async () => {
+    render(<NewTranscription header={null} modelsVersion={0} initialImported={IMPORTED} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Choose FW' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribir' }))
+    await waitFor(() => { expect(createJob).toHaveBeenCalledOnce() })
+    expect(vi.mocked(createJob).mock.calls[0]?.[0]).not.toHaveProperty('cloud_consent')
   })
 })

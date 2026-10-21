@@ -56,6 +56,8 @@ export interface TranscriptionOption {
   device_name: string | null
   recommendation: Recommendation | null
   blocking_reasons: BlockingReason[]
+  /** `true` si la opción envía el audio fuera del equipo (docs/api/providers.md). */
+  cloud?: boolean
 }
 
 export interface TranscriptionOptionsPayload {

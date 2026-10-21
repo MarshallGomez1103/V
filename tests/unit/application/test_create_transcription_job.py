@@ -65,9 +65,15 @@ MODEL = ModelDescriptor(
 
 
 class Catalog:
-    def __init__(self, registered: bool = True, model: ModelDescriptor = MODEL) -> None:
+    def __init__(
+        self,
+        registered: bool = True,
+        model: ModelDescriptor = MODEL,
+        cloud: bool = False,
+    ) -> None:
         self.registered = registered
         self.model = model
+        self.cloud = cloud
 
     def list_models(self) -> tuple[ModelRegistration, ...]:
         status = (
@@ -75,7 +81,9 @@ class Catalog:
             if self.registered
             else InstallationStatus.NOT_REGISTERED
         )
-        return (ModelRegistration(self.model, status, self.registered),)
+        return (
+            ModelRegistration(self.model, status, self.registered, cloud=self.cloud),
+        )
 
 
 class Runtime:
@@ -178,11 +186,12 @@ def use_case(
     jobs: Jobs | None = None,
     model: ModelDescriptor = MODEL,
     hardware: HardwareCapabilities | None = None,
+    cloud: bool = False,
 ) -> tuple[CreateTranscriptionJob, Jobs, Selections]:
     jobs = jobs or Jobs()
     selections = Selections()
     create = CreateTranscriptionJob(
-        GetTranscriptionOptions(Catalog(registered, model), Runtime(hardware)),
+        GetTranscriptionOptions(Catalog(registered, model, cloud), Runtime(hardware)),
         Projects(PROJECT),
         MediaAssets(ASSET),
         jobs,
@@ -477,3 +486,42 @@ def test_native_asr_rejects_unsupported_options_before_persisting(option: str) -
     assert failure.value.code.value == "job_options_unsupported"
     assert not jobs.items and not selections.items
     assert "Private" not in str(failure.value)
+
+
+# --- V10-07Z: cloud consent fails closed ---------------------------------------
+
+
+def _start_cloud(create: CreateTranscriptionJob, *, consent: bool = False) -> None:
+    create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+        cloud_consent=consent,
+    )
+
+
+def test_cloud_option_without_consent_is_refused_before_persisting() -> None:
+    create, jobs, selections = use_case(cloud=True)
+
+    with pytest.raises(CreateJobError) as error:
+        _start_cloud(create)
+
+    assert error.value.code is CreateJobFailureCode.CLOUD_CONSENT_REQUIRED
+    assert not jobs.items
+    assert not selections.items
+
+
+def test_cloud_option_with_explicit_consent_is_created() -> None:
+    create, jobs, _ = use_case(cloud=True)
+
+    _start_cloud(create, consent=True)
+
+    assert len(jobs.items) == 1
+
+
+def test_local_option_never_needs_consent() -> None:
+    create, jobs, _ = use_case()
+
+    _start_cloud(create)
+
+    assert len(jobs.items) == 1

@@ -8,6 +8,7 @@ from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import StrictBool
 
 from voz.application.create_transcription_job import (
     CreateJobError,
@@ -61,6 +62,7 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.PROMPT_INVALID: 422,
     CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN: 422,
     CreateJobFailureCode.OPTIONS_UNSUPPORTED: 422,
+    CreateJobFailureCode.CLOUD_CONSENT_REQUIRED: 422,
 }
 
 MAX_DIARIZATION_SPEAKERS = 32
@@ -79,6 +81,8 @@ class CreateJobRequest:
     """Quality profile name (S13.02); ``None`` means ``default``."""
     prompt: str | None = None
     """Style instruction for the ASR engine; at most 600 characters once stripped."""
+    cloud_consent: StrictBool = False
+    """Explicit consent to send audio to a cloud option; local options ignore it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,6 +280,7 @@ def create_jobs_router(
                 diarization=diarization,
                 profile=request.profile,
                 prompt=request.prompt,
+                cloud_consent=request.cloud_consent,
             )
         except CreateJobError as error:
             extra: dict[str, object] = {}

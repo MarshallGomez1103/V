@@ -548,5 +548,76 @@ describe('TranscriptionOptionsSelector', () => {
         screen.getByRole('checkbox', { name: /entiendo que el audio/i }),
       ).toHaveProperty('checked', false)
     })
+
+    // V10-07Z: sin catálogo no se sabe si la opción es local; no hay consentimiento.
+    it.each([
+      ['es', /no se puede confirmar si esta opción envía el audio a la nube/i],
+      ['en', /cannot confirm whether this option sends the audio to the cloud/i],
+    ] as const)(
+      'catálogo en error con una opción elegida: no se puede iniciar y se explica (%s)',
+      async (lang, message) => {
+        setLang(lang)
+        stubFetch(jsonResponse(500, { detail: { code: 'x', message: 'x' } }))
+        const onConsent = vi.fn()
+
+        render(
+          <TranscriptionOptionsSelector
+            value="option-v1-openai"
+            onChange={vi.fn()}
+            onCloudConsentChange={onConsent}
+          />,
+        )
+
+        expect(await screen.findByText(message)).toBeDefined()
+        await waitFor(() => {
+          expect(onConsent).toHaveBeenLastCalledWith(false)
+        })
+        expect(onConsent).not.toHaveBeenCalledWith(true)
+      },
+    )
+
+    it('mientras el catálogo carga con una opción elegida no hay consentimiento', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>().mockReturnValue(new Promise<Response>(() => undefined)),
+      )
+      const onConsent = vi.fn()
+
+      render(
+        <TranscriptionOptionsSelector
+          value="option-v1-openai"
+          onChange={vi.fn()}
+          onCloudConsentChange={onConsent}
+        />,
+      )
+
+      await waitFor(() => {
+        expect(onConsent).toHaveBeenLastCalledWith(false)
+      })
+      expect(onConsent).not.toHaveBeenCalledWith(true)
+    })
+
+    it('al reintentar y conocer la opción como local, el consentimiento queda resuelto', async () => {
+      stubFetch(
+        jsonResponse(500, { detail: { code: 'x', message: 'x' } }),
+        jsonResponse(200, { options: [READY] }),
+      )
+      const onConsent = vi.fn()
+
+      render(
+        <TranscriptionOptionsSelector
+          value={READY.option_id}
+          onChange={vi.fn()}
+          onCloudConsentChange={onConsent}
+        />,
+      )
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Reintentar' }))
+
+      await screen.findByRole('radio', { name: /turbo/i })
+      await waitFor(() => {
+        expect(onConsent).toHaveBeenLastCalledWith(true)
+      })
+    })
   })
 })

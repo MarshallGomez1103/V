@@ -79,6 +79,8 @@ export interface CreateJobInput {
   profile?: string
   // Instrucciones de estilo para el motor (máx. 600 caracteres); ausente = ninguna.
   prompt?: string
+  // Consentimiento explícito para una opción cloud (V10-07Z); ausente en las locales.
+  cloud_consent?: boolean
   // Diarización opcional (S6); ausente o enabled=false = desactivada.
   diarization?: {
     enabled: boolean

@@ -330,6 +330,10 @@ export const transcribe = {
     'Reference rate from {date}, not verified live: your actual bill may differ.',
   ],
   'opt.consent': ['Entiendo que el audio sale de mi equipo', 'I understand the audio leaves my computer'],
+  'opt.consent.unverified': [
+    'No se puede confirmar si esta opción envía el audio a la nube hasta que carguen las opciones. Reintenta antes de transcribir.',
+    'Cannot confirm whether this option sends the audio to the cloud until the options load. Retry before transcribing.',
+  ],
   'opt.block.model_not_registered': ['Modelo no instalado', 'Model not installed'],
   'opt.block.model_files_missing': ['Faltan archivos del modelo', 'Model files are missing'],
   'opt.block.revision_unpinned': ['Revisión no fijada', 'Revision not pinned'],

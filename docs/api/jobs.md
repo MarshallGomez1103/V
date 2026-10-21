@@ -44,7 +44,7 @@ returned something unusable), 503 `media_storage_unavailable`, 507
 
 | Method and path | Request | Response |
 | --- | --- | --- |
-| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str, "prompt"?: str\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; see "Insufficient memory") / `diarization_unavailable` / `diarization_models_missing` (see "Diarization"); 422 `diarization_options_invalid` (see "Diarization") / `quality_profile_unknown` (see "Quality profile and glossary") / `job_prompt_invalid` (see "Style instructions") |
+| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str, "prompt"?: str\|null, "cloud_consent"?: bool}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; see "Insufficient memory") / `diarization_unavailable` / `diarization_models_missing` (see "Diarization"); 422 `diarization_options_invalid` (see "Diarization") / `quality_profile_unknown` (see "Quality profile and glossary") / `job_prompt_invalid` (see "Style instructions") / `cloud_consent_required` (see "Cloud consent") |
 | `GET /api/jobs/{job_id}` | — | `JobView`; 404 `job_not_found` |
 | `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` of that project, newest first. `project_id` is required (a missing or malformed value gives the standard 422 validation payload) |
 | `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 404 `job_not_found`; 409 `job_terminal` |
@@ -163,6 +163,19 @@ conditions the style of the text (punctuation, capitalization, spelling,
 vocabulary and proper names), as if it were the text preceding the audio.
 "Transcribe in the third person" or "summarize" do not work; an example of what
 the text should look like does.
+
+### Cloud consent (`cloud_consent`)
+
+An option whose `cloud` flag is `true` (see `transcription-options.md`) sends the
+audio off this machine. `POST /api/jobs` accepts it only with `cloud_consent: true`
+(a strict JSON boolean; `"true"`, `1` and the like are rejected with a 422
+validation error). Without it, or with `false`, the answer is 422
+`cloud_consent_required`: nothing is created, the job is not enqueued and no
+request reaches the provider. The check runs after the option is resolved, so an
+unknown or non-startable option keeps its own error. Local options (including a
+loopback OpenAI-compatible server) ignore the field. The field is not stored in
+the job: it authorizes this one request. A client that predates the field keeps
+working for local options and fails closed for cloud ones.
 
 ### Shutting down the server (`POST /api/shutdown`)
 

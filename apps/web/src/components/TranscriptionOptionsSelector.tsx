@@ -38,7 +38,8 @@ export interface TranscriptionOptionsSelectorProps {
   /**
    * S11.09: `true` si el padre puede iniciar (la opción elegida es local, o es
    * cloud y el usuario marcó «Entiendo que el audio sale de mi equipo»).
-   * El padre debe bloquear «Transcribir» mientras valga `false`.
+   * Falla cerrado: sin catálogo listo no se sabe si la opción es local, así que
+   * vale `false`. El padre debe bloquear «Transcribir» mientras valga `false`.
    */
   onCloudConsentChange?: (ok: boolean) => void
 }
@@ -148,7 +149,12 @@ export function TranscriptionOptionsSelector({
   useEffect(() => {
     onSelectedRef.current?.(selected ?? null)
   }, [selected])
-  const consentOk = selectedCloud === undefined || consentFor === value
+  // Fail-closed: solo es válido si la opción es conocida (catálogo listo) y es
+  // local, o si hay consentimiento explícito para esa opción cloud.
+  const consentOk =
+    selected !== undefined &&
+    (selectedCloud === undefined || consentFor === value)
+  const unverified = value !== null && state.phase !== 'ready'
   const cloudProviderId = selectedCloud?.provider_id
   const cloudModelId = selectedCloud?.model_id
   const estimateKey =
@@ -239,6 +245,9 @@ export function TranscriptionOptionsSelector({
 
   return (
     <div className="voz-options">
+      {unverified ? (
+        <Notice kind="warning" title={t('opt.consent.unverified')} />
+      ) : null}
       {state.phase === 'loading' ? (
         <div aria-live="polite">
           <Busy description={t('opt.loading')} />

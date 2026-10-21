@@ -48,7 +48,7 @@ export function NewTranscription({
   const [optionId, setOptionId] = useState<string | null>(null)
   const [selectedOption, setSelectedOption] = useState<TranscriptionOption | null>(null)
   const supportsCustomOptions = selectedOption?.provider_id !== 'sherpa-onnx-asr'
-  const [cloudConsent, setCloudConsent] = useState(true)
+  const [cloudConsent, setCloudConsent] = useState(false)
   const [profile, setProfile] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
   const [creating, setCreating] = useState(false)
@@ -90,6 +90,7 @@ export function NewTranscription({
         option_id: optionId,
         language: null, // ponytail: idioma autodetectado; selector de idioma en un corte posterior
         diarization,
+        ...(selectedOption?.cloud === true ? { cloud_consent: true } : {}),
         ...(supportsCustomOptions && profile ? { profile } : {}),
         ...(supportsCustomOptions && prompt.trim() !== '' ? { prompt: prompt.trim() } : {}),
       })
@@ -99,7 +100,7 @@ export function NewTranscription({
     } finally {
       setCreating(false)
     }
-  }, [cloudConsent, diarization, imported, onCreated, optionId, profile, prompt, supportsCustomOptions])
+  }, [cloudConsent, diarization, imported, onCreated, optionId, profile, prompt, selectedOption, supportsCustomOptions])
 
   const diarBlocked = diarization.enabled && diarModel.status !== 'ready'
   const canStart = optionId !== null && cloudConsent && !creating && !diarBlocked

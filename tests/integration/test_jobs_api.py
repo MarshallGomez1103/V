@@ -85,8 +85,9 @@ MODEL = ModelDescriptor(
 
 
 class Catalog:
-    def __init__(self, registered: bool) -> None:
+    def __init__(self, registered: bool, cloud: bool = False) -> None:
         self.registered = registered
+        self.cloud = cloud
 
     def list_models(self) -> tuple[ModelRegistration, ...]:
         status = (
@@ -94,7 +95,7 @@ class Catalog:
             if self.registered
             else InstallationStatus.NOT_REGISTERED
         )
-        return (ModelRegistration(MODEL, status, self.registered),)
+        return (ModelRegistration(MODEL, status, self.registered, cloud=self.cloud),)
 
 
 class Runtime:
@@ -138,7 +139,9 @@ class Preparer:
 
 
 class Harness:
-    def __init__(self, tmp_path: Path, *, registered: bool = True) -> None:
+    def __init__(
+        self, tmp_path: Path, *, registered: bool = True, cloud: bool = False
+    ) -> None:
         self.engine = create_sqlite_engine((tmp_path / "voz.db").absolute())
         metadata.create_all(self.engine)
         self.project = Project("Demo", created_at=NOW)
@@ -170,7 +173,7 @@ class Harness:
             audio_preparer=Preparer(),
         )
         create_job = CreateTranscriptionJob(
-            GetTranscriptionOptions(Catalog(registered), Runtime()),
+            GetTranscriptionOptions(Catalog(registered, cloud), Runtime()),
             SqliteProjectRepository(self.engine),
             SqliteMediaAssetRepository(self.engine),
             jobs,
@@ -601,5 +604,58 @@ def test_preview_of_an_unknown_job_is_404(tmp_path: Path) -> None:
         status, body = harness.request("GET", f"/api/jobs/{uuid4()}/preview")
 
         assert (status, _detail(body)["code"]) == (404, "job_not_found")
+    finally:
+        harness.close()
+
+
+def test_cloud_job_without_consent_is_refused_and_sends_nothing(
+    tmp_path: Path,
+) -> None:
+    harness = Harness(tmp_path, cloud=True)
+    Provider.prompts.clear()
+    try:
+        for extra in ({}, {"cloud_consent": False}):
+            status, refused = harness.request(
+                "POST", "/api/jobs", body=harness.create_body(**extra)
+            )
+            assert status == 422
+            assert _detail(refused)["code"] == "cloud_consent_required"
+        # Consent is a strict boolean: a truthy string is not consent.
+        status, _ = harness.request(
+            "POST", "/api/jobs", body=harness.create_body(cloud_consent="true")
+        )
+        assert status == 422
+
+        status, listed = harness.request(
+            "GET", "/api/jobs", query=f"project_id={harness.project.id}"
+        )
+        assert status == 200 and listed["jobs"] == []
+        harness.runner.start()
+        assert harness.runner.wait_idle(10.0)
+        assert Provider.prompts == []  # nothing reached the provider
+    finally:
+        harness.close()
+
+
+def test_cloud_job_with_explicit_consent_is_accepted(tmp_path: Path) -> None:
+    harness = Harness(tmp_path, cloud=True)
+    try:
+        status, created = harness.request(
+            "POST", "/api/jobs", body=harness.create_body(cloud_consent=True)
+        )
+        assert status == 201
+        assert created["state"] == "QUEUED"
+    finally:
+        harness.close()
+
+
+def test_local_job_without_consent_field_is_unchanged(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, created = harness.request(
+            "POST", "/api/jobs", body=harness.create_body()
+        )
+        assert status == 201
+        assert created["state"] == "QUEUED"
     finally:
         harness.close()

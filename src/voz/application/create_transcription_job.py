@@ -50,6 +50,7 @@ class CreateJobFailureCode(StrEnum):
     PROMPT_INVALID = "job_prompt_invalid"
     QUALITY_PROFILE_UNKNOWN = "quality_profile_unknown"
     OPTIONS_UNSUPPORTED = "job_options_unsupported"
+    CLOUD_CONSENT_REQUIRED = "cloud_consent_required"
 
 
 MAX_PROMPT_CHARS = 600
@@ -111,8 +112,13 @@ class CreateTranscriptionJob:
         diarization: DiarizationOptions | None = None,
         profile: str | None = None,
         prompt: str | None = None,
+        cloud_consent: bool = False,
     ) -> CreatedJob:
-        """Validate and persist under the admission gate, so every check holds."""
+        """Validate and persist under the admission gate, so every check holds.
+
+        ``cloud_consent`` must be ``True`` for an option that sends audio off
+        this machine; it is ignored for local options.
+        """
         with self.admission.hold():
             return self._create(
                 project_id=project_id,
@@ -122,6 +128,7 @@ class CreateTranscriptionJob:
                 diarization=diarization,
                 profile=profile,
                 prompt=prompt,
+                cloud_consent=cloud_consent,
             )
 
     def _create(
@@ -134,6 +141,7 @@ class CreateTranscriptionJob:
         diarization: DiarizationOptions | None,
         profile: str | None,
         prompt: str | None,
+        cloud_consent: bool,
     ) -> CreatedJob:
         if self.projects.get(project_id) is None:
             raise CreateJobError(
@@ -159,6 +167,12 @@ class CreateTranscriptionJob:
                 "The quality profile is not known.",
             )
         option = self._current_option(option_id)
+        if option.cloud and cloud_consent is not True:
+            raise CreateJobError(
+                CreateJobFailureCode.CLOUD_CONSENT_REQUIRED,
+                "This option sends the audio to a cloud provider. "
+                "Confirm that explicitly to continue.",
+            )
         model = self._descriptor_for(option_id)
         glossary = () if self.glossaries is None else self.glossaries.get(project_id)
         if model.provider_id == "sherpa-onnx-asr":
