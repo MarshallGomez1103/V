@@ -103,6 +103,10 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Changed
 
+- Launchers: the deprecated `Iniciar-*` wrappers are removed; the macOS, Linux
+  and Windows launchers explain a failed `uv` install, the Windows launcher
+  exits with an error code and honours `VOZ_NO_PAUSE`, and a Launchers
+  workflow runs each real launcher on a runner without `uv`.
 - The product is renamed to **V** (formerly VOZ). User-visible names change;
   internal identifiers and on-disk contracts (Python package, XDG paths,
   `voz.sqlite3`, the `voz.transcript` format, `VOZ_*` variables) are kept so no

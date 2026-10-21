@@ -154,10 +154,15 @@ You do not need to install Python, Node or FFmpeg yourself.
    | macOS | `Start-V-macOS.command` |
    | Linux | `start-v-linux.sh` (or run `./start-v-linux.sh` in a terminal) |
 
-3. Wait. The first run installs `uv` if it is missing and downloads what V
-   needs (a pinned FFmpeg build, checked by SHA-256, if FFmpeg is not found),
-   which takes a few minutes. Later runs take seconds. The browser opens by
-   itself.
+3. Wait. The first run sets everything up by itself: it installs `uv`,
+   downloads Python 3.12, creates the project's `.venv`, installs the
+   dependencies and, if FFmpeg is not found, a pinned FFmpeg build checked by
+   SHA-256. It needs an internet connection and downloads about 1.8 GB on
+   Windows and Linux (mostly the NVIDIA CUDA libraries for GPU transcription)
+   or about 0.3 GB on macOS; models are only downloaded when you confirm them
+   in V. Later runs take seconds. The browser opens by itself. If something
+   fails, the window stays open with the reason; fix it (usually the
+   connection) and open the launcher again.
 4. In the page, open **Models** and install one (`turbo` is recommended on a
    GPU), drop in a recording and press *Transcribe*.
 
