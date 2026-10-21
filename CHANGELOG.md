@@ -129,6 +129,9 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Fixed
 
+- `wait_idle` on the transcription and synthesis job runners no longer reports
+  the queue as idle while the worker has taken a job but not yet started it,
+  so stopping a runner right after `wait_idle` no longer interrupts that job.
 - Windows: cancelling an in-flight OpenAI-compatible request no longer waits
   for the server, and cancelled speech and transcription child processes are
   killed together with their descendants (the virtualenv launcher's child).
