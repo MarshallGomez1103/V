@@ -211,14 +211,13 @@ verified scope and the pending limitations.
 | V6-08N | Verified locally, experimental | CPU NeMo transducer import and Piper Claude/Kitten Mini catalog entries; seven short native checks include Kokoro Spanish, English, Portuguese and French. No comparative listening or conversation-quality claim. |
 | README-STACK | Verified locally | Frontend/backend stack, HTTP/SSE flow, application read models and directory map checked against source; local links and anchors verified. |
 | V10-04 | Base Linux packages verified locally; native checks pending | Current wheel, AppImage and uninstalled Flatpak bundle built offline from existing components; 277 package files/50 static files/README/notices matched. AppImage extraction and Flatpak import/checkout passed isolated HTTP/shutdown checks. FUSE and native Windows/macOS checks remain pending; no inference-enabled portable build claimed. |
-| V10-06P | Prepared locally; remote configuration pending | Working tree and reachable-history privacy review, narrow fixture exclusions, bundled license notices and minimal dependency patches verified; npm/OSV snapshots have zero matches. Security reporting instructions prepared; remote private reporting remains a separate action. |
+| V10-06P | Verified | Working tree and reachable-history privacy review, narrow fixture exclusions, bundled license notices and minimal dependency patches verified; npm/OSV snapshots have zero matches. Security reporting instructions published; the repository is public and private vulnerability reporting is enabled (checked with the GitHub API on 2026-10-21). |
 | V10-03 | Verified | Existing CI and dry-run actions pinned to verified commit hashes, checkout credentials disabled and job deadlines set; remote CI green on Linux, macOS and Windows (backend, frontend and package), plus the Launchers workflow that cold-starts the real launcher on all three systems. |
 | V10-05 | Verified | Deterministic bundle byte budgets and 40 Chromium structural accessibility/responsive checks, with bounded coverage documented. |
 | V8-03 | Verified | STT bench reuse and TTS first-completed-chunk latency, render throughput and separate RSS peaks with unavailable values preserved. |
 | V8-04 | Verified | Validated Markdown comparison of saved Edge Lab reports, with measured values and separate memory scopes. |
 | V8-02 | Verified | CPU experiment CLI with child-only affinity/address-space controls, deadlines, process-tree cleanup and separate measured/estimated results; disposable-process tests verified. |
 | V8-01 | Verified | ADR-0011 defines experiment-only resource controls and separates measured results from estimates; the CPU executor is covered by V8-02. |
-| V9-02 | Protocol prepared; board validation pending | Existing-model, isolated CPU measurement procedure for aarch64 SBCs, with explicit outcomes and workload budgets; no board compatibility or thermal behavior established. |
 | V5-04 | Verified | Persistent synthesis history with playback, WAV downloads and confirmed deletion, including when no models are installed; UI and static-bundle browser flow verified. |
 | V4-04 | Verified | Configurable STT/TTS servers, explicit CLOUD consent, private endpoint storage and safe validation errors; fake HTTP contracts and browser flow verified. |
 
@@ -606,6 +605,21 @@ README, without depending on the checkout.
 **Exit criterion:** the repository is ready to receive external contributions,
 with real evidence and no private material.
 
+## Section 17 — Real-time speech to text
+
+Scope: live transcription from a microphone or an audio stream while it is being
+captured, local-first, with the same explicit-consent principle for cloud
+providers as batch transcription. Planned: no design or technology is chosen yet.
+
+- [ ] **S17.01** Review the current codebase and record an ADR for real-time STT (engine, transport and boundaries).
+- [ ] **S17.02** Define the streaming audio capture and transport contract (API).
+- [ ] **S17.03** Implement a local streaming engine adapter behind a port.
+- [ ] **S17.04** Show the live transcript in the UI.
+- [ ] **S17.05** Add tests, a latency budget and CI coverage for the live path.
+
+**Exit criterion:** a person can transcribe live audio on their own machine with
+measured latency, with no cloud call unless they explicitly chose that provider.
+
 ---
 
 ## Milestones
@@ -617,6 +631,7 @@ with real evidence and no private material.
 - **Installable release:** Section 15 complete.
 - **Public opening:** Section 16 complete and explicit authorization from the
   owner.
+- **Live transcription:** Section 17 complete.
 
 Milestones do not replace the checkboxes: they are declared reached only when all
 of their mandatory IDs are verified.

@@ -143,6 +143,6 @@ The supervisor continues to own process-tree termination and resource limits.
 Reports contain neither source paths nor input text. A single pass has no
 measured variance, and synthetic input does not establish accuracy or perceived
 voice quality on real material. Constrained PC measurements do not establish
-SBC equivalence or untested operating-system/device support. Deterministic
+ARM equivalence or untested operating-system/device support. Deterministic
 tests with fake clocks, providers and RSS readers validate the metric contract;
 they are not real-model hardware benchmark results.

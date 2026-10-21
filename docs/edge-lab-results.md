@@ -67,6 +67,6 @@ Reports are validated data, not authenticated evidence that inference ran.
 Synthetic tests validate parsing and presentation; they provide no hardware
 benchmark, accuracy, performance or platform-support claim. Tables do not rank
 models, normalize datasets, account for contention, establish variance or infer
-ARM/SBC equivalence. Compare the original runtime, input, warm-up and hardware
+ARM equivalence. Compare the original runtime, input, warm-up and hardware
 observations before interpreting results. Resource boundaries and portability
 limits remain those of [ADR-0011](adr/0011-edge-lab.md).

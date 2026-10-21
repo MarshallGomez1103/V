@@ -7,10 +7,8 @@ hardware. Query date for every PyPI/GitHub fact below: **2026-10-11**.
 
 This document answers one narrow question: **do the pieces exist for Linux
 aarch64 + CPython 3.12, or are they missing?** It does **not** say that V works on
-ARM. Nobody has installed or run V on an ARM machine; that needs hardware and is a
-separate slice (V9-02). The [edge feasibility review](edge-feasibility.md)
-discusses possible single-board-computer speech workloads; actual compatibility
-and performance remain unmeasured on a board.
+ARM. Nobody has installed or run V on an ARM machine; compatibility and
+performance remain unmeasured there.
 
 Legend used throughout:
 
@@ -73,7 +71,7 @@ libraries.
 |---|---|---|---|---|
 | faster-whisper 1.2.1 | `py3-none-any` | Not needed (pure). Verified. Its dependencies (below) are what matter. | 1.2.1 | [PyPI json](https://pypi.org/pypi/faster-whisper/json) |
 | ctranslate2 | Compiled | **Yes.** `ctranslate2-4.8.2-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl` (16.9 MB, uploaded 2026-08-31). Verified. | 4.8.2 (same wheel) | [PyPI json](https://pypi.org/pypi/ctranslate2/json) |
-| nvidia-cublas-cu12 | Compiled, `py3-none` | Wheel exists: `nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_aarch64.whl` (575 MB). Verified that the file exists. **Whether it is useful on a SBC: see the finding below.** | 12.9.2.10 | [PyPI json](https://pypi.org/pypi/nvidia-cublas-cu12/json) |
+| nvidia-cublas-cu12 | Compiled, `py3-none` | Wheel exists: `nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_aarch64.whl` (575 MB). Verified that the file exists. **Whether it is useful on a machine without an NVIDIA GPU: see the finding below.** | 12.9.2.10 | [PyPI json](https://pypi.org/pypi/nvidia-cublas-cu12/json) |
 | nvidia-cudnn-cu12 | Compiled, `py3-none` | Wheel exists: `nvidia_cudnn_cu12-9.27.0.42-py3-none-manylinux_2_27_aarch64.whl` (772.7 MB). Verified that the file exists. Same caveat. | 9.27.0.42 | [PyPI json](https://pypi.org/pypi/nvidia-cudnn-cu12/json) |
 
 Dependencies of faster-whisper 1.2.1 (from the PyPI metadata): `ctranslate2`,
@@ -94,7 +92,7 @@ CPU backend: the ctranslate2 package description on PyPI states that the project
 supports x86-64 and AArch64/ARM64 processors with backends including OpenBLAS
 and Ruy ([PyPI project page](https://pypi.org/project/ctranslate2/)). Verified as
 a statement of the project. **Not verified**: which backend the published aarch64
-wheel actually bundles, its int8 speed on a Raspberry Pi class CPU, and whether the
+wheel actually bundles, its int8 speed on an ARM CPU, and whether the
 aarch64 wheel contains any CUDA code. That has to be measured.
 
 ### Finding: the CUDA marker does not distinguish architectures
@@ -118,16 +116,16 @@ both packages. Consequences, with their evidence level:
 - **Verified (code)**: V only uses them when the chosen device is `cuda`
   ([`faster_whisper.py`](../../src/voz/infrastructure/asr/faster_whisper.py),
   `_preload_cuda_libraries` and the CPU fallback `_cpu_fallback_notice`). When the
-  libraries fail to load it falls back to CPU int8. So on a SBC without a CUDA
+  libraries fail to load it falls back to CPU int8. So on an ARM machine without a CUDA
   GPU they are dead weight, not a crash, **as far as the code reads**.
 - **Not verified**: that the preload step is harmless on an ARM machine
   (it dlopens every `lib*.so.*` under the `nvidia/*/lib` folders; a failure is
   retried and eventually skipped by design, but this was never run on aarch64).
   Also not verified: whether those aarch64 wheels target only server-class ARM
   with NVIDIA GPUs (SBSA) and not Jetson boards. The PyPI filenames do not say.
-  Treat the aarch64 CUDA wheels as unusable on a Raspberry Pi / Orange Pi / most
-  RK3588 boards until shown otherwise.
-- **Install-size risk**: a 1.35 GB download on an SD-card or eMMC device is a
+  Treat the aarch64 CUDA wheels as unusable on ARM machines without an NVIDIA GPU
+  until shown otherwise.
+- **Install-size risk**: a 1.35 GB download on a small-storage ARM device is a
   practical blocker even if it is harmless.
 
 This is a finding for a future slice (see the change list at the end), not
@@ -186,14 +184,14 @@ slice (verified on 2026-10-11):
   glibc (`ld-linux-aarch64.so.1`, `libc.so.6`, `libm`, `libdl`, `librt`,
   `libpthread`, `libgcc_s`). The codecs are built in, but the machine needs a
   glibc-based userland. Alpine/musl and other non-glibc systems would not run
-  them. Not executed here (no ARM hardware), so "runs on a real Pi" is **not
+  them. Not executed here (no ARM hardware), so "runs on real ARM hardware" is **not
   verified**.
 - A distribution FFmpeg (`apt install ffmpeg`) is the lower-risk path on a
-  Debian-family SBC and is always preferred by V anyway.
+  Debian-family ARM system and is always preferred by V anyway.
 
 **Not verified**: the minimum glibc version these binaries require, the
 license/codec set of the zackees build for redistribution, and whether the build
-runs on a Pi 5 class CPU without illegal instructions.
+runs on a recent ARM CPU without illegal instructions.
 
 ## 5. whisper.cpp (alternative engine)
 
@@ -210,8 +208,6 @@ Verified from the upstream README
   be built from source.
 - Plain C/C++ implementation without dependencies; the README says Apple Silicon
   is first-class "via ARM NEON, Accelerate framework, Metal and Core ML".
-- The supported-platform list includes **Raspberry Pi**, linking to a community
-  discussion (`discussions/166`).
 - Docker images `ghcr.io/ggml-org/whisper.cpp:main` list `linux/amd64` and
   `linux/arm64` platforms.
 - Optional OpenBLAS acceleration: `cmake -B build -DGGML_BLAS=1`.
@@ -224,7 +220,7 @@ was verified on 2026-09-30 ([`whisper-cpp.md`](../whisper-cpp.md)). No ARM build
 was ever made by V.
 
 **Not verified**: that the v1.9.5 CMake build succeeds on a given ARM board and
-compiler; real speed or RAM on a Pi (the README table is not ARM-specific);
+compiler; real speed or RAM on ARM (the README table is not ARM-specific);
 that the adapter's required CLI flags match on an ARM build (they are
 architecture independent, so it is expected, not verified).
 
@@ -256,18 +252,17 @@ cymem, ...) on aarch64; only spacy itself was checked.
 | Base: sqlalchemy, pydantic-core, markupsafe | Yes (aarch64 wheels) | Verified |
 | asr-local: faster-whisper, ctranslate2 | Yes | Verified (files); runtime unverified |
 | asr-local: onnxruntime, av, tokenizers, hf-xet, pyyaml | Yes | Verified |
-| asr-local: nvidia-cublas-cu12, nvidia-cudnn-cu12 | Wheels exist, but pointless on a board without NVIDIA GPU and ~1.35 GB | Existence verified; usefulness not verified |
+| asr-local: nvidia-cublas-cu12, nvidia-cudnn-cu12 | Wheels exist, but pointless without an NVIDIA GPU and ~1.35 GB | Existence verified; usefulness not verified |
 | diarization: numpy, sherpa-onnx, sherpa-onnx-core | Yes | Verified |
 | onnxruntime via sherpa | No dependency; sherpa bundles its own | Verified |
 | FFmpeg static aarch64 bundle | Download exists, digest matches, ELF aarch64, but glibc-dynamic | Verified (not executed) |
-| whisper.cpp | Source build only; README supports ARM and Raspberry Pi | Verified (README); build on ARM not done |
+| whisper.cpp | Source build only; README supports ARM | Verified (README); build on ARM not done |
 | KittenTTS stack | Pieces exist; not part of V yet | Verified (files) |
 
 Nothing here shows that V, as a whole, starts or runs acceptably on ARM. What is
-unknown and needs hardware: actual install time, memory, thermal behaviour, real-time
-factor of each engine, the preload code path on aarch64, the FFmpeg binaries
-executing, audio device handling, and the web UI on a small screen. Those belong to
-V9-02.
+unknown and needs hardware: actual install time, memory, real-time factor of each
+engine, the preload code path on aarch64, the FFmpeg binaries executing and audio
+device handling.
 
 ## 8. Changes V would need (list for a future slice, not implemented)
 
@@ -281,26 +276,19 @@ V9-02.
    skip `_preload_cuda_libraries` when `platform.machine()` is ARM and no
    `nvidia-smi` GPU exists, and make the CPU/int8 default for ARM explicit in the
    hardware profile (`infrastructure/asr/hardware.py`).
-3. **Hardware profile for SBCs**: recognise ARM CPUs and small RAM in the
-   hardware detection so the model recommendation chooses `tiny`/`base` with int8
-   and warns about `medium` and above. Thresholds must come from V9-02
-   measurements, not from the README tables.
-4. **FFmpeg**: keep the system-FFmpeg-first rule; on Linux arm64 add a clear
+3. **FFmpeg**: keep the system-FFmpeg-first rule; on Linux arm64 add a clear
    diagnostic when the bundled binary cannot run (musl, old glibc) and tell the
    user to install the distribution package. Consider recording the minimum glibc
    once measured. The `linux_arm64` digest table needs no change today.
-5. **whisper.cpp on ARM**: document an ARM build recipe (CMake, optional
+4. **whisper.cpp on ARM**: document an ARM build recipe (CMake, optional
    OpenBLAS) in `docs/whisper-cpp.md` after it has been built on real hardware;
    until then it stays "unverified". Check that `whisper_cpp_fallback.py`
    suggests it for low-resource ARM profiles.
-6. **CI**: add an aarch64 Linux job (GitHub-hosted arm64 runners or QEMU) that
+5. **CI**: add an aarch64 Linux job (GitHub-hosted arm64 runners or QEMU) that
    at least runs `uv sync --extra diarization --extra asr-local` and the unit
    tests, to catch missing wheels early. Not verified: availability and cost of
    such runners for this repository.
-7. **Install docs**: an ARM page stating the exact verified state (what exists,
-   what was measured) once V9-02 has real numbers, without compatibility claims
-   before that.
-8. **TTS stack (future program)**: re-check `misaki`'s `Python <3.13` bound and the
+6. **TTS stack (future program)**: re-check `misaki`'s `Python <3.13` bound and the
    full spacy tree on aarch64 before choosing a TTS dependency set.
 
 ## Sources

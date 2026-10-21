@@ -10,6 +10,10 @@
   [ADR-0006](0006-local-first-privacy.md) (privacy),
   [local benchmarks](../benchmarks.md) (existing STT measurements)
 
+> Note (2026-10-22): SBC validation was dropped from the roadmap. Mentions of
+> SBCs below are historical; Edge Lab remains a CPU experiment
+> tool for the host PC.
+
 ## Context
 
 Edge Lab will measure installed voice models on a PC under explicit resource

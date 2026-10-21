@@ -8,7 +8,7 @@ The architectural boundary is [ADR-0011](adr/0011-edge-lab.md).
 This executor is experimental. Linux CPU affinity and address-space limits are
 covered by disposable-process tests; real model performance and other operating
 systems have not been validated by those tests. PC constraints do not establish
-SBC equivalence or support for ARM boards.
+equivalence with other CPU architectures or support for other devices.
 
 ## Run an experiment
 
@@ -189,7 +189,7 @@ Failed and interrupted runs return empty measurements and preserve readiness
 observations when available. An allocation failure is not automatically diagnosed
 as physical RAM exhaustion; no OOM attribution is fabricated. Output excludes
 source paths, audio filenames, input text and raw exceptions. A single run does
-not establish variance or SBC compatibility.
+not establish variance or compatibility with other hardware.
 
 ## Exit codes and platform limits
 
