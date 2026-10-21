@@ -941,93 +941,12 @@ voz/
 
 ---
 
-# 22. Contexto para agentes de IA
+# 22. Documentación del desarrollo
 
-## Archivos públicos en el repo
-
-### `AGENTS.md`
-
-Solo reglas estables del proyecto:
-- arquitectura
-- comandos
-- estilo
-- definición de done
-- límites de capas
-- cómo probar
-- qué NO hacer
-
-Este archivo sí puede versionarse porque ayuda a cualquier colaborador/agente.
-
-### `ROADMAP.md`
-
-Checklist de producto compartido.
-
-### ADRs
-
-Decisiones arquitectónicas durables, no conversación de agentes.
-
-## Contexto privado local
-
-```text
-.ai/
-├── CONTEXT.md
-├── SESSION.md
-├── HANDOFF.md
-├── DECISIONS_PENDING.md
-├── AGENT_LOG.md
-└── scratch/
-```
-
-Agregar a `.gitignore`:
-
-```gitignore
-.ai/
-CLAUDE.local.md
-AGENTS.local.md
-.codex/
-```
-
-### Regla de handoff
-
-Antes de cambiar de Claude ↔ Codex:
-
-1. actualizar `.ai/HANDOFF.md`;
-2. marcar checklist completado en `ROADMAP.md`;
-3. listar archivos modificados;
-4. listar tests ejecutados;
-5. anotar fallos abiertos;
-6. dejar exactamente el siguiente objetivo;
-7. no pegar toda la conversación.
-
-Formato de `HANDOFF.md`:
-
-```markdown
-# Handoff
-
-## Estado
-...
-
-## Terminado
-- ...
-
-## Pendiente inmediato
-- [ ] ...
-
-## Archivos tocados
-- ...
-
-## Tests
-- `uv run pytest ...`
-
-## Riesgos / bugs
-- ...
-
-## No cambiar
-- ...
-
-## Próximo agente
-Implementa únicamente ...
-```
+Las reglas estables de contribución están en `AGENTS.md` y `CONTRIBUTING.md`.
+El avance verificable se consulta en `ROADMAP.md`; los ADR registran las
+decisiones arquitectónicas duraderas. La configuración y los datos locales
+se mantienen fuera de los archivos publicados.
 
 ---
 
@@ -1072,7 +991,7 @@ Incluir en `AGENTS.md`:
 - [ ] Añadir ESLint + TS strict + Vitest
 - [ ] Crear CI inicial
 - [ ] Crear `AGENTS.md`
-- [ ] Crear `.ai/` y reglas de `.gitignore`
+- [ ] Definir exclusiones de configuración y datos locales en `.gitignore`
 - [ ] Crear ADR-0001 monolito modular
 - [ ] Verificar instalación limpia en Bazzite
 
@@ -1305,31 +1224,11 @@ Incluir en `AGENTS.md`:
 
 ---
 
-# 25. Orden recomendado para agentes
+# 25. Entregas incrementales
 
-No entregar a un agente “construye VOZ”.
-
-Entregar vertical slices:
-
-### Prompt de arranque
-
-```text
-Lee AGENTS.md, ROADMAP.md y los ADR relevantes.
-Lee .ai/HANDOFF.md si existe.
-Trabaja únicamente el checkbox indicado.
-Antes de modificar código:
-1. identifica capas afectadas,
-2. propone archivos,
-3. ejecuta tests base.
-Implementa la solución mínima.
-Añade/actualiza pruebas.
-Ejecuta formatter, lint, typecheck y tests relevantes.
-Solo entonces marca el checkbox.
-Actualiza .ai/HANDOFF.md con estado y siguiente paso.
-No avances al siguiente checkbox.
-```
-
-Idealmente cada agente recibe entre 1 y 3 checkboxes estrechamente relacionados.
+Cada entrega cubre de uno a tres requisitos relacionados, conserva las
+fronteras arquitectónicas y se verifica con pruebas, formato, lint y tipos.
+Solo los comportamientos comprobados se marcan como completados en el roadmap.
 
 ---
 
@@ -1425,7 +1324,7 @@ La arquitectura va bien si:
 - [ ] Crear repo `voz`
 - [ ] Crear `AGENTS.md`
 - [ ] Crear `ROADMAP.md`
-- [ ] Crear `.ai/HANDOFF.md`
+- [ ] Documentar el estado verificable en el roadmap
 - [ ] Crear backend FastAPI con `/api/health`
 - [ ] Crear frontend React con una pantalla Home
 - [ ] Crear CLI Typer

@@ -1,84 +1,139 @@
-# Pre-publication audit of the repository (S16.19)
+# Pre-publication repository audit
 
-- Date: 2026-09-30
-- Scope: the working tree (versioned, non-ignored files) **and** the entire
-  reachable git history (`--all`: 21 commits, a single person as author).
-- Tool: [`scripts/audit-secrets.sh`](../../scripts/audit-secrets.sh) (bash + git,
-  no new dependencies; it never prints a secret, only `type commit path`).
-- This report reproduces no sensitive value. None was found to reproduce.
+Date: 2026-10-20. This updates the earlier S16.19 audit; its earlier counts and
+release-readiness conclusions do not describe the current checkout.
+The working tree, dependency-audit evidence and redistribution notices were
+rechecked on 2026-10-21; the historical scan and focused tests below were not
+repeated.
 
-## Result
+## Scope and result
 
-**0 HIGH findings. Nothing blocks opening the repository because of secrets or
-private data.** 19 REVIEW findings remain (matches inside `tests/`), triaged by
-hand below: all are fake data or generic paths, plus one pending authorship
-decision (see "Decision before publishing").
+The audit covered the Git index, existing tracked files, non-ignored new files,
+and every blob reachable from local branches, remote-tracking references and
+tags. The historical snapshot contained **118 commits, 3,587 objects and 2,076
+blobs**. Ignored files were inventoried by name and filesystem metadata, without
+reading their contents. Worktree registrations were inspected without changing
+or pruning them.
 
-| Check | Method | Result |
-| --- | --- | --- |
-| OpenAI/Anthropic keys (`sk-`), ElevenLabs (`sk_`, `xi-api-key` header with a value), Hugging Face (`hf_`), AWS (`AKIA`/`ASIA`), GitHub (`ghp_`, `github_pat_`…), Slack, Google (`AIza`), private key blocks, `Bearer …`, literal `api_key/secret/token/password = "…"` assignments | `git grep` over the tree and `git log --all -G` over the whole history (including deleted lines) | Only 3 fake values in tests (below). No real key in the tree or in the history. |
-| Secret files (`.env*`, `*.key`, `*.pem`, `*.p12`, `credentials*.json`, `id_rsa*`, `id_ed25519*`) | names in the tree and in all commits | None, at any time. `.env.example` would be allowed and does not exist either. |
-| `.ai/` never versioned | `git ls-files .ai`, `git log --all -- .ai`, `git check-ignore` | 0 tracked files, 0 commits, ignored by `.gitignore`. |
-| Media, databases, models and archives | extensions over tree and history (`wav`, `mp3`, `sqlite*`, `db`, `onnx`, `gguf`, `zip`…) | Only the 6 synthetic fixtures in `tests/fixtures/media/` (about 20 KB in total, provenance and license in [fixtures-licenses.md](../fixtures-licenses.md)). No database, model or recording. |
-| Large files | `git ls-tree -r -l HEAD` and all history blobs, 1 MiB threshold | None. The largest is the compiled web bundle (253 KB); the whole git pack weighs about 750 KiB. |
-| Personal host paths in versioned files (`/home/<user>`, `/var/home/<user>`, `/Users/<user>`) | `git grep` and `git log --all -G` | None in code or docs. Only invented paths in tests (below). Neither the maintainer's nor any real one. |
-| Personal data in files | emails, URLs with `token=`/`key=` | No email in versioned files; no URL with credentials. |
-| Local files present but ignored (`.idea/`, `.directory`, `dist/`, caches, `.venv/`) | `git ls-files --others --ignored` | None looks like a secret; none is tracked nor ever was. |
+[`scripts/audit-secrets.sh`](../../scripts/audit-secrets.sh) completed with
+**0 HIGH and 44 REVIEW findings**. The REVIEW matches were inspected: they are
+synthetic credentials, example URLs and invented host paths in tests, including
+tests that verify redaction. A separate scan of reachable blobs found no
+additional credential or personal-path candidate outside tests. These are
+heuristic results, not a guarantee that the repository contains no secret or
+vulnerability.
 
-## Triage of the REVIEW findings
+| Check | Observation |
+| --- | --- |
+| Private context | `.ai/` is ignored, absent from the index and absent from reachable history. References to private research were removed from public documentation and replaced with public sources where needed. |
+| Credentials and private paths | Detected candidates were test literals; no actual credential or personal host path was identified in shipped source or documentation. Matched values are not reproduced here. |
+| Models, recordings and databases | No model weights, private recording or runtime database was identified among publication candidates. Six documented synthetic tone files remain intentional fixtures. |
+| Large blobs | No reachable historical blob exceeds 1 MiB. This is an inventory threshold, not a safe-file-size rule. |
+| Symlinks | The current index contains no symlink. Local worktrees and their internal Git paths are not application deliverables. |
+| Authorship | Reachable author and committer identities use one GitHub `noreply` identity. Publishing history still publishes that attribution and the commit messages. |
+| Binary assets | Fixtures have a size/hash/provenance manifest. PNG metadata was inspected separately; no personal-path, credential or GPS marker was identified. A contact-sheet review covered the 22 screenshots; no private path or credential was identified visually. Demo content is described in the README. This does not establish the provenance of every depicted name or waveform. |
 
-`sk-`-shaped keys (3 files): they are obviously fake test literals (they start
-with words such as `secret`, `super` or `test`, with a small alphabet) used to
-check that V does **not** leak them into logs or diagnostics.
+## Exclusion corrections
 
-- `tests/unit/test_doctor.py`, `tests/unit/infrastructure/test_secrets.py`,
-  `tests/integration/test_providers_api.py`.
+The previous `!tests/fixtures/**` exception overrode secret, model and media
+exclusions inside that directory. It now allows only the six synthetic media
+files listed in [fixture licenses](../fixtures-licenses.md). Python helpers and
+JSON fixtures remain ordinary source files; a new binary fixture requires an
+explicit exception and documented provenance.
 
-Personal-path-shaped paths (7 files): they are invented user directories
-(`student`, `usuario-real`, `host`, `u`, `x`, `secret` under `/home`) used to test
-that V rejects or redacts host paths.
+Additional exclusions cover the application's `secrets.toml`, common server-token
+filenames, SQLite journal/WAL/SHM sidecars, binary model weights, AppDir trees,
+AppImage files and Flatpak bundles. Flatpak reference and repository configuration
+files remain eligible as source. Root-level `transcript.*`, `transcript-*` and
+`transcript_*` exports are excluded without hiding the legitimate
+`src/voz/domain/entities/transcript.py` module.
 
-- `tests/unit/test_xdg_paths.py`, `tests/unit/test_diagnostics_bundle.py`,
-  `tests/unit/test_doctor.py`, `tests/unit/application/test_model_tasks.py`,
-  `tests/unit/domain/test_media_asset.py`,
-  `tests/unit/infrastructure/cloud/test_elevenlabs_scribe.py`,
-  `apps/web/src/components/Waveform.test.tsx`.
+Forty-nine assertions checked representative excluded paths, legitimate source
+and fixtures, and the index separately. No existing tracked file is hidden by
+the resulting rules when checked with `git check-ignore --no-index`.
+**An ignore rule never removes content already tracked or committed.** Forced
+addition can bypass the rules; arbitrary filenames can also contain private data.
 
-The script marks as REVIEW (not HIGH) everything under `tests/`; if a test value
-stops being obviously fake, it goes to human review.
+Font and JavaScript redistribution notices were also checked. The resulting
+frontend includes the original IBM Plex and Roboto Flex OFL notices and a
+JavaScript notice aggregate derived from the rendered-module graph (27 package
+owners and injected-helper packages). Original upstream LICENSE/NOTICE text is
+preserved; the aggregate is not a full dependency SBOM.
 
-## Decision before publishing
+## Focused security verification
 
-**Authorship metadata (resolved 2026-10-02).** At audit time the history had a
-single author with an institutional email. On 2026-10-02 the
-history was rewritten (and force-pushed to the private remote) with the maintainer's GitHub `noreply` address, and the
-repository uses that address from then on. A full-history run of
-`scripts/audit-secrets.sh` on 2026-10-10 lists only the `noreply` author.
+Manual code review covered server authentication, Host validation, response
+headers, credential-file handling, bounded model uploads and model archive
+extraction. The existing tests for these boundaries and synthetic-media
+integrity completed with **301 passed, one deprecation warning**. They ran with
+a temporary HOME/XDG environment, a separate network namespace, read-only source,
+two CPU threads and no GPU. No live provider, downloaded model or personal data
+was needed for these tests.
 
-It was the only personal datum the audit found.
+This focused review does not replace the full application checks or an
+independent penetration test. Security reports for experimental features remain
+in scope; a child-process model loader is not
+an operating-system permission sandbox. See [SECURITY.md](../../SECURITY.md).
 
-## Limitations
+## Dependency advisory snapshot: 2026-10-20
 
-- The expressions are heuristic: they detect known formats and literal
-  assignments, not arbitrary unformatted secrets (a 12-letter password in a YAML).
-  Complement with a dedicated scanner (gitleaks or trufflehog) if available; none
-  was added as a dependency.
-- Only text diffs are scanned (`-I`): the 6 binary fixtures were checked by name,
-  size and provenance, not by content.
-- Reachable references are audited (`--all`: branches, remotes and tags). The
-  reflog and unreachable objects are not audited: they are not published with a
-  `push`.
-- The tree includes the not-yet-committed work of other agents of the wave (new
-  non-ignored files); it is checked again with the script before the release.
+The initial database queries identified three affected packages. They were
+updated within their existing release lines, with no new dependency names:
 
-## How to repeat it
+| Package | Previous version | Patched version | Advisory and relevant scope |
+| --- | --- | --- | --- |
+| Mako | 1.4.1 | 1.4.2 | [GHSA-5639-2j2p-m4mx](https://github.com/sqlalchemy/mako/security/advisories/GHSA-5639-2j2p-m4mx): Windows template-path traversal. V uses Mako through Alembic's trusted migration templates; no attacker-controlled `TemplateLookup` route was identified. |
+| certifi | 2026.7.22 | 2026.10.19 | [GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2): affected CA trust material. Relevant to optional model downloads through clients using certifi; an updated top-level package does not update copies vendored by other software. |
+| Vite | 8.2.0 | 8.2.4 | [GHSA-698v-4r3x-3vcv](https://github.com/vitejs/launch-editor/security/advisories/GHSA-698v-4r3x-3vcv), [GHSA-r825-w8mm-5pxw](https://github.com/vitejs/launch-editor/security/advisories/GHSA-r825-w8mm-5pxw), [GHSA-587h-7wmj-h5pm](https://github.com/vitejs/launch-editor/security/advisories/GHSA-587h-7wmj-h5pm): development-server editor launching on Windows or WSL. This server is separate from V's packaged FastAPI runtime. |
+
+After these changes, `npm audit --json --ignore-scripts` completed with exit
+code 0 and **zero reported vulnerabilities**, including development dependencies.
+An [OSV batch query](https://google.github.io/osv.dev/post-v1-querybatch/)
+for **54 exact PyPI package versions in `uv.lock` returned zero matches**. Both
+results were checked against the hashes of the current lockfiles.
+
+These are database snapshots, not exploit-reachability analysis or a guarantee
+against future advisories. The OSV query does not establish which distributions
+are installed in an environment or inspect vendored copies inside pip,
+ensurepip, an operating system or a portable artifact. Each final artifact
+requires its own inventory and notices. The JavaScript notice aggregate was
+refreshed against the installed Vite 8.2.4 originals; all 29 original notice files
+for the 27 package owners/helpers were preserved exactly.
+
+## Remaining publication checks
+
+- Review the final staged diff, including newly generated assets and packaging
+  notices, after all changes are finished. Repeat the scan on that exact state.
+- Verify third-party redistribution notices in each binary artifact. The
+  project's MIT license does not relicense dependencies, fonts or model weights.
+- Repeat dependency database queries before publication if the lockfiles or
+  advisory data change; inspect installed and vendored distributions in each
+  final artifact separately from the lockfile results above.
+- Enable and verify GitHub Private Vulnerability Reporting when the repository
+  is public. A security policy and issue template cannot activate it. Ordinary
+  issues and attachments in a public repository remain public; follow the
+  [reporting and maintainer setup instructions](../../SECURITY.md#how-to-report).
+- Review publication scope and permissions before changing visibility, pushing
+  or releasing. This audit did not change remote settings or publish anything.
+
+## Repeatable local checks
+
+From the repository root:
 
 ```bash
-scripts/audit-secrets.sh              # tree + history; exits with 1 if there is a HIGH
-scripts/audit-secrets.sh --tree-only  # tree only (fast, for before committing)
+bash scripts/audit-secrets.sh
+bash scripts/audit-secrets.sh --tree-only
+git ls-files .ai
+git log --all --oneline -- .ai
+git check-ignore -v .ai/
+git ls-files --cached --others --exclude-standard
+git diff --cached --check
 ```
 
-Before the first public push: run it on the final state, review each new REVIEW
-and confirm the output ends in `0 HIGH`. `.gitignore` already covers `.env*`,
-keys, databases, media and models; the script exists to catch whatever slipped
-through anyway (for example with `git add -f`).
+Review every finding, including those classified REVIEW. The scanner's
+expressions target recognizable formats and literal assignments; they miss
+arbitrary passwords, obfuscated values and secrets embedded in binary payloads.
+Reachable history is included; reflogs and unreachable objects are not, since
+they are not sent by a normal push. Local ignored files are outside publication
+candidates and were not content-scanned. Neither static analysis nor passing
+tests proves complete security or authorizes a public release.

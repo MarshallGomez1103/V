@@ -35,6 +35,16 @@ when judging a report:
 - **Uploads are untrusted input.** Media files go through the FFmpeg ingestion
   pipeline; originals are immutable and derived files are stored separately
   ([ADR-0003](docs/adr/0003-ffmpeg-ingestion.md)).
+- **Model provenance matters.** A checksum detects changes to the expected
+  download; it does not establish that a model is harmless. Native runtimes
+  parse downloaded model files. A child process provides lifecycle and timeout
+  control, not an operating-system permission sandbox. Import models only from
+  publishers you trust.
+- **Model URLs are trusted input.** Remote previews contact the supplied source
+  for metadata before installation. Direct sources require HTTP(S) without
+  embedded credentials, query strings or fragments; conventional redirects and
+  proxy behavior apply. There is no destination-network allowlist or comprehensive
+  SSRF protection. Review source addresses before previewing or importing them.
 - **No host paths in the browser.** API responses must not contain absolute
   host paths.
 
@@ -81,7 +91,8 @@ What is normally **not** a security issue, and should go in a regular bug
 report instead:
 
 - UI bugs with no impact on confidentiality, integrity or availability;
-- failures of a feature already marked experimental in `ROADMAP.md`;
+- ordinary functional failures in experimental features; a security defect in
+  an experimental feature is still in scope;
 - access by other local users and processes when optional loopback
   authentication is disabled (a documented limit);
 - vulnerabilities that exist only in a third-party provider, fork or
@@ -93,13 +104,41 @@ Please do not open a public issue or pull request that describes an undisclosed
 vulnerability, and do not attach recordings or real data belonging to another
 person.
 
-- **Once the repository is public**, report privately via GitHub's Private
-  Vulnerability Reporting (Security -> Report a vulnerability).
-- **Until then**, the repository is private and that feature is not available
-  for it. Contact the maintainer, @MarshallGomez1103, on GitHub without
-  including exploit details, to arrange a private channel.
+- If this public repository has Private Vulnerability Reporting enabled, use
+  **Security and quality -> Advisories -> Report a vulnerability**. Follow
+  [GitHub's reporting instructions](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately).
+- If that button is missing, or the repository is private, ask the maintainer
+  @MarshallGomez1103 for a private security contact without including exploit
+  details, credentials or private data. An ordinary issue may contain only the
+  request for a contact method; use the **Request a private security contact**
+  issue template for this public request. GitHub profiles do not provide private
+  direct messages.
+
+Ordinary issues, pull requests, discussions and their attachments in a public
+repository are public. A `security` label, a closed issue or an issue template
+does not make them private. Adding this policy does not enable GitHub's private
+reporting feature.
+
+Private Vulnerability Reporting is for security findings. Confidential ordinary
+bugs or internal planning need a separately agreed private channel or a private
+repository; the issue templates here do not provide either.
 
 V does not publish an e-mail address for security reports.
+
+### Maintainer setup
+
+On a public repository, an owner or administrator can enable **Settings ->
+Security and quality -> Advanced Security -> Private vulnerability reporting**.
+Verify that **Report a vulnerability** appears, then configure **Watch ->
+Custom -> Security alerts** and account notification preferences so reports are
+noticed. These are remote settings; the files in this repository cannot confirm
+or activate them. See [GitHub's configuration guide](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository).
+
+Keep reproduction details and patches in the private report or a draft security
+advisory, inviting only the collaborators needed to assess the problem. Agree
+on disclosure after a fix or mitigation is available. Publishing an advisory
+is a separate, public action; accepting a private report as a draft does not
+publish it. See [GitHub's advisory guidance](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/create-repository-advisory).
 
 Include, as far as you can:
 

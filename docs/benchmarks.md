@@ -286,3 +286,138 @@ window references/hypotheses. Each trial also retains its synthetic WAV,
 reference spans, SQLite database and logs outside Git. A timeout or failure
 has no fabricated transcription metrics. Planning without inference:
 `.venv/bin/python scripts/benchmark-checkpoints.py`.
+
+
+## Synthetic diarization threshold comparison (V7-03)
+
+The [diarization harness](../scripts/benchmark-diarization.py) plans without
+loading models by default. Explicit execution compares thresholds 0.3–0.7 on
+short synthetic Spanish speech from existing eSpeak NG and FFmpeg installations.
+It requires the two existing local ONNX files described in
+[model licenses](licenses/models.md#33-speaker-diarization-sherpa-onnx).
+It downloads nothing and leaves the production threshold at **0.4**.
+
+Run from the repository root with an existing external model directory in
+`DIARIZATION_MODELS`. The output directory must be new and outside Git:
+
+```bash
+run_dir=$(mktemp -d)
+env HOME="$run_dir" XDG_CONFIG_HOME="$run_dir/config" \
+  XDG_DATA_HOME="$run_dir/data" XDG_CACHE_HOME="$run_dir/cache" \
+  XDG_STATE_HOME="$run_dir/state" XDG_RUNTIME_DIR="$run_dir/runtime" \
+  .venv/bin/python scripts/benchmark-diarization.py \
+  --run --model-dir "$DIARIZATION_MODELS" --output-dir "$run_dir/results" \
+  --single-voice-control --timeout-seconds 60
+```
+
+The ABA corpus alternates two synthetic voices; AAA is a single-voice control.
+Each threshold runs serially in a supervised CPU process with two inference
+threads. Reports retain raw clusters, the existing residual-cluster cleanup,
+nominal utterance assignments, versions, arguments and model/audio hashes.
+Nominal windows include synthesized silence: these assignments are **not DER
+or real-conversation accuracy**. One sample per configuration cannot establish
+an optimal threshold. The Python network audit hook does not establish
+operating-system network isolation for native descendants.
+
+### Measured results (2026-10-19)
+
+All ten real-model trials completed with exit code 0 and no timeout. The source
+base was `dd7158f` with the harness and local changes present. The host was an
+Intel Core i7-13650HX, Linux x86_64 kernel 7.2.9-ogc3.1.fc44, Python 3.12.14;
+sherpa-onnx and sherpa-onnx-core 1.13.8, NumPy 2.5.2, eSpeak NG 1.52.0 and
+FFmpeg 8.1.3. Inference used CPU with two threads per model, automatic speaker
+count and a fresh process per trial; CPU affinity was not restricted. Trials ran
+serially in threshold order, ABA first, with no repetitions or cache flushing.
+
+The script's three Spanish phrases were synthesized at 165 words/minute:
+ABA used `es+f3`, `es+m3`, `es+f3`; AAA used `es+f3` throughout. Mono 16 kHz
+PCM16 audio includes 0.5 seconds of silence before, between and after phrases.
+ABA lasts 11.8475625 s; AAA lasts 11.88075 s. The nominal phrase windows are
+0.500–3.943 / 4.443–7.642 / 8.142–11.347 s for ABA, and
+0.500–3.943 / 4.443–7.675 / 8.175–11.380 s for AAA.
+
+| Corpus | Threshold | Raw clusters | After cleanup | Raw nominal labels | After cleanup labels | Provider time (s) |
+| --- | --- | --- | --- | --- | --- | --- |
+| ABA | 0.3 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.790 |
+| ABA | 0.4 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.701 |
+| ABA | 0.5 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.789 |
+| ABA | 0.6 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.708 |
+| ABA | 0.7 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.699 |
+| AAA | 0.3 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.709 |
+| AAA | 0.4 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.702 |
+| AAA | 0.5 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.698 |
+| AAA | 0.6 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.724 |
+| AAA | 0.7 | 1 | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0.706 |
+
+Raw means provider turns with residual merging disabled. Cleanup applies the
+existing `merge_residual_clusters(keep_at_least=1)` to those same turns and
+changed none of them. Labels are opaque, scoped to each trial; each entry is
+the cluster with greatest overlap with that nominal phrase window. Provider
+time includes native model loading and diarization, excludes cleanup and is
+not pure inference time. Whole supervised trials took 0.866–0.967 s, below
+the 60 s deadline. These single-pass timings do not establish a speed ranking.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `pyannote-segmentation-3-0.onnx` | `220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079` |
+| `wespeaker_en_voxceleb_resnet34_LM.onnx` | `e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012` |
+| ABA WAV | `6071791b20304cc4a90c1c580b81216bc1b09cc886e3d4f6aaa5835b3aca0eb0` |
+| AAA WAV | `2b3b26d8eaf5d06d6aecbc527940b8b399360c28319d942a6fe013a50444340a` |
+
+Model and corpus hashes were unchanged after execution. This corpus did not
+separate the two ABA voice variants at any tested threshold. The one-cluster
+AAA result is consistent with its construction, but does not establish
+single-speaker performance generally. There is no evidence here to prefer
+one threshold or change the production default **0.4**. Nominal assignments
+are not DER, verified speaker identities or real-conversation quality. Keep
+generated audio, models, raw reports and host paths outside Git.
+
+
+## Additional model and device smokes (2026-10-20)
+
+These checks establish short native execution paths, not model rankings or
+real-conversation accuracy. Model archives were downloaded explicitly from the
+official sherpa-onnx releases, verified by SHA-256 and kept outside Git. Each
+new-model trial ran serially in a fresh process, restricted to two CPU cores
+and two inference threads, with temporary HOME/XDG, a read-only host filesystem,
+an operating-system network namespace and a 60-second outer deadline.
+No trial timed out; model hashes were unchanged afterward.
+
+| Model / language | Adapter wall time (s) | Output | Peak child RSS (bytes) |
+| --- | --- | --- | --- |
+| NeMo Parakeet TDT 0.6B v3 int8 / Spanish input, Auto | 2.529 | Nonempty transcript of a 5.181 s synthetic clip | 1,089,773,568 |
+| Piper Claude high int8 / Spanish | 1.667 | 2.450 s, 22,050 Hz PCM | 141,881,344 |
+| Kitten Mini v0.8 / English | 1.815 | 2.035 s, 24,000 Hz PCM | 223,117,312 |
+| Kokoro multilingual int8 / Spanish, `ef_dora` (28) | 3.058 | 2.125 s, 24,000 Hz PCM | 327,622,656 |
+| Kokoro multilingual int8 / English, `af_alloy` (0) | 3.486 | 2.056 s, 24,000 Hz PCM | 350,150,656 |
+| Kokoro multilingual int8 / Portuguese, `pf_dora` (42) | 2.974 | 2.009 s, 24,000 Hz PCM | 328,585,216 |
+| Kokoro multilingual int8 / French, `ff_siwis` (30) | 3.066 | 1.658 s, 24,000 Hz PCM | 346,423,296 |
+
+Adapter times include process/model startup and synthesis or recognition; they
+are not pure inference times. RSS is the maximum resident size reported for
+the native child, including interpreter/runtime, from one sample. It is not a
+RAM guarantee for other input lengths, voices or systems. Synthesis outputs
+contained finite, nonzero float32 samples. Voice IDs/languages were read from
+the actual model metadata. There was no subjective listening evaluation.
+Parakeet returned no language metadata or aligned words; its 0–5.181 s segment
+is a nominal decoding window. No WER, DER or broad language quality is inferred.
+
+| Exact compressed archive | Bytes | SHA-256 |
+| --- | --- | --- |
+| `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2` | 487,170,055 | `5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf` |
+| `vits-piper-es_MX-claude-high-int8.tar.bz2` | 21,216,685 | `0f9fc9c07d2e17bdc0f5f33a657addae92085da85704cb86a861e59d32f3bbfa` |
+| `kitten-mini-en-v0_8.tar.bz2` | 67,547,594 | `518f9b130320f690d5b5476df77bde4215fca67773cda16710318e5081234b9d` |
+| `kokoro-int8-multi-lang-v1_0.tar.bz2` | 132,303,094 | `4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e` |
+
+A separate pair of real HTTP jobs exercised the existing Faster Whisper
+`base` snapshot (`ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66`) on the same
+5.180875 s Spanish synthetic clip, with two CPU threads and affinity to two
+cores. CPU requested int8 and the native engine reported `int8_float32`; CUDA
+reported `float16` on the RTX 4060 Laptop GPU. Both jobs completed with
+nonempty transcripts, persisted results and clean server shutdown; HTTP
+request-to-completion times were 1.341 s and 0.785 s respectively. Weights and
+audio were unchanged. Other GPU activity was observed, and n=1 includes
+HTTP/normalization/job overhead: these times do not establish a speedup factor.
+No GPU execution is claimed for the new Sherpa models, other hardware or
+the base portable packages. The initial job selection snapshot does not track
+subsequent native load-time fallback; the UI labels it as an initial selection.

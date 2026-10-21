@@ -194,6 +194,7 @@ verificado y las limitaciones pendientes.
 | Slice | State | Scope |
 | --- | --- | --- |
 | V5-05 | Verified | Keyboard focus and sample cancellation regressions fixed; Carbon/M3, light/dark and es/en verified at 390 px with deterministic browser inputs. |
+| V5-06 | Verified locally | Separate Material 3 library search and table surfaces, visible focus, internal table scrolling and a quieter connection indicator; 16 browser theme/language/viewport combinations verified. |
 | V6-05a | Verified | Explicit custom-model previews and confirmed background imports, pinned hashes, isolated load validation, live options and confirmed deletion; fake HTTP and default-wiring tests verified. |
 | V6-05c | Verified | Link-first custom-model preview with bounded metadata detection, explicit download confirmation, manual fallback and real-browser STT/TTS flows using synthetic weights. |
 | V6-07R | Verified (source review) | Current local STT/TTS model comparison, per-artifact licenses and engine compatibility; no new inference or quality measurements. |
@@ -201,14 +202,24 @@ verificado y las limitaciones pendientes.
 | V6-05b | Verified | Browser folder copies and remote previews with explicit installation, live progress, cancellation and visible license; Carbon/M3 responsive dialog. |
 | V10-02 | Verified | Private token files, authenticated API/browser access, LAN startup checks and readiness without credential redirects. |
 | V7-01 | Verified | Synthetic CPU measurements compare 10/15/30-minute checkpoints with pinned model hashes and persistent SQLite; the 30-minute default remains unchanged. |
+| V7-03 | Verified locally | Ten CPU trials on synthetic ABA/AAA at thresholds 0.3–0.7 completed; all gave one raw and one cleaned cluster. This corpus does not separate the ABA voice variants; default 0.4 unchanged. |
+| V7-04 | Automated subset verified; manual checks pending | One real CPU job with CUDA hidden, transcript search, native playback timing, five exports and glossary persistence exercised through HTTP and browser input. Switching between two real models and owner listening remain pending. |
 | V10-01 | Verified | Same-origin CSP and response hardening, dependency patches with no added packages, installed-environment audits and secret-history review. |
 | V10-07 | Verified | Local OpenAI-compatible models, transcription and WAV speech endpoints. |
-| V10-04 | Verified locally; native packages pending | V-branded recipes, Flatpak ID io.github.marshallgomez1103.v and isolated HTTP/shutdown smoke; complete AppImage/Flatpak builds and native Windows/macOS checks pending. |
+| V10-07a | Verified locally | Completed HTTP audio requests release their disconnect monitor even when a poll absorbs cancellation; deterministic regression and default-wiring API checks verified. |
+| V6-08R | Verified (source review) | STT/TTS comparison across publishers with per-artifact licenses, engine compatibility and measured versus vendor-claimed results separated. |
+| V6-08D | Verified locally | Declared CPU/GPU capabilities separated from initial device selection; two real Faster Whisper base CPU/CUDA jobs checked. Other families do not inherit this hardware claim. Model deletion now distinguishes installed and reclaimable bytes. |
+| V6-08N | Verified locally, experimental | CPU NeMo transducer import and Piper Claude/Kitten Mini catalog entries; seven short native checks include Kokoro Spanish, English, Portuguese and French. No comparative listening or conversation-quality claim. |
+| README-STACK | Verified locally | Frontend/backend stack, HTTP/SSE flow, application read models and directory map checked against source; local links and anchors verified. |
+| V10-04 | Base Linux packages verified locally; native checks pending | Current wheel, AppImage and uninstalled Flatpak bundle built offline from existing components; 277 package files/50 static files/README/notices matched. AppImage extraction and Flatpak import/checkout passed isolated HTTP/shutdown checks. FUSE and native Windows/macOS checks remain pending; no inference-enabled portable build claimed. |
+| V10-06P | Prepared locally; remote configuration pending | Working tree and reachable-history privacy review, narrow fixture exclusions, bundled license notices and minimal dependency patches verified; npm/OSV snapshots have zero matches. Security reporting instructions prepared; remote private reporting and publication remain separate actions. |
+| V10-03 | Prepared locally; remote execution pending | Existing CI and dry-run actions pinned to verified commit hashes, checkout credentials disabled and job deadlines set; workflows have not been run remotely with these changes. |
 | V10-05 | Verified | Deterministic bundle byte budgets and 40 Chromium structural accessibility/responsive checks, with bounded coverage documented. |
 | V8-03 | Verified | STT bench reuse and TTS first-completed-chunk latency, render throughput and separate RSS peaks with unavailable values preserved. |
 | V8-04 | Verified | Validated Markdown comparison of saved Edge Lab reports, with measured values and separate memory scopes. |
 | V8-02 | Verified | CPU experiment CLI with child-only affinity/address-space controls, deadlines, process-tree cleanup and separate measured/estimated results; disposable-process tests verified. |
-| V8-01 | Verified | ADR-0011 defines experiment-only resource controls and separates measured results from estimates; executor remains planned. |
+| V8-01 | Verified | ADR-0011 defines experiment-only resource controls and separates measured results from estimates; the CPU executor is covered by V8-02. |
+| V9-02 | Protocol prepared; board validation pending | Existing-model, isolated CPU measurement procedure for aarch64 SBCs, with explicit outcomes and workload budgets; no board compatibility or thermal behavior established. |
 | V5-04 | Verified | Persistent synthesis history with playback, WAV downloads and confirmed deletion, including when no models are installed; UI and static-bundle browser flow verified. |
 | V4-04 | Verified | Configurable STT/TTS servers, explicit CLOUD consent, private endpoint storage and safe validation errors; fake HTTP contracts and browser flow verified. |
 

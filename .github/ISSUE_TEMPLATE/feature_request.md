@@ -7,6 +7,10 @@ labels: enhancement
 
 ## Problem or need
 
+Issues in a public repository are public. Do not include credentials, private
+recordings or transcripts. Report suspected vulnerabilities through
+[SECURITY.md](../../SECURITY.md).
+
 Describe the problem you want to solve or the need behind this request. Avoid
 jumping straight to the solution.
 

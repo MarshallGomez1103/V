@@ -1,6 +1,7 @@
 # Licenses: V's code, third-party code and model weights
 
-Last reviewed: 2026-10-11.
+Last reviewed: 2026-10-20 (new model sources and restricted-weight terms);
+older entries retain their own verification dates.
 
 V keeps three kinds of licensing apart. Do not assume that one covers the
 others.
@@ -145,26 +146,29 @@ Catalog: `src/voz/infrastructure/tts/catalog.py`. Installed only by
 (`https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/<archive>`),
 with size and SHA-256 pinned in the code and checked before extraction. The
 license strings below are the exact `license` values of the catalog, verified
-on 2026-10-12 (slice V4-01, `.ai/v-plan/findings/V4-01.md`).
+on 2026-10-12 against the archives and public model cards. The Claude and
+Kitten mini rows were added and verified on 2026-10-20.
 
 | Model id | Archive | Weights license | Redistributed by V | Verification |
 | --- | --- | --- | --- | --- |
 | `piper-en_US-lessac-medium` | `vits-piper-en_US-lessac-medium.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); voice trained on lessac (Blizzard 2013; research-only dataset license); espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: repository license MIT; the archive's `MODEL_CARD` points to the Lessac/Blizzard 2013 research license |
 | `piper-es_ES-davefx-medium` | `vits-piper-es_ES-davefx-medium.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); davefx dataset CC0; fine-tuned from lessac (voice trained on lessac (Blizzard 2013; research-only dataset license)); espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `MODEL_CARD` states the CC0 dataset; the lessac fine-tune origin is recorded in the same card |
 | `piper-es_MX-ald-medium` | `vits-piper-es_MX-ald-medium.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); ald dataset Unlicense; fine-tuned from davefx, itself fine-tuned from lessac (voice trained on lessac (Blizzard 2013; research-only dataset license)); espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `MODEL_CARD` states the Unlicense dataset and the davefx origin |
+| `piper-es_MX-claude-high-int8` | `vits-piper-es_MX-claude-high-int8.tar.bz2` | MIT (rhasspy/piper-voices code and weights repository); claude dataset Apache-2.0; espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: the archive's `MODEL_CARD` identifies the Apache-2.0 dataset; [upstream voice card](https://huggingface.co/rhasspy/piper-voices/blob/main/es/es_MX/claude/high/MODEL_CARD), 2026-10-20 |
 | `kitten-nano-en-v0_8-int8` | `kitten-nano-en-v0_8-int8.tar.bz2` | Apache-2.0; espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `LICENSE` in the archive; Hugging Face card `KittenML/kitten-tts-nano-0.8-int8` declares `apache-2.0` |
+| `kitten-mini-en-v0_8` | `kitten-mini-en-v0_8.tar.bz2` | Apache-2.0; espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: Apache-2.0 `LICENSE` in the exact archive and [upstream model card](https://huggingface.co/KittenML/kitten-tts-mini-0.8), 2026-10-20 |
 | `kokoro-int8-multi-lang-v1_0` | `kokoro-int8-multi-lang-v1_0.tar.bz2` | Apache-2.0; espeak-ng-data GPL-3.0 (phoneme data included in the archive) | No | Verified: `LICENSE` in the archive; Hugging Face card `hexgrad/Kokoro-82M` declares `apache-2.0` |
 
 Points to keep in mind:
 
 - **Piper voices and the Lessac dataset.** The `piper-voices` repository is MIT,
   but the English voice is trained on the Lessac/Blizzard 2013 dataset, whose
-  license is for research use. The two Spanish voices are fine-tunes that start
-  from that voice (davefx from lessac, ald from davefx), so the dataset chain is
+  license is for research use. The davefx and ald Spanish voices are fine-tunes
+  that start from that voice (davefx from lessac, ald from davefx), so the dataset chain is
   not clean even though their own datasets are CC0 and Unlicense. V does not
-  present these voices as freely usable commercially. The owner decides whether
-  to keep them in the default catalog; Kitten and Kokoro (Apache-2.0) are the
-  alternatives with a clean chain.
+  present these voices as freely usable commercially. Kitten and Kokoro
+  weights use Apache-2.0; their bundled phoneme data has separate terms. Claude's own dataset is declared Apache-2.0 in its voice card; that
+  declaration does not establish the provenance of every Piper voice.
 - **espeak-ng-data (GPL-3.0).** Every archive contains the phoneme data of
   espeak-ng, which is GPL-3.0. V does not redistribute it: it is downloaded by
   the user from upstream and stored next to the model. It matters to anyone
@@ -174,25 +178,36 @@ Points to keep in mind:
 - The release is mutable upstream, so the code pins SHA-256 and rejects any
   other file.
 
+### 3.5 Custom ONNX speech recognition
+
+The experimental `nemo_transducer` family can import compatible sherpa exports.
+The original [NVIDIA Parakeet TDT 0.6B v3 model card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+declares CC-BY-4.0 (reviewed 2026-10-20); the
+[sherpa export documentation](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/nemo-transducer-models.html)
+identifies its conversion. Record the exact export's source and license when
+importing. This does not assign that license to every NeMo model. V does not
+redistribute these weights or execute code downloaded with them.
+
 ## 4. Other speech synthesis models
 
-Only the models in section 3.4 are installable. When more TTS models are added:
+The models in section 3.4 are cataloged. Other compatible weights may be imported
+with a declared license; that declaration does not verify redistribution rights.
+When more catalog entries are added:
 
 - Each TTS model will **declare its weights license in the catalog**, next to
   its pinned archive, the same way ASR catalog entries carry a `license` field.
   This document gains a row per model at that time.
 - The license of a model's weights is independent of the license of the code
   that runs it.
-- Some weights carry **restrictions, including commercial ones**. Example from
-  the project's own research (`.ai/audit-av/07-KITTENTTS-RESEARCH.md`, sources
-  consulted 2026-10-10): the KittenTTS code is Apache-2.0, but the **KittenTTS 2
-  weights are released under the Stellon Labs Community License**, quoted from
-  the model card. The model card says research, non-commercial and limited
-  commercial use are free, that the commercial grant ends above a revenue or
-  funding cap, and that distributing the weights, a derivative, or a product
-  built on them carries attribution requirements. The full text of that license
-  was **not read**, so any further term (registration, attribution wording,
-  revocation, acceptable use) is Not verified.
+- Some weights carry **restrictions, including commercial ones**. The
+  [KittenTTS 2 weights license](https://huggingface.co/KittenML/kitten-tts-2/raw/main/LICENSE.md),
+  reviewed on 2026-10-20, is the Stellon Labs Community License. It permits
+  research, non-commercial and limited commercial use under its conditions.
+  Commercial use requires registration and is subject to revenue/funding caps;
+  distribution of weights or products using them carries attribution terms.
+  This differs from the Apache-licensed Kitten loader and nano/mini weights.
+  The full upstream agreement governs each use; this summary is not a grant
+  of unrestricted commercial rights.
 - Consequently V will not bundle TTS weights in an installer or release, and
   will not present a model as freely usable commercially without a verified
   license.

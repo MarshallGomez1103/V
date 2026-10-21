@@ -14,6 +14,27 @@ on Linux; the `voz` name does not change, see
 [Linux](install/linux.md) and [Windows and macOS](install/windows-macos.md); for
 common failures see [Troubleshooting](troubleshooting.md).
 
+## Add and manage a local model
+
+Open **Models → Add model**, paste a direct download link or a public Hugging
+Face repository, and choose **Check link**. Review the detected format, download
+size and license before confirming. Manual configuration also accepts compatible
+browser-selected folders and explicit file roles.
+
+Checking a remote link contacts its host for metadata; confirming installation
+downloads the weights. Direct links must use HTTP(S), without embedded
+credentials, query strings or fragments, and provide a usable file size. Use
+trusted sources: URL handling follows redirects and does not restrict destinations
+to public networks.
+
+A link supplies model files, not a new engine: the weights must match an
+installed engine and supported family. See the [import formats and limits](api/models.md#custom-model-imports).
+The model manager shows installation state, download size, installed file size
+and free space. Deletion requires confirmation and reports reclaimable space
+when known; files shared with another cache may remain on disk. The storage
+location follows the platform data directory described above; the browser does
+not expose absolute host paths. Original import folders remain untouched.
+
 ## Input: `ModelFile`
 
 Each file of the snapshot is declared with `name` (a basename, without `/`, `\`,

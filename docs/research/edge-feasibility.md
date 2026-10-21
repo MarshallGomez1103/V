@@ -8,11 +8,9 @@ either quoted from a primary source with its URL, or explicitly marked
 Research date: **2026-10-11** (all URLs below were read on that date; the
 repositories move, so re-check before relying on a number).
 
-Starting point: [the earlier audit](../../.ai/audit-av/08-TINYML-EDGE-FEASIBILITY.md),
-which could not find the licence or size of microWakeWord. Both are resolved
-in section 2. For wheel and runtime availability on aarch64 see
-[arm-linux-dependencies.md](arm-linux-dependencies.md) (written in parallel by
-another slice). For how V measures things today see
+Section 2 records primary-source evidence for microWakeWord's licence and size.
+For wheel and runtime availability on aarch64 see
+[arm-linux-dependencies.md](arm-linux-dependencies.md). For how V measures things see
 [benchmarks.md](../benchmarks.md).
 
 Legend: **[V]** verified against a primary source, **[I]** inferred or
@@ -365,10 +363,11 @@ cap, optional `systemd-run --user --scope`).
 - **Raspberry Pi 5 / Orange Pi** (class B): a Pi 4 figure exists for TTS but
   not for a Pi 5; run the same Edge Lab definition there. Aarch64 wheel
   availability is covered in [arm-linux-dependencies.md](arm-linux-dependencies.md).
-  Pass/fail criteria belong to the SBC validation plan (V9-02); this document
-  proposes only that "compatible" requires RTF below 1.0 for the chosen TTS or
-  STT model, peak RAM below the board's memory with headroom, and no thermal
-  throttling over a sustained run.
+  The [SBC validation protocol](sbc-validation.md) defines exact commands and
+  separate functional and use-case outcomes. Real-time performance, memory
+  headroom and thermal requirements must be specified for the intended workload
+  before testing; no board compatibility is established until that protocol runs
+  on the target.
 - **ESP32-S3 + microWakeWord**: would need flashing firmware and a microphone;
   out of scope for this slice. The questions to answer there are the total RAM
   (internal vs PSRAM), CPU duty per 30 ms inference, flash use, and standby

@@ -7,6 +7,10 @@ labels: bug
 
 ## Description
 
+Issues in a public repository are public, including attachments. For a suspected
+security vulnerability, follow [SECURITY.md](../../SECURITY.md) instead; do not
+include exploit details here.
+
 Describe the incorrect behavior clearly and concisely.
 
 ## Steps to reproduce

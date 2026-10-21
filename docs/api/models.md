@@ -286,7 +286,7 @@ Typical client flow: `POST install` -> poll `GET /api/model-tasks/{id}` while
 It is installed and deleted like any other model: `POST install` with
 `method=download` enqueues a task that downloads the two pinned artifacts
 (pyannote 3.0 segmentation, 6 958 444 bytes, MIT; WeSpeaker embeddings,
-26 530 550 bytes, Apache-2.0), with aggregated progress, cancellation and resume
+26 530 550 bytes, CC-BY-4.0, WeSpeaker/VoxCeleb-trained), with aggregated progress, cancellation and resume
 from `.part`. `DELETE` with `confirm=diarization:sherpa-default` removes them. It
 does not support `method=import`. The runtime (`sherpa-onnx`, the `diarization`
 extra) is independent: without it, `runtime_available` is `false` and the UI does
@@ -319,9 +319,11 @@ The response keeps the usual preview contract and contains a concrete engine
 and family when detection succeeds.
 
 Automatic detection recognizes complete CTranslate2 Whisper layouts, one Whisper
-GGML file, or an unambiguous Whisper ONNX encoder/decoder/tokens set. TTS detection
+GGML file, an unambiguous Whisper ONNX encoder/decoder/tokens set, or a named
+NeMo transducer export with encoder/decoder/joiner/tokens. TTS detection
 requires both an identifiable supported family and the expected files. Direct
-`.tar.bz2` archive names can suggest Whisper ONNX, Kitten, Kokoro or VITS/Piper;
+`.tar.bz2` archive names can suggest Whisper ONNX, NeMo transducer, Kitten,
+Kokoro or VITS/Piper;
 that name is only a hint, not proof of the archive's contents. Generic archives
 and ambiguous repositories require manual configuration. Matcha's acoustic and
 vocoder roles remain manual. The chosen engine must already be available.
@@ -358,7 +360,9 @@ are read without modifying the originals; remote previews query metadata only.
 Supported engines and families are `faster-whisper` / `ctranslate2`,
 `whisper-cpp` / `ggml`, and `sherpa-onnx-tts` / `kitten`, `kokoro`, `vits` or
 `matcha`, plus experimental `sherpa-onnx-asr` / `whisper` (encoder, decoder and
-tokens roles). See [Whisper ONNX limits](../sherpa-onnx-asr.md). The engine must
+tokens roles) or `nemo_transducer` (encoder, decoder, joiner and tokens). NeMo
+uses CPU, requires Automatic language and returns nominal windows without
+aligned words. See [ONNX ASR limits](../sherpa-onnx-asr.md). The engine must
 already be installed. `source_type` also accepts
 `huggingface` for a public repository ID and `url` for a standalone GGML file
 or a sherpa `.tar.bz2` package. Multi-file models can be supplied as a folder or

@@ -4,7 +4,8 @@
 
 V is a local-first application that runs speech models on your own computer.
 Today it transcribes long recordings (classes, interviews, meetings) into
-editable, speaker-labelled transcripts, without sending your audio anywhere.
+editable, speaker-labelled transcripts. Local processing keeps your audio on
+your machine by default. It also generates speech with installed voice models.
 It is a local web app: you start a server on your machine and use it from your
 browser.
 
@@ -23,6 +24,9 @@ browser.
 - [Engines and models](#engines-and-models)
 - [Privacy and offline use](#privacy-and-offline-use)
 - [Architecture](#architecture)
+  - [Technology stack](#technology-stack)
+  - [How it works](#how-it-works)
+  - [Repository layout](#repository-layout)
 - [Development](#development)
 - [Testing](#testing)
 - [Contributing](#contributing)
@@ -47,6 +51,11 @@ verified detail).
   (no torch, no account, no token). Speakers can be renamed, recoloured and
   merged, and recomputed without re-transcribing
   ([ADR-0007](docs/adr/0007-local-diarization-sherpa-onnx.md)).
+- **Speech synthesis** with installed sherpa-onnx voice models: select a model,
+  language and matching voice (including Spanish, English, Portuguese and French
+  with Kokoro),
+  generate speech, follow progress, play the result and download a WAV. Results
+  remain in a local history ([speech synthesis API](docs/api/synthesis.md)).
 - **Word-level timestamps** from faster-whisper
   ([ADR-0008](docs/adr/0008-word-timestamps.md)).
 - **Transcript editor**: waveform with zoom, synchronized audio player, search,
@@ -219,9 +228,11 @@ measure.
 | --- | --- | --- |
 | Speech to text | faster-whisper (`tiny`, `base`, `small`, `medium`, `large-v3`, `turbo`) | Available |
 | Speech to text | whisper.cpp (GGML models, needs a `whisper-cli` binary) | Available, optional |
+| Speech to text | sherpa-onnx Whisper ONNX and NeMo transducer (custom imports, CPU) | Experimental; Parakeet v3 CPU smoke verified, Whisper ONNX real weights unverified ([details](docs/sherpa-onnx-asr.md)) |
 | Speech to text | OpenAI, ElevenLabs Scribe (cloud, your API key) | Available, experimental, opt-in |
 | Speaker diarization | sherpa-onnx (pyannote segmentation + WeSpeaker embeddings, ONNX) | Available |
-| Text to speech | any | **Planned**, not implemented |
+| Text to speech | sherpa-onnx (compatible installed voice models) | Available; model families and limits in [ADR-0010](docs/adr/0010-voice-engines-and-tts.md) |
+| Speech to text / text to speech | Configured OpenAI-compatible servers | Available, experimental; remote processing requires explicit selection and consent ([details](docs/api/providers.md#openai-compatible-servers-v4-04)) |
 
 **Model downloads are explicit.** Importing or starting V downloads nothing.
 A model is fetched only when you press install in the Model Manager, from a
@@ -231,14 +242,34 @@ Details: [docs/models.md](docs/models.md), [docs/buzz.md](docs/buzz.md).
 Model weights are not part of this repository and carry their own licenses
 ([Licensing](#licensing)).
 
+### CPU, GPU and speech languages
+
+The model selector shows declared **CPU**, **GPU** or **CPU and GPU**
+compatibility. Supporting both means one device per execution. Faster Whisper
+profiles prefer a compatible NVIDIA GPU and otherwise use the CPU; the selector
+shows the initial device decision and fallback reason. Loading may fall back
+again, so this selection is not a measurement of the device ultimately used.
+Sherpa ASR and TTS currently use the CPU; remote providers run on their server.
+
+For speech generation, choose **Model → Language → Voice**. Kokoro multilingual
+includes Spanish, English, Portuguese and French voices; each was exercised with
+a short CPU synthesis sample. Piper Claude adds a compact Spanish option and
+Kitten Mini adds English voices. Models are installed separately in Model
+Manager; weights are not bundled. NeMo/Parakeet transcription requires **Auto**
+for language and has decoding-window timestamps rather than aligned words.
+
+See the [model comparison](docs/research/voice-models.md) for current candidates,
+licenses and integration boundaries, and [measured checks](docs/benchmarks.md#additional-model-and-device-smokes-2026-10-20)
+for the limits of the local CPU/GPU and multilingual checks.
+
 ## Privacy and offline use
 
 - Everything runs locally by default. With the models already installed, V
   works with no network connection.
-- The server binds to `127.0.0.1` only. A `Host` header guard rejects requests
+- The server binds to `127.0.0.1` by default. A `Host` header guard rejects requests
   for any other host name with `host_not_allowed`, as protection against DNS
-  rebinding. Exposing V on a network needs `--host`, and is not
-  authenticated.
+  rebinding. Exposing V on a network requires `--host` and a private
+  `--auth-token-file`; see [authentication](docs/api/authentication.md).
 - A cloud provider is never used unless you configure it with your own key and
   select it for a job.
 - Originals are immutable; derived files are stored separately. Data lives in
@@ -252,22 +283,77 @@ commit recordings, transcripts, models, databases or API keys.
 
 ## Architecture
 
-V is a local modular monolith with Clean/Hexagonal boundaries: a React web UI
-and a Typer CLI call a FastAPI layer, which calls application use cases through
-ports; the domain depends on nothing external, and adapters (SQLite, FFmpeg,
-ASR engines, diarization, cloud) are wired at the composition root.
+V is a local modular monolith with Clean/Hexagonal boundaries. The browser UI,
+HTTP API and command-line interface share one Python application; use cases
+and the domain remain independent of web, database and engine libraries.
+
+### Technology stack
+
+| Part | Technology | Role |
+| --- | --- | --- |
+| Frontend | React 19, TypeScript, IBM Carbon, SCSS and a Material 3 skin | Browser workspace, transcript editing, audio playback, model management and speech generation. |
+| Frontend tooling | Vite 8, npm and Sass | Builds the static JavaScript/CSS bundle; provides the development server and API proxy. Node.js is needed to develop the UI, not to serve its built bundle. |
+| API and server | Python 3.12+, FastAPI and Uvicorn | FastAPI defines HTTP routes and validation; Uvicorn is the ASGI server that runs the application and serves the bundled UI through FastAPI's static-file mount. |
+| CLI and composition | Typer, `src/voz/bootstrap.py` | The `v` / `voz` commands start the server and run diagnostics; the composition root wires use cases, adapters and routers. |
+| Application and domain | Python use cases, read models, ports and dataclasses | Job orchestration, model selection, exports and business rules, with external operations expressed as ports. |
+| Persistence | SQLite, SQLAlchemy 2 and Alembic | Local project/transcript storage, durable jobs and checkpoints, and schema migrations. Media and model files use the XDG filesystem layout. |
+| Audio and voice engines | FFmpeg / ffprobe, faster-whisper / CTranslate2, whisper.cpp and sherpa-onnx | Media inspection, separate inference audio, transcription, diarization and synthesis, according to the installed engine and model. Optional remote adapters require explicit configuration and selection. |
+| Verification | pytest, Ruff, Pyright; Vitest, Testing Library, ESLint and TypeScript | Backend and frontend tests, formatting, lint and type checks. |
+
+Dependency versions and optional runtimes are defined in
+[pyproject.toml](pyproject.toml), [uv.lock](uv.lock),
+[package.json](apps/web/package.json) and
+[package-lock.json](apps/web/package-lock.json).
+
+### How it works
 
 ```text
-React UI
-   |
-FastAPI / Typer interfaces
-   |
-Application use cases and ports
-   |
-Domain
-   ^
-Infrastructure adapters: SQLite, FFmpeg, ASR, diarization, cloud
+Browser: React UI
+    | HTTP JSON / upload / audio Range; SSE job progress
+Uvicorn -> FastAPI routers and response views
+    | application calls
+Use cases, read models and job workers -> domain rules
+    | ports implemented by adapters
+SQLite / filesystem / FFmpeg / selected voice engine
 ```
+
+1. The Typer CLI starts Uvicorn with the app built by `create_app()` in
+   `bootstrap.py`. FastAPI serves `/api/*` and the built frontend at `/`.
+2. An upload creates an immutable original and its metadata. A transcription
+   job records the selected engine/model and prepares a separate audio
+   derivative for inference. Background workers publish durable progress and
+   checkpoints; the browser follows state through Server-Sent Events (SSE).
+3. The UI reads the stored transcript, streams the original for synchronized
+   playback, saves edits through the API and downloads exports. Speech
+   synthesis uses its own jobs and WAV results; transcription and synthesis
+   share a compute slot so only one heavy job runs at a time.
+
+Application views/read models, such as library entries and transcription
+options, describe data returned by use cases. HTTP response projections such
+as `interfaces/api/job_views.py` turn that data into browser-facing JSON.
+These are backend data structures; the visual screens are React components.
+The browser receives IDs and API fields, never host filesystem paths.
+
+The dependency direction is
+`interfaces/infrastructure -> application -> domain`; the composition root
+connects concrete adapters to the ports. Processing stays local by default,
+and originals remain separate from derivatives and generated speech.
+
+### Repository layout
+
+| Location | Contents |
+| --- | --- |
+| [apps/web/src/](apps/web/src/) | React UI: `components/`, typed HTTP clients in `api/`, hooks, `i18n/`, themes and styles. [apps/web/public/](apps/web/public/) holds source icons and the web manifest. |
+| [src/voz/interfaces/](src/voz/interfaces/) | FastAPI transport handlers in `api/` and Typer commands in `cli/`. |
+| [src/voz/application/](src/voz/application/) | Use cases, job workers, read models, exports and `ports/` for persistence, media and voice capabilities. |
+| [src/voz/domain/](src/voz/domain/) | Framework-independent entities, value types and invariants. |
+| [src/voz/infrastructure/](src/voz/infrastructure/) | SQLite repositories, filesystem storage, FFmpeg, voice-engine adapters and external-provider clients. |
+| [src/voz/bootstrap.py](src/voz/bootstrap.py) | Composition root: constructs and connects the backend. |
+| [src/voz/static/](src/voz/static/) | Generated frontend bundle shipped in the Python wheel; edited through the UI sources and rebuilt with Vite. |
+| [migrations/](migrations/) | Alembic database revisions. |
+| [tests/](tests/) | Backend unit, integration and provider-contract tests; frontend tests live alongside their sources in `apps/web/src/`. |
+| [scripts/](scripts/) and [packaging/](packaging/) | Verification/benchmark tools and platform packaging recipes. |
+| [docs/](docs/) | Architecture, API contracts, ADRs, installation and operational guides. |
 
 Start with the [C4 architecture overview](docs/architecture/README.md), then
 [ADR-0001](docs/adr/0001-modular-monolith.md). HTTP contracts are in

@@ -1,14 +1,13 @@
 # AppImage and Flatpak: measured prototypes (S15.12, S15.13)
 
 Status: **experimental prototypes, not published or supported**. The current
-recipes use the V brand. Packaging tests exercise staging and command forwarding
-with local tool substitutes; they do not build or run an AppImage or Flatpak.
-A real wheel extracted into an AppDir was also started with the existing Python
-environment: `/api/health` and `/` returned 200 and API shutdown exited with 0.
-This does not verify standalone CPython, FUSE or a complete AppImage.
+recipes use the V brand. Packaging unit tests exercise staging and command
+forwarding with local tool substitutes. A separate local check of the current
+wheel, standalone CPython AppDir, complete base AppImage and uninstalled
+Flatpak bundle is described below. Direct FUSE launch remains pending.
 Native Windows/macOS launcher verification is also pending.
 
-The measurements below describe the **2026-09-30 builds**, before the rename,
+The historical measurements describe the **2026-09-30 builds**, before the rename,
 on Bazzite (Fedora Atomic) x86-64 with an RTX 4060 Laptop and wheel
 `voz_transcriber-0.1.0`. They are not measurements of the current recipes.
 There is no CI for these formats.
@@ -31,7 +30,8 @@ packaging/common/smoke.sh ./V-0.1.0-x86_64.AppImage
 `smoke.sh` gives the child a temporary HOME and XDG directories, checks both
 HTTP endpoints, requests `POST /api/shutdown` with the action header and requires
 HTTP 202 plus exit 0 within a deadline. Signals clean up failed runs. It rejects
-Flatpak commands: a sandbox launch with disposable storage has not been verified.
+Flatpak commands: Flatpak needs a dedicated sandbox harness. The separate local
+check below uses disposable sandbox storage without installing the application.
 
 Both scripts work in `VOZ_WORK` (a `mktemp -d` by default; never the repo), start
 from `git archive HEAD` if not given a wheel, and need network access (PyPI, uv's
@@ -42,6 +42,81 @@ application identifier, not a website or network address. Artifact names use
 distribution and `VOZ_*` environment variables retain their compatibility names
 ([ADR-0009](../adr/0009-rename-to-v.md)). The Flatpak build produces a bundle
 without installing it into the host's user installation.
+
+## Current base package checks (2026-10-21)
+
+The working-tree wheel based on `dd7158f`, including the current README and
+frontend, was assembled with existing local components. No dependencies were
+resolved and no engine extras or model weights were included. These checks did
+not execute the online recipes end to end. The base payload contains the
+application and 24 third-party Python distributions.
+
+| Observation | AppImage | Flatpak |
+| --- | --- | --- |
+| Artifact | `V-0.1.0-x86_64.AppImage`, 36,596,216 B | `V-0.1.0-x86_64.flatpak`, 7,320,640 B |
+| Python | Standalone CPython 3.12.14 | CPython 3.13 in existing Freedesktop Platform 25.08 |
+| Construction | Exit 0 in 7.48 s | Bundle export exit 0; bundle construction exit 0 in 10.64 s |
+| Independent HTTP smoke | Health, UI and three license files returned 200 in 2.01 s | The imported bundle checkout returned the same responses in 1.67 s |
+| Shutdown | HTTP 202, application exit 0, no surviving process group | HTTP 202, application exit 0, no surviving process group |
+| Payload inventory | 6,086 entries: 4,739 files, 1,049 symlinks, 298 directories | 2,056 entries: 1,862 files, 194 directories, no symlinks |
+| FFmpeg | Uses the host executable | Uses the existing Platform runtime |
+
+The wheel is `voz_transcriber-0.1.0-py3-none-any.whl`, **1,098,115 B**.
+All 277 package files, including 50 static web files, match the source checkout;
+296 wheel RECORD entries and its embedded README were checked. Both payloads
+preserve the three original font/JavaScript notice files exactly. No personal
+host path or private-plan reference was identified in their contents, and all
+AppDir symlinks stay within the payload.
+
+Both base payloads contain Mako 1.4.2. The AppImage excludes unused pip entry
+points, its package metadata and ensurepip, including their vendored CA bundles;
+the original runtime is preserved and `pipes.py` remains present. Installation
+into the target uses external uv rather than embedded pip. The workspace's
+separate certifi/Vite security updates and advisory-query limits are documented
+in the [pre-publication audit](../security/pre-release-audit.md).
+
+Construction, extraction and smoke steps each used a 60 s deadline, two logical
+CPUs, temporary HOME/XDG directories and an outer network namespace with local
+loopback only. The source checkout and existing Flatpak user installation were
+read-only. The Flatpak application was **not installed**: its bundle was imported
+into a disposable OSTree repository, checked out, compared with staging and
+launched from that checkout. Exported content and executable bits match; OSTree
+normalizes three dependency RECORD files from mode 0664 to 0644 without changing
+their bytes. The exported commit contains no smoke-test state.
+
+The standalone runtime's build-prefix metadata is relative to its running
+prefix in this artifact; that adjustment remains outside the current recipe.
+SquashFS omits extended attributes (`-no-xattrs`), and extracted bytes, modes
+and symlink targets match the staged AppDir.
+
+| Component | SHA-256 |
+| --- | --- |
+| Wheel | `9e18a44069fce0f9e7c8ed714aed7243d68ed860106ba12f309a36f9ab345911` |
+| AppImage | `9fba063ead1a7a9189eff85dc4738f5e495c48c30b0a6ca8c910c2791269dd99` |
+| Flatpak bundle | `51b6ba10cf7d5eb463bfc58c0c86167904b8ac061d8815c1ccc153c7f52ad238` |
+| Official `appimagetool-x86_64.AppImage` input | `95cbe7cce9717fce90c484e34052ee7c7f1d7635b33c12525b4776826a7d29b6` |
+| Official `runtime-x86_64` input | `617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46` |
+
+Tool provenance: [appimagetool release](https://github.com/AppImage/appimagetool/releases/tag/continuous),
+commit `854e19e951900cf141245b384d45735942521abe`, asset `610035789`;
+[type-2 runtime release](https://github.com/AppImage/type2-runtime/releases/tag/continuous),
+commit `fedfad51acc2860b2916a1eef32ba4a500ff31ef`, asset `657374641`.
+Mutable release URLs require checking these input hashes. Supplying
+`--runtime-file` kept construction offline; the embedded runtime differs only
+within the ELF `.digest_md5` section written by appimagetool.
+
+The actual AppImage launch used extraction rather than FUSE:
+
+```bash
+packaging/common/smoke.sh ./V-0.1.0-x86_64.AppImage --appimage-extract-and-run
+```
+
+These individual Linux x86-64 checks are not a startup benchmark. They exercise
+HTTP serving and shutdown, without transcription, synthesis, diarization, GPU
+inference, desktop browser launch, direct FUSE mounting or native Windows/macOS
+launches. No application package was installed or published. Voice-engine
+extras and models must be supplied separately; these base checks do not validate
+an inference-enabled portable distribution.
 
 ## Historical measured results (2026-09-30)
 
@@ -111,15 +186,19 @@ migration or deletion of either namespace.
 `org.freedesktop.Platform.GL.nvidia-<version>` extension matching the host
 driver (already present on Bazzite). With `--nodevice=all`, `voz doctor` falls to
 `CPU only (int8)`. `--device=all` weakens the sandbox and Flathub reviews it. The
-AppImage has no such restriction: it uses the host driver directly. Both ship CUDA
-12 through wheels, so they depend on the host driver being compatible.
+AppImage has no such restriction: it uses the host driver directly. The
+historical `asr-local` variants shipped CUDA 12 wheels and depended on a
+compatible host driver. The current base packages contain no CUDA engine extras;
+their HTTP smoke checks do not establish GPU inference support.
 
 **Reproducibility and Flathub.** The manifest resolves PyPI dependencies at build
 time with `--share=network` (marked `ponytail:` in the manifest). Flathub requires
 pinned sources and offline builds: one module per wheel would have to be generated
 (`flatpak-pip-generator`) with hashes. For the ASR extra that is ~1 GB of sources.
-`flatpak-builder-lint` and the metainfo against `appstreamcli` were not verified
-either.
+`flatpak-builder-lint` remains unverified. The metainfo passes
+`appstreamcli validate --no-net`; it reports two informational notices for the
+missing content rating and developer name. This metadata check does not validate
+the complete Flatpak build or runtime.
 
 **AppImage.** It requires FUSE 2 to run directly; the standalone CPython is
 self-contained, but manylinux wheels depend on the host's glibc. The AppImage is
@@ -128,18 +207,14 @@ CPython locates its stdlib relative to its binary.
 
 ## Recommendation
 
-1. Keep `uv tool install` ([docs/install/linux.md](../install/linux.md)) as the
-   supported path.
-2. If a downloadable binary is wanted, **start with the base AppImage** (46 MiB,
-   8 s build, ~1 s startup, no network at runtime, GPU without special
-   permissions) with the host's FFmpeg and `voz doctor` as the guide. It is the
-   format with the fewest moving parts and already reproduces the behavior of
-   `uv tool install`. The `asr-local` variant (1.4 GiB) only as a separate
-   download labeled experimental, until it is exercised on a real GPU with a
-   model.
-3. Leave Flatpak for later: it fits Bazzite and brings Python/FFmpeg, but it
-   requires `--share=network` and `--device=all`, separate data, and rewriting the
-   manifest for Flathub (pinned sources, real ID, `flatpak-builder-lint`).
-4. Before publishing either: add it to the release workflow (`release-dry-run`)
-   only when there is a smoke test in CI (the base AppImage can do it, without a
-   GPU), and record the GPL license if FFmpeg is distributed.
+Keep `uv tool install` ([Linux installation](../install/linux.md)) as the supported
+path. The current base AppImage and Flatpak remain experimental downloads until
+their intended inference extras and native launch paths are exercised. AppImage
+uses host FFmpeg; Flatpak provides Python/FFmpeg but keeps a separate data
+namespace and still needs a reproducible, pinned-source manifest for Flathub.
+
+Before distributing either format, verify its complete dependency/license
+closure, add an isolated smoke to the release workflow and test the selected
+engine/model combinations. Runtime probing alone does not establish inference
+compatibility. Redistributing FFmpeg or weights also requires their own notices
+and applicable redistribution terms.

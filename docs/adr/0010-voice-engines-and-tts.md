@@ -67,14 +67,16 @@ Facts that shape the decision:
   - The result (`GeneratedAudio`) carries `samples` (float32, mono) and
     `sample_rate`. The sample rate is a property of the model, not a request
     option; a voice is a speaker id (`sid`) in `[0, num_speakers)`.
-- **KittenTTS 2 is a different case** (`.ai/audit-av/07-KITTENTTS-RESEARCH.md`,
-  consulted 2026-10-10): PyTorch per its model card, ~0.5-1 GB of weights,
-  and weights under the **Stellon Labs Community License** (free for research
-  and limited commercial use below a revenue/funding cap; distribution carries
-  attribution requirements; the full text could not be read). It cannot share
-  V's environment, which deliberately has no torch
+- **KittenTTS 2 is a different case**: its
+  [model card](https://huggingface.co/KittenML/kitten-tts-2) documents separate
+  PyTorch tooling, and its weights use the
+  [Stellon Labs Community License](https://huggingface.co/KittenML/kitten-tts-2/raw/main/LICENSE.md).
+  Research and limited commercial use have conditions, including commercial
+  registration, revenue/funding caps and attribution. It cannot share V's
+  environment, which deliberately has no torch
   ([ADR-0007](0007-local-diarization-sherpa-onnx.md)), and its weights cannot
-  ship in a V installer or release.
+  ship in a V installer or release. See [model licensing](../licenses/models.md)
+  for the source review updated on 2026-10-20.
 - **V0-09d** (`src/voz/infrastructure/asr/runtime_cache.py`) introduced
   `SingleRuntimeCache`: at most one ASR runtime resident, closed when another
   key is requested and after `ASR_IDLE_SECONDS` without use.

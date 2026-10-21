@@ -35,6 +35,7 @@ Responses never contain host paths: audio is addressed by job id.
   "models": [{
     "provider_id": "sherpa-onnx", "model_id": "...", "display_name": "...",
     "runtime_ready": true, "languages": ["en"],
+    "capabilities": ["cpu", "synthesis"],
     "voices": [{"id": "0", "name": "...", "languages": ["en"]}]
   }],
   "max_chars": 20000,
@@ -44,6 +45,9 @@ Responses never contain host paths: audio is addressed by job id.
 
 Only available models with the `synthesis` capability of a registered engine
 are listed: installed local weights or explicitly configured server models.
+`models[].capabilities` lists the descriptor capabilities, including `cpu` and/or
+`gpu` when declared. This describes engine/model compatibility, not the device
+actually used for a job; an absent field from an older server remains supported.
 `providers[].locality` distinguishes `local` from `cloud`; the UI displays CLOUD
 before and during remote generation. A model whose engine cannot read it is
 left out (the Model Manager explains why). `max_chars` is the text limit after trimming.

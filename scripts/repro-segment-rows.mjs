@@ -1,6 +1,6 @@
 // V0-06: comprueba que, tras un seek y el autoscroll, el segmento activo tiene texto visible.
-// Chrome headless por CDP (solo Node >= 22, sin dependencias). Ver el cuerpo del hallazgo en
-// .ai/v-plan/findings/V0-06.md. Los datos son sinteticos: `scripts/seed_segment_rows.py` los
+// Chrome headless por CDP (solo Node >= 22, sin dependencias).
+// Los datos son sinteticos: `scripts/seed_segment_rows.py` los
 // siembra en una base TEMPORAL (nunca en ~/.local/share/voz).
 //
 //   REPRO_URL=http://127.0.0.1:5199 REPRO_JOB=<id> REPRO_OUT=<dir> node scripts/repro-segment-rows.mjs

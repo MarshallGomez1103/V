@@ -8,9 +8,9 @@ hardware. Query date for every PyPI/GitHub fact below: **2026-10-11**.
 This document answers one narrow question: **do the pieces exist for Linux
 aarch64 + CPython 3.12, or are they missing?** It does **not** say that V works on
 ARM. Nobody has installed or run V on an ARM machine; that needs hardware and is a
-separate slice (V9-02). Related context: the edge-class discussion in the internal
-feasibility audit treats single-board computers (SBC) as "viable for speech-to-text,
-to be measured".
+separate slice (V9-02). The [edge feasibility review](edge-feasibility.md)
+discusses possible single-board-computer speech workloads; actual compatibility
+and performance remain unmeasured on a board.
 
 Legend used throughout:
 
