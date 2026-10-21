@@ -89,7 +89,7 @@ def undeclarable_capabilities(
 DIARIZATION_DESCRIPTOR = ModelDescriptor(
     provider_id=DIARIZATION_PROVIDER_ID,
     model_id="sherpa-default",
-    display_name="Separación de hablantes (sherpa-onnx)",
+    display_name="Speaker separation (sherpa-onnx)",
     capabilities=frozenset({ModelCapability.DIARIZATION, ModelCapability.CPU}),
 )
 

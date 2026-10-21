@@ -137,10 +137,30 @@ describe('SpeakWorkspace', () => {
 
     await screen.findByRole('textbox', { name: 'Texto a convertir en voz' })
     expect(screen.getByTestId('speak-counter').textContent).toBe('0 de 100 caracteres · 0 palabras')
-    expect(screen.getByText('Instalado: 1 modelos · 2 voces')).toBeDefined()
+    expect(screen.getByText('Instalado: 1 modelo · 2 voces')).toBeDefined()
     expect(screen.queryByTestId('speak-selectors-placeholder')).toBeNull()
     expect(model().disabled).toBe(false)
     expect(voice().disabled).toBe(false)
+  })
+
+  it('el resumen de modelos y voces concuerda en singular y plural, en inglés y español', async () => {
+    const one = { ...MODEL, voices: [MODEL.voices[0]] }
+    const two = { ...MODEL, model_id: 'piper-en', voices: [MODEL.voices[0]] }
+    setLang('en')
+    stubFetch(jsonResponse(200, options({ models: [one] })))
+    const first = render(<SpeakWorkspace onOpenModels={() => undefined} />)
+    expect(await screen.findByText('Installed: 1 model · 1 voice')).toBeDefined()
+    first.unmount()
+
+    stubFetch(jsonResponse(200, options({ models: [one, two] })))
+    const second = render(<SpeakWorkspace onOpenModels={() => undefined} />)
+    expect(await screen.findByText('Installed: 2 models · 2 voices')).toBeDefined()
+    second.unmount()
+
+    setLang('es')
+    stubFetch(jsonResponse(200, options({ models: [one, two] })))
+    render(<SpeakWorkspace onOpenModels={() => undefined} />)
+    expect(await screen.findByText('Instalado: 2 modelos · 2 voces')).toBeDefined()
   })
 
   it('cuenta caracteres y palabras al escribir y Borrar vacía el texto', async () => {

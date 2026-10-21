@@ -191,7 +191,7 @@ def test_the_pinned_catalog_lists_every_tts_model_as_synthesis(tmp_path: Path) -
             assert model["license"] and "GPL-3.0" in model["license"]
         kokoro = listed["sherpa-onnx-tts:kokoro-int8-multi-lang-v1_0"]
         assert kokoro["size_bytes"] == 132_303_094 and kokoro["multilingual"] is True
-        assert "lento" in kokoro["display_name"]
+        assert "slow" in kokoro["display_name"]
         assert str(tmp_path) not in api.get("/api/models").text
     finally:
         runner.stop()

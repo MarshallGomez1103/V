@@ -141,6 +141,19 @@ describe('AddModelDialog', () => {
     expect(screen.getByText(/downloaded to this computer/)).toBeTruthy()
   })
 
+  it.each([
+    ['en', 'Check link', 'Download link or Hugging Face repository', 'unknown', 'License: Unknown'],
+    ['en', 'Check link', 'Download link or Hugging Face repository', 'User-declared: MIT', 'License: MIT (user-declared)'],
+    ['es', 'Comprobar enlace', 'Enlace de descarga o repositorio de Hugging Face', 'unknown', 'Licencia: Desconocida'],
+  ] as const)('labels the license in the link preview (%s, %s)', async (lang, check, field, license, shown) => {
+    setLang(lang)
+    vi.mocked(api.previewCustomModel).mockResolvedValue({ ...PREVIEW, license })
+    render(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(field), { target: { value: 'org/model' } })
+    fireEvent.click(screen.getByRole('button', { name: check }))
+    expect(await screen.findByText(shown)).toBeTruthy()
+  })
+
   it('imports Whisper ONNX from the explorer with explicit encoder, decoder and tokens roles', async () => {
     renderManual(<AddModelDialog onClose={vi.fn()} onCompleted={vi.fn()} availableEngines={['sherpa-onnx-asr']} />)
     expect(screen.getByRole<HTMLOptionElement>('option', { name: 'sherpa-onnx ASR' }).disabled).toBe(false)
@@ -219,7 +232,7 @@ describe('AddModelDialog', () => {
     }), expect.any(AbortSignal))
     expect(api.uploadCustomModelFile).toHaveBeenCalledTimes(3)
     expect(api.installCustomModel).not.toHaveBeenCalled()
-    expect(screen.getByText('Declarada por ti: MIT')).toBeTruthy()
+    expect(screen.getByText('Licencia: MIT (declarada por ti)')).toBeTruthy()
     vi.mocked(listModelTasks).mockResolvedValue([{ ...TASK, state: 'completed' }])
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar e instalar' }))
     await screen.findByText('Modelo instalado.')

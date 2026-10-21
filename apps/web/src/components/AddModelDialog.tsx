@@ -321,7 +321,7 @@ export function AddModelDialog({ onClose, onCompleted, availableEngines }: AddMo
           <p>{preview.descriptor.capabilities.map((capability) => capabilityLabel(capability, t)).join(' · ')}</p>
           <p className="voz-field-note">{t('addModel.suggested')}</p>
           {preview.descriptor.provider_id === 'sherpa-onnx-asr' ? <p className="voz-field-note">{t('addModel.experimental')}</p> : null}
-          <p>{licenseLabel(preview.license)}</p>
+          <p>{t('addModel.licenseLine', { license: licenseLabel(preview.license) })}</p>
           {selectedSourceType === 'folder' ? <p className="voz-field-note">{t('addModel.expiry')}</p> : null}
           <div className="voz-add-model__actions">
             <Button onClick={() => { void install() }}>{t('addModel.install')}</Button>

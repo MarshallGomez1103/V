@@ -57,6 +57,10 @@ def test_keys_are_unique_even_when_ids_collide_across_providers() -> None:
     assert keys[-1] == "diarization:sherpa-default"
 
 
+def test_diarization_display_name_is_neutral_english() -> None:
+    assert DIARIZATION_DESCRIPTOR.display_name == "Speaker separation (sherpa-onnx)"
+
+
 def test_whisper_cpp_is_listed_only_with_its_runtime() -> None:
     without = {e.descriptor.provider_id for e in catalog(cpp=False).entries()}
     with_cli = [

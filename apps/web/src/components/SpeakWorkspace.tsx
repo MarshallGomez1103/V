@@ -269,8 +269,8 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
           titleId={id + '-voice'}
           title={t('speak.voice.title')}
           description={t('speak.voice.description', {
-            models: options.models.length,
-            voices,
+            models: tn('speak.voice.models', options.models.length),
+            voices: tn('speak.voice.voices', voices),
           })}
           className="voz-speak__voice"
         >

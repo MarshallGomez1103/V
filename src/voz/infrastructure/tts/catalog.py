@@ -136,7 +136,7 @@ _KOKORO_VOICES = (
 TTS_CATALOG: tuple[TtsModelEntry, ...] = (
     _piper(
         voice="es_MX-ald-medium",
-        display_name="Piper español (México) · ald",
+        display_name="Piper Spanish (Mexico) · ald",
         language="es",
         speaker="ald",
         size_bytes=67_196_497,
@@ -150,7 +150,7 @@ TTS_CATALOG: tuple[TtsModelEntry, ...] = (
     _piper(
         voice="es_MX-claude-high",
         archive_suffix="-int8",
-        display_name="Piper español (México) · claude (int8)",
+        display_name="Piper Spanish (Mexico) · claude (int8)",
         language="es",
         speaker="claude",
         size_bytes=21_216_685,
@@ -161,7 +161,7 @@ TTS_CATALOG: tuple[TtsModelEntry, ...] = (
     ),
     _piper(
         voice="es_ES-davefx-medium",
-        display_name="Piper español (España) · davefx",
+        display_name="Piper Spanish (Spain) · davefx",
         language="es",
         speaker="davefx",
         size_bytes=67_184_952,
@@ -224,7 +224,7 @@ TTS_CATALOG: tuple[TtsModelEntry, ...] = (
     ),
     TtsModelEntry(
         descriptor=_descriptor(
-            "kokoro-int8-multi-lang-v1_0", "Kokoro multilingüe (calidad, lento)"
+            "kokoro-int8-multi-lang-v1_0", "Kokoro multilingual (quality, slow)"
         ),
         family="kokoro",
         archive_name="kokoro-int8-multi-lang-v1_0.tar.bz2",

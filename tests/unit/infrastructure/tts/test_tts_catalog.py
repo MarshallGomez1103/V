@@ -76,10 +76,16 @@ def test_kitten_and_kokoro_are_apache_and_kokoro_is_marked_slow() -> None:
     for model_id in ("kitten-nano-en-v0_8-int8", "kokoro-int8-multi-lang-v1_0"):
         assert _BY_ID[model_id].license.startswith("Apache-2.0")
     assert (
-        "calidad, lento"
-        in _BY_ID["kokoro-int8-multi-lang-v1_0"].descriptor.display_name
+        "quality, slow" in _BY_ID["kokoro-int8-multi-lang-v1_0"].descriptor.display_name
     )
-    assert "lento" not in _BY_ID["kitten-nano-en-v0_8-int8"].descriptor.display_name
+    assert "slow" not in _BY_ID["kitten-nano-en-v0_8-int8"].descriptor.display_name
+
+
+def test_display_names_are_neutral_english_whatever_the_ui_language() -> None:
+    """Like the Whisper entries: no Spanish words or accents in what the UI shows."""
+    spanish = re.compile(r"[áéíóúñü]|\b(español|México|España|calidad|lento)\b", re.I)
+    for entry in TTS_CATALOG:
+        assert not spanish.search(entry.descriptor.display_name), entry.model_id
 
 
 def test_voices_follow_the_measured_speaker_ids() -> None:
