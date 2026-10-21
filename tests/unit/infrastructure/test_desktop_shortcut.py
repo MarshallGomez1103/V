@@ -220,7 +220,7 @@ def test_location_hides_the_home_directory(
     assert shortcut.location() == "~/Escritorio/v.desktop"
 
 
-def test_real_launchers_exist_and_old_names_delegate_to_them() -> None:
+def test_real_launchers_exist() -> None:
     root = checkout_root()
     assert set(LAUNCHERS.values()) == {
         "start-v-linux.sh",
@@ -231,13 +231,6 @@ def test_real_launchers_exist_and_old_names_delegate_to_them() -> None:
         assert (root / name).is_file(), name
         if not name.endswith(".bat"):
             assert os.access(root / name, os.X_OK), name
-    for old, new in (
-        ("Iniciar-Linux.sh", "start-v-linux.sh"),
-        ("Iniciar-Mac.command", "Start-V-macOS.command"),
-        ("Iniciar-Windows.bat", "Start-V-Windows.bat"),
-    ):
-        text = (root / old).read_text()
-        assert "DEPRECATED" in text and new in text, old
 
 
 @pytest.mark.skipif(
@@ -376,6 +369,23 @@ def test_a_pre_v_shortcut_is_replaced_without_duplicates(tmp_path: Path) -> None
     for directory in (desktop, applications):
         assert [p.name for p in directory.iterdir()] == ["v.desktop"]
     assert shortcut.exists() and not shortcut.refresh()
+
+
+def test_a_shortcut_to_a_removed_iniciar_wrapper_is_renewed(tmp_path: Path) -> None:
+    shortcut, desktop, _ = _shortcut(tmp_path, "linux")
+    desktop.mkdir(parents=True)
+    old = desktop / "v.desktop"
+    old.write_text(
+        "[Desktop Entry]\nName=V\nExec=/x/Iniciar-Linux.sh\nX-V-Shortcut=true\n"
+    )
+    marker = tmp_path / "state" / "desktop-shortcut.txt"
+    marker.parent.mkdir()
+    marker.write_text(f"{old}\ntarget=/x/Iniciar-Linux.sh\n")
+    assert shortcut.broken()  # the wrapper no longer exists
+
+    assert shortcut.refresh()
+
+    assert "start-v-linux.sh" in old.read_text() and shortcut.exists()
 
 
 def test_remove_also_deletes_a_pre_v_shortcut(tmp_path: Path) -> None:

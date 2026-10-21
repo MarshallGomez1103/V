@@ -1,0 +1,92 @@
+name: Launchers
+
+# Runs the real double-click launcher of each system on a runner that has no uv:
+# the same cold start a person gets after cloning the repository.
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launchers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launcher:
+    name: Launcher / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # The first start downloads Python, the dependencies (about 1.6 GB on
+    # Linux and Windows) and FFmpeg.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            launcher: sh start-v-linux.sh
+          - os: macos-latest
+            launcher: sh Start-V-macOS.command
+          # Git Bash starts the .bat through cmd, as a double click would.
+          - os: windows-latest
+            launcher: cmd //c Start-V-Windows.bat
+    defaults:
+      run:
+        shell: bash
+    env:
+      LAUNCHER: ${{ matrix.launcher }}
+      # Errors must not wait for a key press (Windows launcher); the POSIX
+      # launchers already skip it because stdin is not a terminal.
+      VOZ_NO_PAUSE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Runner has no uv
+        run: |
+          if command -v uv >/dev/null 2>&1; then
+            echo "::error::uv is preinstalled on this runner, so the cold start would not be tested."
+            exit 1
+          fi
+      # Installs uv, Python, the dependencies and FFmpeg, then checks them.
+      - name: First start (cold)
+        run: $LAUNCHER doctor < /dev/null
+      - name: Launcher left a working environment
+        run: |
+          test -d .venv
+          test -x "$HOME/.local/bin/uv" || test -x "$HOME/.local/bin/uv.exe"
+      # Second start: serves V without a browser, checks it answers, stops it.
+      - name: Second start (serves and stops)
+        run: |
+          port=8799
+          $LAUNCHER --no-browser --port "$port" < /dev/null &
+          pid=$!
+          healthy=0
+          for _ in $(seq 1 60); do
+            answer=$(curl -fsS "http://127.0.0.1:$port/api/health" 2>/dev/null || true)
+            if grep -Eq '"status": ?"ok"' <<< "$answer"; then
+              healthy=1
+              break
+            fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 2
+          done
+          if [ "$healthy" != 1 ]; then
+            echo "::error::V did not answer /api/health through the launcher."
+            kill "$pid" 2>/dev/null || true
+            exit 1
+          fi
+          curl -fsS -X POST -H "X-VOZ-Action: shutdown" "http://127.0.0.1:$port/api/shutdown"
+          for _ in $(seq 1 30); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "::error::The launcher did not exit after the shutdown request."
+            kill "$pid" 2>/dev/null || true
+            exit 1
+          fi
+          wait "$pid"

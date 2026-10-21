@@ -12,12 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-POSIX = (
-    "start-v-linux.sh",
-    "Start-V-macOS.command",
-    "Iniciar-Linux.sh",
-    "Iniciar-Mac.command",
-)
+POSIX = ("start-v-linux.sh", "Start-V-macOS.command")
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX shell execution")
@@ -83,11 +78,45 @@ def test_posix_launcher_forwards_arguments_from_a_path_with_spaces(
     }
 
 
-def test_windows_launcher_and_legacy_alias_keep_quoted_paths_and_arguments() -> None:
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell execution")
+def test_posix_launcher_explains_a_failed_uv_install_without_waiting(
+    tmp_path: Path,
+) -> None:
+    fake = tmp_path / "fake-bin"
+    fake.mkdir()
+    for tool in ("curl", "wget"):
+        (fake / tool).write_text("#!/bin/sh\nexit 6\n")
+        (fake / tool).chmod(0o755)
+    path = f"{fake}{os.pathsep}/usr/bin{os.pathsep}/bin"
+    if shutil.which("uv", path=path):
+        pytest.skip("uv is installed system-wide")
+    result = subprocess.run(
+        ["sh", str(ROOT / "start-v-linux.sh")],
+        env={"HOME": str(tmp_path / "home"), "PATH": path},
+        stdin=subprocess.DEVNULL,  # not a terminal: it must not wait for Enter
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 1
+    assert "Could not install uv" in result.stdout
+
+
+def test_windows_launcher_keeps_quoted_paths_and_arguments() -> None:
     launcher = (ROOT / "Start-V-Windows.bat").read_text()
-    alias = (ROOT / "Iniciar-Windows.bat").read_text()
     assert 'cd /d "%~dp0"' in launcher
     assert 'set "PATH=%USERPROFILE%\\.local\\bin;%PATH%"' in launcher
     assert "uv run --extra asr-local --extra diarization voz %*" in launcher
-    assert 'call "%~dp0Start-V-Windows.bat" %*' in alias
-    assert "exit /b %errorlevel%" in alias
+
+
+def test_windows_launcher_reports_failures_and_can_skip_the_pause() -> None:
+    launcher = (ROOT / "Start-V-Windows.bat").read_text()
+    # A failed install must be caught (uv still missing) and must exit non-zero.
+    assert launcher.count("where uv") == 2
+    assert 'set "UV_INSTALL_DIR=%USERPROFILE%\\.local\\bin"' in launcher
+    assert "if not defined VOZ_NO_PAUSE pause" in launcher
+    assert launcher.rstrip().endswith("exit /b 1")
+
+
+def test_legacy_iniciar_wrappers_are_gone() -> None:
+    assert not list(ROOT.glob("Iniciar-*"))
