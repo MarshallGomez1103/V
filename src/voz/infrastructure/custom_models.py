@@ -42,6 +42,7 @@ from voz.infrastructure.asr.catalog import faster_whisper_catalog
 from voz.infrastructure.asr.sherpa_onnx_options import (
     SHERPA_ONNX_CAPABILITIES,
     SHERPA_ONNX_PROFILE,
+    nemo_transducer_files,
     whisper_files,
 )
 from voz.infrastructure.asr.sherpa_onnx_options import (
@@ -60,7 +61,7 @@ _FAMILIES = {
     "faster-whisper": {"ctranslate2"},
     "whisper-cpp": {"ggml"},
     "sherpa-onnx-tts": {"kitten", "kokoro", "vits", "matcha"},
-    "sherpa-onnx-asr": {"whisper"},
+    "sherpa-onnx-asr": {"whisper", "nemo_transducer"},
 }
 _ASR_FILES = {
     "model.bin",
@@ -130,9 +131,11 @@ def allowed_file(engine: str, name: str) -> bool:
 
 
 def model_files(directory: Path, family: str, roles: dict[str, str]) -> dict[str, Path]:
-    if family == "whisper":
+    if family in {"whisper", "nemo_transducer"}:
         try:
-            return whisper_files(directory, roles)
+            return (whisper_files if family == "whisper" else nemo_transducer_files)(
+                directory, roles
+            )
         except TranscriptionError:
             raise _invalid() from None
     if roles:
@@ -492,6 +495,8 @@ class CustomModelStore:
                     child.rename(directory / child.name)
                 extracted.rmdir()
             engine = plan.preview.descriptor.provider_id
+            if engine == "sherpa-onnx-asr" and plan.preview.family == "nemo_transducer":
+                model_files(directory, plan.preview.family, plan.file_roles)
             if engine == "faster-whisper" and not {
                 "model.bin",
                 "config.json",

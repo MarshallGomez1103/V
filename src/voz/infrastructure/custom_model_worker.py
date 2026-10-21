@@ -20,7 +20,7 @@ from typing import Any
 from voz.application.ports.custom_models import CustomModelError, CustomValidation
 from voz.application.ports.model_installation import CancelCheck
 from voz.domain.entities.voice import Voice
-from voz.infrastructure.asr.sherpa_onnx_worker import load_whisper
+from voz.infrastructure.asr.sherpa_onnx_worker import load_nemo_transducer, load_whisper
 from voz.infrastructure.asr.whisper_cpp import locate_whisper_cli
 from voz.infrastructure.audio.media_args import NO_WINDOW
 from voz.infrastructure.custom_models import model_files
@@ -133,6 +133,9 @@ def _load(
 ) -> CustomValidation:
     if engine == "sherpa-onnx-asr" and family == "whisper":
         load_whisper(model_files(directory, family, roles))
+        return CustomValidation()
+    if engine == "sherpa-onnx-asr" and family == "nemo_transducer":
+        load_nemo_transducer(model_files(directory, family, roles))
         return CustomValidation()
     if engine == "faster-whisper" and family == "ctranslate2":
         module: Any = importlib.import_module("faster_whisper")

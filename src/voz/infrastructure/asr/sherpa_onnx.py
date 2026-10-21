@@ -1,4 +1,4 @@
-"""Experimental Whisper ONNX transcription through one private child per call."""
+"""Experimental ONNX ASR transcription through one private child per call."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from voz.application.ports.transcription import (
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.infrastructure.asr.sherpa_onnx_options import (
     PROVIDER_ID,
+    nemo_transducer_files,
     observed_language,
     whisper_files,
 )
@@ -44,7 +45,7 @@ class ModelPathResolver(Protocol):
 def _failure() -> TranscriptionError:
     return TranscriptionError(
         TranscriptionFailureCode.PROVIDER_FAILED,
-        "Whisper ONNX could not process the audio.",
+        "The ONNX ASR provider could not process the audio.",
     )
 
 
@@ -93,7 +94,7 @@ class SherpaOnnxProvider:
         if options.model.provider_id != self.provider_id:
             raise TranscriptionError(
                 TranscriptionFailureCode.MODEL_NOT_INSTALLED,
-                "The selected model does not belong to Whisper ONNX.",
+                "The selected model does not belong to this ONNX ASR provider.",
             )
         if (
             options.prompt is not None
@@ -102,12 +103,19 @@ class SherpaOnnxProvider:
         ):
             raise TranscriptionError(
                 TranscriptionFailureCode.PROVIDER_FAILED,
-                "Whisper ONNX does not support prompts, glossaries "
+                "This ONNX ASR provider does not support prompts, glossaries "
                 "or decoding profiles.",
             )
         directory = self._resolver.resolve_path(options.model)
-        roles = self._roles(directory)
-        files = whisper_files(directory, roles)
+        family, roles = self._roles(directory)
+        if family == "nemo_transducer" and options.language is not None:
+            raise TranscriptionError(
+                TranscriptionFailureCode.PROVIDER_FAILED,
+                "This model does not support a language override; choose Auto.",
+            )
+        files = (whisper_files if family == "whisper" else nemo_transducer_files)(
+            directory, roles
+        )
         _cancelled(cancellation)
         try:
             self._temp_root.mkdir(parents=True, exist_ok=True)
@@ -136,6 +144,7 @@ class SherpaOnnxProvider:
                     raise _invalid_audio()
                 request = work / "request.json"
                 document = {
+                    "family": family,
                     "files": {key: str(path) for key, path in files.items()},
                     "audio": str(wav),
                     "start_ms": start_ms,
@@ -152,10 +161,10 @@ class SherpaOnnxProvider:
             raise _failure() from None
 
     @staticmethod
-    def _roles(directory: Path) -> Mapping[str, str] | None:
+    def _roles(directory: Path) -> tuple[str, Mapping[str, str] | None]:
         manifest = directory / ".voz-custom.json"
         if not manifest.exists() and not manifest.is_symlink():
-            return None
+            return "whisper", None
         try:
             if (
                 manifest.is_symlink()
@@ -167,7 +176,8 @@ class SherpaOnnxProvider:
             if not isinstance(document, dict):
                 raise ValueError
             metadata = cast(dict[str, object], document)
-            if metadata.get("family") != "whisper":
+            family = metadata.get("family")
+            if family not in {"whisper", "nemo_transducer"}:
                 raise ValueError
             roles = metadata.get("file_roles")
             if not isinstance(roles, dict) or not all(
@@ -175,11 +185,11 @@ class SherpaOnnxProvider:
                 for key, value in cast(dict[object, object], roles).items()
             ):
                 raise ValueError
-            return cast(dict[str, str], roles)
+            return cast(str, family), cast(dict[str, str], roles)
         except (OSError, ValueError, TypeError):
             raise TranscriptionError(
                 TranscriptionFailureCode.MODEL_NOT_INSTALLED,
-                "The selected Whisper ONNX model manifest is invalid.",
+                "The selected ONNX ASR model manifest is invalid.",
             ) from None
 
     @staticmethod

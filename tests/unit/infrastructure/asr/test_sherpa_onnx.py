@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 import sys
@@ -206,3 +207,115 @@ def test_wrong_provider_and_missing_model_are_typed(tmp_path: Path) -> None:
             audio=audio(), options=TranscriptionOptions(model=DESCRIPTOR)
         )
     assert failure.value.code is TranscriptionFailureCode.MODEL_NOT_INSTALLED
+
+
+def nemo_provider(tmp_path: Path, *, timeout: float = 5) -> SherpaOnnxProvider:
+    engine = provider(tmp_path, timeout=timeout)
+    models = tmp_path / "models"
+    (models / "joiner.onnx").write_bytes(b"fake")
+    (models / ".voz-custom.json").write_text(
+        json.dumps(
+            {
+                "family": "nemo_transducer",
+                "file_roles": {
+                    "encoder": "encoder.onnx",
+                    "decoder": "decoder.onnx",
+                    "joiner": "joiner.onnx",
+                    "tokens": "tokens.txt",
+                },
+            }
+        )
+    )
+    return engine
+
+
+def test_nemo_manifest_family_and_four_files_reach_the_isolated_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nemo_provider(tmp_path)
+    child = """
+import json,runpy,sys
+from pathlib import Path
+fixture,request_path=sys.argv[1:]
+request=json.loads(Path(request_path).read_text())
+assert request['family']=='nemo_transducer'
+assert set(request['files'])=={'encoder','decoder','joiner','tokens'}
+assert request['language'] is None
+sys.argv=[fixture,request_path]
+runpy.run_path(fixture,run_name='__main__')
+"""
+    engine = SherpaOnnxProvider(
+        model_resolver=Resolver(tmp_path / "models"),
+        temp_root=tmp_path / "work",
+        worker_argv=(sys.executable, "-c", child, str(FAKE)),
+        timeout_seconds=5,
+    )
+    monkeypatch.setenv("FAKE_SHERPA_MODE", "no-language")
+    result = engine.transcribe(
+        audio=audio(), options=TranscriptionOptions(model=DESCRIPTOR)
+    )
+    assert result.text == "hola mundo" and result.language is None
+    assert all(not segment.words for segment in result.segments)
+    assert list((tmp_path / "work").iterdir()) == []
+
+
+def test_nemo_specific_language_is_rejected_before_starting_child(
+    tmp_path: Path,
+) -> None:
+    engine = nemo_provider(tmp_path)
+    with pytest.raises(TranscriptionError) as failure:
+        engine.transcribe(
+            audio=audio(), options=TranscriptionOptions(model=DESCRIPTOR, language="es")
+        )
+    assert failure.value.code is TranscriptionFailureCode.PROVIDER_FAILED
+    assert "Auto" in failure.value.user_message
+    assert not (tmp_path / "work").exists()
+
+
+@pytest.mark.parametrize("family", ["unknown", "whisper", None, ["nemo_transducer"]])
+def test_invalid_nemo_manifest_never_loads_unknown_or_mixed_files(
+    tmp_path: Path, family: object
+) -> None:
+    engine = nemo_provider(tmp_path)
+    manifest = tmp_path / "models/.voz-custom.json"
+    doc = json.loads(manifest.read_text())
+    doc["family"] = family
+    if family == "whisper":
+        doc["file_roles"]["script"] = "run.py"
+    manifest.write_text(json.dumps(doc))
+    with pytest.raises(TranscriptionError) as failure:
+        engine.transcribe(audio=audio(), options=TranscriptionOptions(model=DESCRIPTOR))
+    assert failure.value.code is TranscriptionFailureCode.MODEL_NOT_INSTALLED
+    assert not (tmp_path / "work").exists()
+
+
+def test_nemo_cancellation_kills_the_child_and_cleans_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "started"
+    monkeypatch.setenv("FAKE_SHERPA_MODE", "load")
+    monkeypatch.setenv("FAKE_SHERPA_MARKER", str(marker))
+
+    class Cancel:
+        def is_cancelled(self) -> bool:
+            return marker.exists()
+
+    with pytest.raises(TranscriptionError) as failure:
+        nemo_provider(tmp_path).transcribe(
+            audio=audio(),
+            options=TranscriptionOptions(model=DESCRIPTOR),
+            cancellation=Cancel(),
+        )
+    assert failure.value.code is TranscriptionFailureCode.CANCELLED
+    assert list((tmp_path / "work").iterdir()) == []
+
+
+def test_nemo_timeout_kills_child_and_cleans_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_SHERPA_MODE", "hang")
+    with pytest.raises(TranscriptionError):
+        nemo_provider(tmp_path, timeout=0.1).transcribe(
+            audio=audio(), options=TranscriptionOptions(model=DESCRIPTOR)
+        )
+    assert list((tmp_path / "work").iterdir()) == []

@@ -1,9 +1,9 @@
 """Pinned catalog of the speech synthesis models V installs (ADR-0010, V4-01).
 
 Every entry is a ``.tar.bz2`` from the ``tts-models`` release of
-``k2-fsa/sherpa-onnx``, pinned by size and SHA-256 (the release is mutable) and
-measured in ``.ai/v-plan/findings/V4-01.md``. Only the files listed here (plus the
-``espeak-ng-data`` tree and the license notices) are ever extracted from an
+``k2-fsa/sherpa-onnx``, pinned by size and SHA-256 (the release is mutable).
+Model provenance is documented in ``docs/licenses/models.md``. Only listed files
+(plus the ``espeak-ng-data`` tree and the license notices) are ever extracted from an
 archive. Models are addressed as ``"sherpa-onnx-tts:<model_id>"``.
 
 Voice ids are the sherpa-onnx speaker ids (``sid``) as text. ``voices`` here is a
@@ -84,10 +84,11 @@ def _piper(
     sha256: str,
     license: str,
     ram_mib: int,
+    archive_suffix: str = "",
 ) -> TtsModelEntry:
-    root = f"vits-piper-{voice}"
+    root = f"vits-piper-{voice}{archive_suffix}"
     return TtsModelEntry(
-        descriptor=_descriptor(f"piper-{voice}", display_name),
+        descriptor=_descriptor(f"piper-{voice}{archive_suffix}", display_name),
         family="vits",
         archive_name=f"{root}.tar.bz2",
         url=f"{_RELEASE}{root}.tar.bz2",
@@ -147,6 +148,18 @@ TTS_CATALOG: tuple[TtsModelEntry, ...] = (
         ram_mib=331,
     ),
     _piper(
+        voice="es_MX-claude-high",
+        archive_suffix="-int8",
+        display_name="Piper español (México) · claude (int8)",
+        language="es",
+        speaker="claude",
+        size_bytes=21_216_685,
+        sha256="0f9fc9c07d2e17bdc0f5f33a657addae92085da85704cb86a861e59d32f3bbfa",
+        license=f"{_PIPER_REPO}; claude dataset Apache-2.0; {_ESPEAK_NOTE}",
+        # Short CPU synthesis: 141,881,344-byte worker peak, rounded up to MiB.
+        ram_mib=136,
+    ),
+    _piper(
         voice="es_ES-davefx-medium",
         display_name="Piper español (España) · davefx",
         language="es",
@@ -188,6 +201,26 @@ TTS_CATALOG: tuple[TtsModelEntry, ...] = (
         sample_rate=24_000,
         license=f"Apache-2.0; {_ESPEAK_NOTE}",
         ram_bytes=234 * _MIB,
+    ),
+    TtsModelEntry(
+        descriptor=_descriptor("kitten-mini-en-v0_8", "KittenTTS mini English"),
+        family="kitten",
+        archive_name="kitten-mini-en-v0_8.tar.bz2",
+        url=f"{_RELEASE}kitten-mini-en-v0_8.tar.bz2",
+        size_bytes=67_547_594,
+        sha256="518f9b130320f690d5b5476df77bde4215fca67773cda16710318e5081234b9d",
+        root="kitten-mini-en-v0_8",
+        files=(
+            ("model", "model.onnx"),
+            ("voices", "voices.bin"),
+            ("tokens", "tokens.txt"),
+        ),
+        directories=(("data_dir", _ESPEAK_DIR),),
+        languages=("en",),
+        voices=_KITTEN_VOICES,
+        sample_rate=24_000,
+        license=f"Apache-2.0; {_ESPEAK_NOTE}",
+        ram_bytes=223_117_312,  # Worker peak during short CPU synthesis.
     ),
     TtsModelEntry(
         descriptor=_descriptor(

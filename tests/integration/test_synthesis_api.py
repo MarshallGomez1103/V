@@ -118,6 +118,7 @@ def test_options_list_the_fake_engine_model_voices_and_limits(
     ]
     (model,) = options["models"]
     assert model["model_id"] == "tone" and model["runtime_ready"] is True
+    assert model["capabilities"] == ["cpu", "synthesis"]
     assert model["languages"] == ["en", "es"]
     assert [voice["id"] for voice in model["voices"]] == [
         "tone-low",

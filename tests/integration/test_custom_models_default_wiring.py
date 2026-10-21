@@ -394,3 +394,60 @@ def test_browser_folder_upload_checks_runtime_before_accepting_files(
         assert response.status_code == 422
         assert response.json()["detail"]["code"] == "custom_model_runtime_unavailable"
     assert not (root / "cache/custom-model-uploads").exists()
+
+
+def test_nemo_browser_import_is_listed_with_cpu_native_execution_after_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = {
+        name: b"fake weights"
+        for name in (
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+            "tokens.txt",
+        )
+    }
+    validator = FakeValidator()
+    with _client(tmp_path / "app", monkeypatch, validator) as client:
+        created = client.post(
+            "/api/models/custom/uploads",
+            json={
+                "engine": "sherpa-onnx-asr",
+                "family": "nemo_transducer",
+                "display_name": "NeMo test",
+                "files": [
+                    {"name": name, "size_bytes": len(body)}
+                    for name, body in files.items()
+                ],
+                "file_roles": {
+                    "encoder": "encoder.int8.onnx",
+                    "decoder": "decoder.int8.onnx",
+                    "joiner": "joiner.int8.onnx",
+                    "tokens": "tokens.txt",
+                },
+            },
+        )
+        assert created.status_code == 201, created.text
+        base = "/api/models/custom/uploads/" + created.json()["id"]
+        for index, body in enumerate(files.values()):
+            assert (
+                client.put(base + "/files/" + str(index), content=body).status_code
+                == 204
+            )
+        preview = client.post(base + "/preview")
+        assert preview.status_code == 200, preview.text
+        task = _install(client, preview.json())
+        assert client.delete(base).status_code == 204
+    with _client(tmp_path / "app", monkeypatch, validator) as client:
+        option = next(
+            option
+            for option in client.get("/api/transcription-options").json()["options"]
+            if option["model_id"] == task["model_id"]
+        )
+        assert option["can_start"]
+        assert option["execution"]["device"] == "cpu"
+        assert option["execution"]["precision"] == "native"
+        assert set(option["capabilities"]) == {"transcription", "cpu"}
+        assert str(tmp_path) not in json.dumps(option)
+    assert validator.calls == ["sherpa-onnx-asr"]

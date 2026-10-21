@@ -1,4 +1,4 @@
-"""Trusted CPU Whisper ONNX child; no downloaded code or native diagnostic output.
+"""Trusted CPU ONNX ASR child; no downloaded code or native diagnostic output.
 
 ponytail: non-overlapping 30-second windows bound native input. Words crossing
 window boundaries may lose accuracy; alignment and overlap need measured models.
@@ -74,6 +74,51 @@ def load_whisper(
     )
 
 
+class TransducerFactory(Protocol):
+    def __call__(
+        self,
+        *,
+        encoder: str,
+        decoder: str,
+        joiner: str,
+        tokens: str,
+        provider: str,
+        num_threads: int,
+        debug: bool,
+        decoding_method: str,
+        model_type: str,
+    ) -> Recognizer: ...
+
+
+def load_nemo_transducer(
+    files: Mapping[str, Path], *, factory: TransducerFactory | None = None
+) -> Recognizer:
+    if factory is None:
+        module = importlib.import_module("sherpa_onnx")
+        factory = cast(TransducerFactory, module.OfflineRecognizer.from_transducer)
+    return factory(
+        encoder=str(files["encoder"]),
+        decoder=str(files["decoder"]),
+        joiner=str(files["joiner"]),
+        tokens=str(files["tokens"]),
+        provider="cpu",
+        num_threads=2,
+        debug=False,
+        decoding_method="greedy_search",
+        model_type="nemo_transducer",
+    )
+
+
+def load_recognizer(
+    family: str, files: Mapping[str, Path], language: str | None
+) -> Recognizer:
+    if family == "whisper":
+        return load_whisper(files, language)
+    if family == "nemo_transducer" and language is None:
+        return load_nemo_transducer(files)
+    raise ValueError("Unsupported ASR family or language hint")
+
+
 def decode_audio(
     audio: Path,
     recognizer: Recognizer,
@@ -147,7 +192,9 @@ def main() -> int:
                 return 1
             request = json.loads(request_path.read_text(encoding="utf-8"))
             files = {key: Path(value) for key, value in request["files"].items()}
-            recognizer = load_whisper(files, request["language"])
+            recognizer = load_recognizer(
+                request.get("family", "whisper"), files, request["language"]
+            )
 
             def emit(event: dict[str, object]) -> None:
                 line = json.dumps(event, ensure_ascii=False).encode("utf-8") + b"\n"

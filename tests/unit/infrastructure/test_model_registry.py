@@ -221,7 +221,7 @@ def test_tts_models_are_listed_only_when_the_composition_root_enables_them() -> 
 
     assert keys == [f"sherpa-onnx-tts:{e.descriptor.model_id}" for e in entries]
     assert "sherpa-onnx-tts:piper-es_MX-ald-medium" in keys
-    assert len(keys) == len(set(keys)) == 5
+    assert len(keys) == len(set(keys)) == len(TTS_CATALOG)
     assert all(
         e.descriptor.capabilities == {ModelCapability.SYNTHESIS, ModelCapability.CPU}
         and e.requires == "tts"

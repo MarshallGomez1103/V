@@ -17,9 +17,11 @@ _RELEASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/"
 def test_the_catalog_has_the_measured_models_with_exact_pins() -> None:
     assert set(_BY_ID) == {
         "piper-es_MX-ald-medium",
+        "piper-es_MX-claude-high-int8",
         "piper-es_ES-davefx-medium",
         "piper-en_US-lessac-medium",
         "kitten-nano-en-v0_8-int8",
+        "kitten-mini-en-v0_8",
         "kokoro-int8-multi-lang-v1_0",
     }
     assert TTS_PROVIDER_ID == "sherpa-onnx-tts"
@@ -96,3 +98,39 @@ def test_voices_follow_the_measured_speaker_ids() -> None:
         ("piper-en_US-lessac-medium", "lessac"),
     ):
         assert [(v.id, v.name) for v in _BY_ID[model_id].voices] == [("0", name)]
+
+
+def test_claude_int8_pins_archive_and_preserves_the_internal_model_name() -> None:
+    entry = _BY_ID["piper-es_MX-claude-high-int8"]
+    assert (entry.archive_name, entry.root) == (
+        "vits-piper-es_MX-claude-high-int8.tar.bz2",
+        "vits-piper-es_MX-claude-high-int8",
+    )
+    assert (entry.size_bytes, entry.sha256) == (
+        21_216_685,
+        "0f9fc9c07d2e17bdc0f5f33a657addae92085da85704cb86a861e59d32f3bbfa",
+    )
+    assert dict(entry.files) == {
+        "model": "es_MX-claude-high.onnx",
+        "tokens": "tokens.txt",
+    }
+    assert [(v.id, v.name, v.languages) for v in entry.voices] == [
+        ("0", "claude", ("es",))
+    ]
+    assert "claude dataset Apache-2.0" in entry.license
+    assert "lessac" not in entry.license
+
+
+def test_kitten_mini_uses_the_measured_archive_layout_and_speaker_ids() -> None:
+    entry = _BY_ID["kitten-mini-en-v0_8"]
+    assert (entry.size_bytes, entry.sha256) == (
+        67_547_594,
+        "518f9b130320f690d5b5476df77bde4215fca67773cda16710318e5081234b9d",
+    )
+    assert dict(entry.files) == {
+        "model": "model.onnx",
+        "voices": "voices.bin",
+        "tokens": "tokens.txt",
+    }
+    assert entry.voices == _BY_ID["kitten-nano-en-v0_8-int8"].voices
+    assert entry.license.startswith("Apache-2.0")

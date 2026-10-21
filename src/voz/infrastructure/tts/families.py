@@ -1,8 +1,8 @@
 """sherpa-onnx TTS model families: manifest files -> ``OfflineTts`` kwargs.
 
 Pure (no ``sherpa_onnx`` import), so every family quirk is testable without the
-runtime; the worker turns the result into config objects. Measured layouts are
-in ``.ai/v-plan/findings/V4-01.md``.
+runtime; the worker turns the result into config objects. Supported families
+are described in ``docs/adr/0010-voice-engines-and-tts.md``.
 
 Manifest ``files`` keys per family (values are paths):
 

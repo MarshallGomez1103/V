@@ -25,7 +25,7 @@ _MAX_BYTES = 16 * 1024**3
 _MAX_FILES = 10_000
 _FAMILIES = {
     "faster-whisper": {"ctranslate2"},
-    "sherpa-onnx-asr": {"whisper"},
+    "sherpa-onnx-asr": {"whisper", "nemo_transducer"},
     "whisper-cpp": {"ggml"},
     "sherpa-onnx-tts": {"kitten", "kokoro", "vits", "matcha"},
 }

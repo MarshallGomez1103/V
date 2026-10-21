@@ -1,4 +1,4 @@
-"""Experimental Whisper ONNX file layout and CPU runtime observations."""
+"""Experimental ONNX ASR file layouts and CPU runtime observations."""
 
 from __future__ import annotations
 
@@ -72,12 +72,31 @@ def observed_language(value: object) -> str | None:
 def whisper_files(
     directory: Path, file_roles: Mapping[str, str] | None = None
 ) -> dict[str, Path]:
-    """Resolve exactly one encoder/decoder/tokens set, never scripts or links."""
+    """Resolve exactly one Whisper set, never scripts or links."""
+    return _asr_files(directory, file_roles, ("encoder", "decoder"), "Whisper ONNX")
+
+
+def nemo_transducer_files(
+    directory: Path, file_roles: Mapping[str, str] | None = None
+) -> dict[str, Path]:
+    """Resolve the four-file NeMo transducer layout without executing code."""
+    return _asr_files(
+        directory, file_roles, ("encoder", "decoder", "joiner"), "NeMo transducer"
+    )
+
+
+def _asr_files(
+    directory: Path,
+    file_roles: Mapping[str, str] | None,
+    weights: tuple[str, ...],
+    label: str,
+) -> dict[str, Path]:
+    required = {*weights, "tokens"}
     try:
         if directory.is_symlink() or not directory.is_dir():
             raise ValueError
         if file_roles:
-            if set(file_roles) != {"encoder", "decoder", "tokens"}:
+            if set(file_roles) != required:
                 raise ValueError
             names = dict(file_roles)
         else:
@@ -87,7 +106,7 @@ def whisper_files(
                     raise ValueError
                 candidates.append(path.name)
             names: dict[str, str] = {}
-            for role in ("encoder", "decoder"):
+            for role in weights:
                 matches = [
                     name
                     for name in candidates
@@ -120,11 +139,11 @@ def whisper_files(
             if not stat.S_ISREG(info.st_mode) or info.st_size <= 0:
                 raise ValueError
             result[role] = path
-        if len(set(result.values())) != 3:
+        if len(set(result.values())) != len(required):
             raise ValueError
         return result
     except (OSError, ValueError, TypeError):
         raise TranscriptionError(
             TranscriptionFailureCode.MODEL_NOT_INSTALLED,
-            "The selected Whisper ONNX model files are not available.",
+            f"The selected {label} model files are not available.",
         ) from None

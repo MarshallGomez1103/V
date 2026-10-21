@@ -34,12 +34,22 @@ def _tts_families(label: str) -> set[str]:
     }
 
 
+def _is_nemo(label: str) -> bool:
+    label = label.rsplit("/", 1)[-1].lower()
+    return bool(
+        re.search(r"(?:^|[-_.])nemo(?:$|[-_.])", label)
+        and re.search(r"(?:^|[-_.])(?:parakeet|transducer)(?:$|[-_.])", label)
+    )
+
+
 def detect_download(name: str) -> tuple[str, str, dict[str, str]]:
     """Archive names are hints only; installation must still load-validate them."""
     candidates: list[tuple[str, str, dict[str, str]]] = []
     if name.startswith("ggml-") and name.endswith(".bin"):
         candidates.append(("whisper-cpp", "ggml", {}))
     if name.endswith(".tar.bz2"):
+        if _is_nemo(name):
+            candidates.append(("sherpa-onnx-asr", "nemo_transducer", {}))
         if re.search(r"(?:^|[-_.])whisper(?:$|[-_.])", name.lower()):
             candidates.append(("sherpa-onnx-asr", "whisper", {}))
         candidates.extend(
@@ -73,24 +83,23 @@ def detect_repository(
                 r"(?:.*[-_])?" + role + r"(?:\.int8)?\.onnx", PurePosixPath(name).name
             )
         ]
-        for role in ("encoder", "decoder")
+        for role in ("encoder", "decoder", "joiner")
     }
     tokens = [name for name in names if PurePosixPath(name).name == "tokens.txt"]
     if roles["encoder"] and roles["decoder"] and tokens:
+        nemo = _is_nemo(repository)
+        weights = ("encoder", "decoder", "joiner") if nemo else ("encoder", "decoder")
         if (
-            len(onnx) == 2
-            and all(len(found) == 1 for found in roles.values())
+            len(onnx) == len(weights)
+            and all(len(roles[role]) == 1 for role in weights)
             and len(tokens) == 1
+            and (nemo or not roles["joiner"])
         ):
             candidates.append(
                 (
                     "sherpa-onnx-asr",
-                    "whisper",
-                    {
-                        "encoder": roles["encoder"][0],
-                        "decoder": roles["decoder"][0],
-                        "tokens": tokens[0],
-                    },
+                    "nemo_transducer" if nemo else "whisper",
+                    {**{role: roles[role][0] for role in weights}, "tokens": tokens[0]},
                 )
             )
         else:

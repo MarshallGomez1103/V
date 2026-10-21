@@ -176,9 +176,11 @@ def test_the_pinned_catalog_lists_every_tts_model_as_synthesis(tmp_path: Path) -
 
         assert set(listed) == {
             "sherpa-onnx-tts:piper-es_MX-ald-medium",
+            "sherpa-onnx-tts:piper-es_MX-claude-high-int8",
             "sherpa-onnx-tts:piper-es_ES-davefx-medium",
             "sherpa-onnx-tts:piper-en_US-lessac-medium",
             "sherpa-onnx-tts:kitten-nano-en-v0_8-int8",
+            "sherpa-onnx-tts:kitten-mini-en-v0_8",
             "sherpa-onnx-tts:kokoro-int8-multi-lang-v1_0",
         }
         for model in listed.values():

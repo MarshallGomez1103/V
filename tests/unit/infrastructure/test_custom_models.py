@@ -1097,6 +1097,23 @@ def test_sherpa_asr_preserves_license_metadata(name: str) -> None:
             },
         ),
         (
+            "sherpa-onnx-nemo-parakeet-tdt",
+            {
+                "encoder.int8.onnx",
+                "decoder.int8.onnx",
+                "joiner.int8.onnx",
+                "tokens.txt",
+            },
+            "sherpa-onnx-asr",
+            "nemo_transducer",
+            {
+                "encoder": "encoder.int8.onnx",
+                "decoder": "decoder.int8.onnx",
+                "joiner": "joiner.int8.onnx",
+                "tokens": "tokens.txt",
+            },
+        ),
+        (
             "kitten-model",
             {"model.onnx", "tokens.txt", "voices.bin", "espeak-ng-data/phontab"},
             "sherpa-onnx-tts",
@@ -1237,6 +1254,7 @@ def test_auto_hf_rejects_unsupported_or_ambiguous_without_weight_gets(
     [
         ("ggml-custom.bin", "whisper-cpp", "ggml"),
         ("sherpa-onnx-whisper-tiny.tar.bz2", "sherpa-onnx-asr", "whisper"),
+        ("sherpa-onnx-nemo-parakeet-tdt.tar.bz2", "sherpa-onnx-asr", "nemo_transducer"),
         ("kokoro-v1.tar.bz2", "sherpa-onnx-tts", "kokoro"),
         ("kitten-nano.tar.bz2", "sherpa-onnx-tts", "kitten"),
         ("piper-voice.tar.bz2", "sherpa-onnx-tts", "vits"),
@@ -1414,3 +1432,80 @@ def test_auto_folder_remains_manual_without_scanning(tmp_path: Path) -> None:
     with pytest.raises(CustomModelError) as raised:
         store.prepare(request(tmp_path / "not-scanned", engine="auto", family=""))
     assert raised.value.code == "custom_model_engine_unsupported"
+
+
+def test_nemo_transducer_import_is_cpu_only_and_persists_after_restart(
+    tmp_path: Path,
+) -> None:
+    files, _store, validator, importer = stores(tmp_path)
+    source = whisper_folder(tmp_path / "source")
+    (source / "joiner.int8.onnx").write_bytes(b"synthetic")
+    preview = importer.prepare(
+        request(source, engine="sherpa-onnx-asr", family="nemo_transducer")
+    )
+    assert preview.file_count == 4
+    assert preview.descriptor.profile is not None
+    assert preview.descriptor.profile.cpu_precision is ComputePrecision.NATIVE
+    assert preview.descriptor.capabilities == frozenset(
+        {ModelCapability.CPU, ModelCapability.TRANSCRIPTION}
+    )
+    descriptor = importer.execute(preview.id, confirm=True)
+    installed = files.resolve_path(descriptor)
+    assert set(custom_models.model_files(installed, "nemo_transducer", {})) == {
+        "encoder",
+        "decoder",
+        "joiner",
+        "tokens",
+    }
+    assert not (installed / "untrusted.py").exists()
+    assert validator.calls == [("sherpa-onnx-asr", "nemo_transducer")]
+    reopened = CustomModelStore(
+        files, cache_root=tmp_path / "cache", runtime_available=lambda _: True
+    )
+    assert (
+        reopened.list_models(ModelCapability.TRANSCRIPTION)[0].descriptor == descriptor
+    )
+
+
+@pytest.mark.parametrize("missing_joiner", [False, True])
+def test_auto_nemo_archive_validates_four_weights_before_registration(
+    tmp_path: Path, missing_joiner: bool
+) -> None:
+    files, store, validator, importer = stores(tmp_path)
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w:bz2") as bundle:
+        for name in (
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+            "tokens.txt",
+            "run.py",
+        ):
+            if missing_joiner and name == "joiner.int8.onnx":
+                continue
+            item = tarfile.TarInfo("nemo/" + name)
+            item.size = 7
+            bundle.addfile(item, io.BytesIO(b"weights"))
+    path = "/sherpa-onnx-nemo-parakeet-tdt-v3-int8.tar.bz2"
+    with server({path: data.getvalue()}) as (base, calls):
+        preview = importer.prepare(
+            request(
+                base + path,
+                source_type="url",
+                engine="auto",
+                family="",
+                display_name="",
+            )
+        )
+        assert preview.family == "nemo_transducer"
+        if missing_joiner:
+            with pytest.raises(CustomModelError):
+                importer.execute(preview.id, confirm=True)
+            assert validator.calls == [] and store.managed_entries() == ()
+        else:
+            descriptor = importer.execute(preview.id, confirm=True)
+            assert validator.calls == [("sherpa-onnx-asr", "nemo_transducer")]
+            installed = files.resolve_path(descriptor)
+            assert len(custom_models.model_files(installed, "nemo_transducer", {})) == 4
+            assert not (installed / "run.py").exists()
+        assert calls == [("HEAD", path), ("GET", path)]

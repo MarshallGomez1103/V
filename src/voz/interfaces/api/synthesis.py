@@ -259,6 +259,7 @@ def create_synthesis_router(
                     "model_id": model.model_id,
                     "display_name": model.display_name,
                     "runtime_ready": ready,
+                    "capabilities": sorted(cap.value for cap in model.capabilities),
                     "languages": list(languages),
                     "voices": [
                         {
