@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to V (formerly VOZ) are documented here. The format follows
+All notable changes to V are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adopts
 [semantic versioning](https://semver.org/spec/v2.0.0.html) with the rules in
 [docs/release.md](docs/release.md). While the version is `0.x`, a minor change
@@ -125,6 +125,10 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Fixed
 
+- The voice summary in Speak pluralizes models and voices ("1 model", "2 voices"),
+  the custom-model link preview labels the detected license, and the Piper,
+  Kokoro and speaker-separation catalog names are no longer shown in Spanish
+  when the interface is in English.
 - The job worker no longer swallows exceptions silently: `JobRunner._loop` logs
   them with the `job_id` and makes one attempt to leave the job in `FAILED`
   with the code `job_runner_crashed`; if that write also fails the job stays
@@ -136,6 +140,10 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Security
 
+- Cloud transcription options fail closed: the options selector no longer
+  treats an unloaded or failed catalog as consent, and `POST /api/jobs` rejects
+  a cloud option without an explicit `cloud_consent: true` (422
+  `cloud_consent_required`) before creating or enqueueing any job.
 - Requests with a foreign `Host` header are rejected with 400 `host_not_allowed`
   (DNS-rebinding protection). An ASGI middleware serves only loopback hosts
   (`127.0.0.1`, `localhost`, `::1`) or the explicit `--host`, on any port,
