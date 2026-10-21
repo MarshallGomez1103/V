@@ -3,7 +3,7 @@
 Roadmap: S16.10. Verified against `src/voz/bootstrap.py`,
 `src/voz/interfaces/cli/main.py`, `apps/web/vite.config.ts` and `pyproject.toml`.
 
-A C4 "container" is an executable unit or a data store. V (formerly VOZ) is a
+A C4 "container" is an executable unit or a data store. V is a
 **modular monolith** ([ADR-0001](../adr/0001-modular-monolith.md)): a single
 Python process contains the API, the use cases, the job worker and the
 adapters. The other containers are the browser, the local data stores and the

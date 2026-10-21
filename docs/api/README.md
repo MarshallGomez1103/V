@@ -1,6 +1,6 @@
 # HTTP API
 
-V (formerly VOZ) serves a local JSON API under `/api`. The browser UI is its
+V serves a local JSON API under `/api`. The browser UI is its
 only first-party client. The exact, generated schema is published at
 `/openapi.json` (interactive view at `/docs`); the pages below document the
 contracts that go beyond the schema: error codes, side effects, limits and

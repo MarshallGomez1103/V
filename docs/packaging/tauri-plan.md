@@ -1,7 +1,7 @@
 # Plan: V as a desktop application with Tauri
 
 Status: **plan, nothing implemented**. Today V is opened with a double-click
-launcher (`Iniciar-*`) that starts the local server and opens the browser. This
+launcher (`Start-V-*`) that starts the local server and opens the browser. This
 document describes how to package it as an installable application (own window,
 icon, per-system installer) with [Tauri 2](https://v2.tauri.app), what it costs
 and what risks it has.
@@ -110,7 +110,7 @@ In all three, CUDA is downloaded separately and only if there is an NVIDIA GPU
   progress screen (what is downloading, how much is left).
 - **Antivirus and long paths on Windows**: a deep `.venv` inside
   `%LOCALAPPDATA%`; watch the 260-character limit.
-- **Two copies of the truth**: the `Iniciar-*` launchers and the app must share
+- **Two copies of the truth**: the `Start-V-*` launchers and the app must share
   the same data folder (already solved by `paths.py`) so a user can switch from
   one to the other without losing projects.
 
@@ -133,5 +133,5 @@ Windows, macOS and Linux) and phases 1–3 when publishing is wanted. Signing
 
 - The domain, the API and the UI. Tauri does not require touching the backend
   except for the optional token in the security section.
-- The `Iniciar-*` launchers remain the way to use V from source and the
+- The `Start-V-*` launchers remain the way to use V from source and the
   development path.

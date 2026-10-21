@@ -1,6 +1,6 @@
 # V diagnostics and backup
 
-V (formerly VOZ): `v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs); see [ADR-0009](adr/0009-rename-to-v.md). Examples use `voz`.
+In V, `v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs); see [ADR-0009](adr/0009-rename-to-v.md). Examples use `voz`.
 
 Everything in this document is local: no network, no model loading, no calls to
 cloud providers. For fixes to common problems see

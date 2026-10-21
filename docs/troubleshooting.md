@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Known problems and their fixes for V (formerly VOZ). Every case here comes from
+Known problems and their fixes for V. Every case here comes from
 the project's own documentation or from the messages the code emits; if yours is
 not listed, run the diagnostics and open an issue with the result:
 
@@ -50,8 +50,7 @@ The launcher installs `uv` the first time and needs an internet connection. If i
 reports that it could not install it, check your connection and open the file
 again. Any other failure ends with "Algo falló" (something failed): read the
 message above it, then open the launcher again. (The launchers are
-`Start-V-Windows.bat`, `Start-V-macOS.command` and `start-v-linux.sh`; the old
-`Iniciar-*` names still work as deprecated wrappers for one release.)
+`Start-V-Windows.bat`, `Start-V-macOS.command` and `start-v-linux.sh`.)
 
 ## Requests rejected with 400 `host_not_allowed`
 

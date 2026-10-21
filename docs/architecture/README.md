@@ -1,6 +1,6 @@
 # V architecture
 
-V (formerly VOZ) is a local-first voice workspace. This folder documents its
+V is a local-first voice workspace. This folder documents its
 architecture **as it exists in the code today**, using the C4 model (Simon
 Brown) at three levels. Anything that only exists in the master plan is marked
 **planned** and drawn with a dashed line. Durable decisions live in the

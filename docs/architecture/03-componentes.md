@@ -4,8 +4,8 @@ Roadmap: S16.11. Module and class names verified with `grep` over `src/voz/`
 and `apps/web/src/` at commit `b775251` plus the working tree of wave 3.
 Decision framework: [ADR-0001](../adr/0001-modular-monolith.md).
 
-This page describes V (formerly VOZ) as of that snapshot. The Python package
-and its internal names keep the old name on purpose
+This page describes V as of that snapshot. The Python package
+and its internal names keep the technical name `voz` on purpose
 ([ADR-0009](../adr/0009-rename-to-v.md)).
 
 ## Dependency rule

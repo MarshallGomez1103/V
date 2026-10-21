@@ -3,7 +3,7 @@
 Roadmap: S16.09. Code state verified against `src/voz/bootstrap.py`,
 `src/voz/interfaces/cli/main.py` and `src/voz/infrastructure/`.
 
-V (formerly VOZ) is a local-first application: a person imports audio or video
+V is a local-first application: a person imports audio or video
 from their own disk, starts a transcription and reads the result in the
 browser. Everything happens on their machine; there is no account, no remote
 server and no telemetry.

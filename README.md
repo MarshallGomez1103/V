@@ -14,8 +14,28 @@ local web app: you start a server on your machine and use it from your browser.
 > version is `0.1.0`. Expect rough edges, and see
 > [Supported platforms](#supported-platforms) for what has actually been tested.
 
+## Quick start
+
+1. Get the project: `git clone https://github.com/MarshallGomez1103/V.git`, or
+   on GitHub choose *Code, Download ZIP* and unzip it.
+2. Double-click the launcher for your system:
+
+   | System | Launcher |
+   | --- | --- |
+   | Windows | `Start-V-Windows.bat` |
+   | macOS | `Start-V-macOS.command` |
+   | Linux | `start-v-linux.sh` |
+
+3. Wait a few minutes on the first run; the browser opens by itself. Open
+   **Models**, install one and transcribe a recording.
+
+Only Linux has been verified by hand
+([Supported platforms](#supported-platforms)). Full steps, troubleshooting and
+the developer setup are under [Installation](#installation).
+
 ## Contents
 
+- [Quick start](#quick-start)
 - [What V does today](#what-v-does-today)
 - [Screenshots](#screenshots)
 - [Supported platforms](#supported-platforms)
@@ -121,9 +141,9 @@ output of `voz doctor --redact` (check it before posting: issues are public).
 
 You do not need to install Python, Node or FFmpeg yourself.
 
-1. Get the project: clone it with [GitHub Desktop](https://desktop.github.com)
-   (`https://github.com/MarshallGomez1103/V`) or download the ZIP from GitHub
-   (*Code, Download ZIP*) and unzip it.
+1. Get the project: run `git clone https://github.com/MarshallGomez1103/V.git`
+   (or clone it with [GitHub Desktop](https://desktop.github.com)), or download
+   the ZIP from GitHub (*Code, Download ZIP*) and unzip it.
 2. Open the folder and double-click the launcher for your system (only the
    Linux one has been verified by hand; see
    [Supported platforms](#supported-platforms)):
@@ -134,9 +154,6 @@ You do not need to install Python, Node or FFmpeg yourself.
    | macOS | `Start-V-macOS.command` |
    | Linux | `start-v-linux.sh` (or run `./start-v-linux.sh` in a terminal) |
 
-   The previous launchers (`Iniciar-Windows.bat`, `Iniciar-Mac.command`,
-   `Iniciar-Linux.sh`) still work: they are thin wrappers that call the new
-   ones and are deprecated.
 3. Wait. The first run installs `uv` if it is missing and downloads what V
    needs (a pinned FFmpeg build, checked by SHA-256, if FFmpeg is not found),
    which takes a few minutes. Later runs take seconds. The browser opens by

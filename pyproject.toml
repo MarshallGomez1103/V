@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "voz-transcriber"
 version = "0.1.0"
-description = "Local-first voice workspace (V, formerly VOZ): long-form transcription today."
+description = "Local-first voice workspace: long-form transcription today."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }

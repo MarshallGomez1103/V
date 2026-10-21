@@ -1,6 +1,6 @@
 # Developing V on Bazzite
 
-V (formerly VOZ) is developed on Bazzite, an immutable Fedora Atomic image.
+V is developed on Bazzite, an immutable Fedora Atomic image.
 This guide prepares a development environment without modifying the Bazzite
 base image. The commands of Option A were run as written on a clean checkout
 (see [Verified on Bazzite](#verified-on-bazzite)); the status of each feature

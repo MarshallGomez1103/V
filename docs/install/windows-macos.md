@@ -1,6 +1,6 @@
 # Installing on Windows and macOS
 
-V (formerly VOZ) keeps the `voz` data directory names; `v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs). See [ADR-0009](../adr/0009-rename-to-v.md).
+V keeps the `voz` data directory names; `v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs). See [ADR-0009](../adr/0009-rename-to-v.md).
 
 > **Verification status.** V has only been used by hand on Linux (Bazzite). The
 > code has Windows- and macOS-specific paths, and its CI (`Backend /
@@ -26,8 +26,7 @@ uv run --extra asr-local --extra diarization voz
 ## Launchers and native verification
 
 Use `Start-V-Windows.bat` on Windows or `Start-V-macOS.command` on macOS.
-The `Iniciar-*` names remain compatibility wrappers for one release. Both
-launchers use the `voz` alias, which also works in environments created before
+Both launchers use the `voz` alias, which also works in environments created before
 the `v` entry point existed.
 
 Shell forwarding tests on Linux use a local `uv` substitute. They check paths

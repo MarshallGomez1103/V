@@ -1,6 +1,6 @@
 # Installing on Linux
 
-V (formerly VOZ) is a local application: a command (`voz` today) that starts a
+V is a local application: a command (`voz` today) that starts a
 server on `127.0.0.1` and serves a web interface from it. There is no public
 release yet, so you install it from a wheel built from the repository.
 

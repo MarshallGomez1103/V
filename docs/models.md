@@ -6,7 +6,7 @@ and Section 14 (S14.04, S14.09). Application contract: `ModelFile` and
 `ModelDownloadPort` in `application/ports/model_installation.py`. The underlying
 decision (pinned revision, manifest, explicit installation) remains in
 [ADR-0004](adr/0004-local-asr-and-recoverable-chunks.md). None of this runs
-unless the caller asks for it: importing V (formerly VOZ) downloads nothing.
+unless the caller asks for it: importing V downloads nothing.
 
 The model directory lives under the data directory (`~/.local/share/voz/models/`
 on Linux; the `voz` name does not change, see

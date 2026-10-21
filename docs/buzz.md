@@ -1,7 +1,6 @@
 # Reusing models from the Buzz cache
 
-If you already use [Buzz](https://github.com/chidiwilliams/buzz), V (formerly
-VOZ) can adopt some of its models so you do not download them twice. Buzz is
+If you already use [Buzz](https://github.com/chidiwilliams/buzz), V can adopt some of its models so you do not download them twice. Buzz is
 **not** a dependency of V: only its cache is read, and only when you ask for an
 import.
 
