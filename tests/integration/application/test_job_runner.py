@@ -6,6 +6,7 @@ import hashlib
 import logging
 import math
 import shutil
+import time
 import wave
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -379,7 +380,14 @@ def test_worker_thread_processes_enqueued_job(tmp_path: Path) -> None:
     fixture.runner.start()
     try:
         fixture.runner.enqueue(fixture.job.id)
-        assert fixture.runner.wait_idle(10.0)
+        # wait_idle() sees an empty queue between the worker's get() and the
+        # start of run_job (a slow Windows runner hits it), so count the tasks
+        # the worker has not finished instead.
+        queue = fixture.runner._queue  # pyright: ignore[reportPrivateUsage]
+        deadline = time.monotonic() + 10.0
+        while queue.unfinished_tasks and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert queue.unfinished_tasks == 0
     finally:
         fixture.runner.stop()
     assert fixture.persisted().state is TranscriptionJobState.COMPLETED
