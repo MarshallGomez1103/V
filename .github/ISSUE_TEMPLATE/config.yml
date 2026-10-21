@@ -4,7 +4,7 @@ contact_links:
     url: https://github.com/MarshallGomez1103/V/blob/main/SECURITY.md
     about: >-
       Do not open a public issue for a vulnerability. Follow SECURITY.md: use
-      Report a vulnerability in the Security tab (GitHub's Private
+      Report a vulnerability in the Security and quality tab (GitHub's Private
       Vulnerability Reporting). If it is unavailable, ask only for a private
       contact method, without exploit details or private data.
   - name: Questions about contributing

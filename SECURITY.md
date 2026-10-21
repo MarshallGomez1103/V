@@ -104,7 +104,7 @@ Please do not open a public issue or pull request that describes an undisclosed
 vulnerability, and do not attach recordings or real data belonging to another
 person.
 
-- Use **Report a vulnerability** in the repository's **Security** tab (GitHub's
+- Use **Report a vulnerability** in the repository's **Security and quality** tab (GitHub's
   Private Vulnerability Reporting). Follow
   [GitHub's reporting instructions](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately).
 - If that button is missing, ask the maintainer
