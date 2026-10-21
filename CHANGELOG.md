@@ -129,6 +129,9 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Fixed
 
+- Windows: cancelling an in-flight OpenAI-compatible request no longer waits
+  for the server, and cancelled speech and transcription child processes are
+  killed together with their descendants (the virtualenv launcher's child).
 - The voice summary in Speak pluralizes models and voices ("1 model", "2 voices"),
   the custom-model link preview labels the detected license, and the Piper,
   Kokoro and speaker-separation catalog names are no longer shown in Spanish
