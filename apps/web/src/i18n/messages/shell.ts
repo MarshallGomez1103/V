@@ -150,12 +150,7 @@ export const shell = {
     'Comprobando el servidor de este equipo…',
     'Checking the server on this computer…',
   ],
-  'health.ok': ['Disponible', 'Available'],
-  'health.ok.hint': [
-    'El servidor local de V respondió. Todo corre en este equipo (127.0.0.1).',
-    'The local V server answered. Everything runs on this computer (127.0.0.1).',
-  ],
-  'health.detail': ['API local · 127.0.0.1', 'Local API · 127.0.0.1'],
+  'health.ok': ['Conectado a V', 'Connected to V'],
 
   // Términos con tooltip compartidos
   'term.cloud.def': [

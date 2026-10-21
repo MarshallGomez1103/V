@@ -693,7 +693,7 @@ describe('servidor caído', () => {
   it('muestra un aviso global claro y se quita solo al volver', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     render(<App />)
-    await screen.findByText('Disponible')
+    await screen.findByText('Conectado a V')
 
     const original = globalThis.fetch
     let down = true

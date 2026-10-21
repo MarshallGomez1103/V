@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActionableNotification, Tag } from '@carbon/react'
+import { Checkmark } from '@carbon/icons-react'
+import { ActionableNotification } from '@carbon/react'
 
-import { getHealth, type HealthPayload } from '../api/health'
+import { getHealth } from '../api/health'
 import { useI18n } from '../i18n/i18n'
 import { Busy } from './Busy'
-import { Term } from './Hint'
 import './HealthStatus.scss'
 
 type CheckState =
   | { phase: 'loading' }
-  | { phase: 'available'; payload: HealthPayload }
+  | { phase: 'available' }
   | { phase: 'unavailable' }
 
 export function HealthStatus() {
@@ -26,8 +26,8 @@ export function HealthStatus() {
     const controller = new AbortController()
 
     void getHealth(controller.signal)
-      .then((payload) => {
-        setState({ phase: 'available', payload })
+      .then(() => {
+        setState({ phase: 'available' })
       })
       .catch((error: unknown) => {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
@@ -63,13 +63,8 @@ export function HealthStatus() {
         <Busy description={t('health.checking')} />
       ) : (
         <>
-          <Tag type="green" size="sm">
-            <Term definition="health.ok.hint">{t('health.ok')}</Term>
-          </Tag>
-          <span>
-            {t('health.detail')}
-            {state.payload.version ? ' · v' + state.payload.version : ''}
-          </span>
+          <Checkmark size={16} aria-hidden="true" />
+          <span>{t('health.ok')}</span>
         </>
       )}
     </div>

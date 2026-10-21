@@ -22,11 +22,13 @@
 .voz-grid > .cds--css-grid-column {
   display: grid;
   align-content: start;
+  min-inline-size: 0;
 }
 
 .voz-grid > .cds--css-grid-column > .cds--layer-one,
 .voz-grid > .cds--css-grid-column > .cds--layer-two {
   min-block-size: 0;
+  min-inline-size: 0;
 }
 
 .voz-banner {

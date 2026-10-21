@@ -82,7 +82,7 @@ describe('App', () => {
       screen.getByRole('button', { name: /volver a comprobar/i }),
     )
 
-    expect(await screen.findByText('Disponible')).toBeDefined()
+    expect(await screen.findByText('Conectado a V')).toBeDefined()
     expect(healthCalls()).toBe(2)
   })
 

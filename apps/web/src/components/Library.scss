@@ -1,5 +1,9 @@
 @use '../styles/carbon' as *;
 
+.voz-library .cds--data-table-container {
+  min-inline-size: 0;
+}
+
 .voz-library__name {
   display: grid;
   gap: $spacing-01;
@@ -46,4 +50,75 @@
   margin: 0;
   padding-inline-start: $spacing-06;
   color: $text-secondary;
+}
+
+[data-design='m3'] .voz-library {
+  .cds--data-table-container {
+    overflow: visible;
+  }
+
+  .cds--table-toolbar {
+    block-size: 3.5rem;
+    margin-block-end: 1rem;
+    background: transparent;
+  }
+
+  .cds--toolbar-content {
+    flex: 0 1 40rem;
+    min-inline-size: 0;
+  }
+
+  .cds--search,
+  .cds--search-input {
+    block-size: 3.5rem;
+  }
+
+  .cds--search-input {
+    background: var(--md-sys-color-surface-container-highest);
+    color: var(--md-sys-color-on-surface);
+    font-size: 1rem;
+    padding-inline-end: 3.5rem;
+  }
+
+  .cds--search-close {
+    block-size: 3rem;
+    inline-size: 3rem;
+    inset-block-start: 0.25rem;
+  }
+
+  .cds--data-table {
+    border-collapse: separate;
+    border-spacing: 0;
+
+    td:first-child {
+      min-inline-size: 16rem;
+    }
+
+    td:nth-child(2) {
+      white-space: nowrap;
+    }
+
+    thead,
+    tbody,
+    tr {
+      background: transparent;
+    }
+
+    th:first-child,
+    th:first-child .cds--table-sort {
+      border-start-start-radius: var(--m3-shape-md);
+    }
+
+    th:last-child {
+      border-start-end-radius: var(--m3-shape-md);
+    }
+
+    tbody tr:last-child td:first-child {
+      border-end-start-radius: var(--m3-shape-md);
+    }
+
+    tbody tr:last-child td:last-child {
+      border-end-end-radius: var(--m3-shape-md);
+    }
+  }
 }

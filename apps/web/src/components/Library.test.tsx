@@ -71,6 +71,26 @@ describe('Library', () => {
     expect(screen.getByText('Ninguna transcripción se llama «zzz».')).toBeDefined()
   })
 
+  it('limpia la búsqueda y conserva el orden elegido de la tabla', () => {
+    renderLibrary({ phase: 'ready', items: ITEMS })
+    const table = screen.getByRole('table', { name: 'Transcripciones guardadas' })
+    const nameHeader = within(table).getByRole('columnheader', { name: /Nombre/ })
+    fireEvent.click(within(nameHeader).getByRole('button'))
+    fireEvent.click(within(nameHeader).getByRole('button'))
+    expect(nameHeader.getAttribute('aria-sort')).toBe('descending')
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar transcripciones' }), {
+      target: { value: 'entre' },
+    })
+    expect(within(table).getAllByRole('row').length).toBe(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda' }))
+
+    expect(within(table).getAllByRole('row').length).toBe(4)
+    expect(nameHeader.getAttribute('aria-sort')).toBe('descending')
+    expect(within(table).getAllByRole('row')[1]?.textContent).toContain('Sin trabajo')
+    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: 'Buscar transcripciones' }).value).toBe('')
+  })
+
   it('renombra con un modal y recarga; rechaza nombres vacíos', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })))
     vi.stubGlobal('fetch', fetchMock)
