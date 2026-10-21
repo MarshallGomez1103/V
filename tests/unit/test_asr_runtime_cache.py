@@ -132,12 +132,13 @@ def test_runtime_in_use_is_never_closed_by_the_idle_timer() -> None:
 
 def test_a_new_use_cancels_the_pending_idle_close() -> None:
     engines = _Engines()
-    cache = SingleRuntimeCache[str, _Runtime](idle_seconds=0.1)
+    # Wide margins: a loaded CI runner can oversleep the gap by a few hundred ms.
+    cache = SingleRuntimeCache[str, _Runtime](idle_seconds=0.6)
     with cache.use("tiny", lambda: engines.create("tiny")):
         pass
-    time.sleep(0.05)
+    time.sleep(0.1)
     with cache.use("tiny", lambda: engines.create("tiny")):
-        time.sleep(0.2)
+        time.sleep(1.0)
         assert engines.closed == []
     cache.close()
 
