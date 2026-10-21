@@ -301,7 +301,8 @@ def test_nemo_cancellation_kills_the_child_and_cleans_work(
             return marker.exists()
 
     with pytest.raises(TranscriptionError) as failure:
-        nemo_provider(tmp_path).transcribe(
+        # Generous timeout: a slow interpreter start must not beat the marker.
+        nemo_provider(tmp_path, timeout=60).transcribe(
             audio=audio(),
             options=TranscriptionOptions(model=DESCRIPTOR),
             cancellation=Cancel(),

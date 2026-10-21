@@ -78,7 +78,14 @@ class Harness:
         return int(self.pid_file.read_text())
 
     def assert_child_gone(self) -> None:
-        assert not _alive(self.child_pid())
+        # On Windows the venv's python.exe is a launcher whose real interpreter
+        # is its child: it dies a moment after the launcher is terminated. A
+        # leaked worker (30 s sleep) would still be alive when this gives up.
+        pid = self.child_pid()
+        deadline = time.monotonic() + 5.0
+        while _alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not _alive(pid)
 
 
 def _alive(pid: int) -> bool:
