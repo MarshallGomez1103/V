@@ -225,6 +225,15 @@ time.sleep(60)
         # An orphan may await its system reaper; it must no longer execute.
         assert status.read_text().split()[2] == "Z"
     else:
+        # Elsewhere (macOS) kill(pid, 0) still finds the killed orphan until
+        # init reaps it; a descendant that is really alive outlasts the wait.
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
         with pytest.raises(ProcessLookupError):
             os.kill(pid, 0)
 
