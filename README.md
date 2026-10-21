@@ -60,8 +60,7 @@ the developer setup are under [Installation](#installation).
 ## What V does today
 
 Everything in this list exists in the repository and is covered by the project's
-tests (see [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the
-verified detail).
+tests (see [CHANGELOG.md](CHANGELOG.md) for the verified detail).
 
 - **Local transcription** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
   on an NVIDIA GPU when available and on the CPU otherwise. Long recordings are
@@ -423,7 +422,7 @@ Start with the [C4 architecture overview](docs/architecture/README.md), then
 
 ## Development
 
-Rules for contributors, human or AI, are in [AGENTS.md](AGENTS.md). Setup for
+The contribution guide is [CONTRIBUTING.md](CONTRIBUTING.md). Setup for
 Bazzite/Fedora Atomic is in
 [docs/development/setup-bazzite.md](docs/development/setup-bazzite.md).
 
@@ -469,15 +468,12 @@ npm run test
 npm run build
 ```
 
-A roadmap item is only marked done after its applicable checks have been run
-and recorded.
-
 ## Contributing
 
-V has no tagged release yet and no formal process for outside contributions.
-The workflow the maintainers use is in [CONTRIBUTING.md](CONTRIBUTING.md); the
-[Code of Conduct](CODE_OF_CONDUCT.md) applies. Read [AGENTS.md](AGENTS.md)
-before changing code.
+Bug reports, feature ideas and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to set up the project, run the
+checks and open an issue or a pull request. The
+[Code of Conduct](CODE_OF_CONDUCT.md) applies to every community space.
 
 ## Security
 
@@ -498,9 +494,8 @@ vulnerabilities privately as SECURITY.md describes, never in an issue.
 
 ## Roadmap
 
-The authoritative list of what exists, with stable IDs and verifiable status, is
-[ROADMAP.md](ROADMAP.md) (currently written in Spanish; translation is part of
-the ongoing work). Everything below is **planned and does not exist yet**:
+The plan for what comes next is in [ROADMAP.md](ROADMAP.md) (currently written
+in Spanish). Everything below is **planned and does not exist yet**:
 
 - A first tagged release, with packaged installers.
 

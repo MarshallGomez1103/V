@@ -1,13 +1,18 @@
 # V security policy
 
+To report a vulnerability, go to [How to report](#how-to-report); please do not
+open a public issue for it.
+
 ## Scope
 
 V is a local-first application: it is installed and run on one
 person's machine, serves on `http://127.0.0.1:8765` by default, and needs no
-account or remote service to work (see [README.md](README.md) and the product
-invariants in [AGENTS.md](AGENTS.md)). This policy covers the code in this
-repository: the command-line entry points (`v` and `voz`), the local FastAPI server, the web frontend, and the infrastructure
-adapters (FFmpeg, SQLite persistence, transcription providers).
+account or remote service to work (see [README.md](README.md)). Processing is
+local by default: no audio or transcript is sent to a cloud provider unless the
+user has explicitly configured and selected that provider. This policy covers
+the code in this repository: the command-line entry points (`v` and `voz`), the
+local FastAPI server, the web frontend, and the infrastructure adapters
+(FFmpeg, SQLite persistence, transcription providers).
 
 Out of scope: optional third-party cloud providers (their own security is up
 to that provider), the host operating system, and any fork or unofficial
@@ -118,26 +123,14 @@ Ordinary issues, pull requests, discussions and their attachments are public.
 A `security` label, a closed issue or an issue template does not make them
 private.
 
-Private Vulnerability Reporting is for security findings. Confidential ordinary
-bugs or internal planning need a separately agreed private channel or a private
-repository; the issue templates here do not provide either.
+Private Vulnerability Reporting is for security findings only; ordinary bugs
+belong in a regular issue.
 
 V does not publish an e-mail address for security reports.
 
-### Maintainer setup
-
-An owner or administrator enables **Settings -> Security and quality ->
-Advanced Security -> Private vulnerability reporting**. Verify that **Report a
-vulnerability** appears, then configure **Watch ->
-Custom -> Security alerts** and account notification preferences so reports are
-noticed. These are remote settings; the files in this repository cannot confirm
-or activate them. See [GitHub's configuration guide](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository).
-
-Keep reproduction details and patches in the private report or a draft security
-advisory, inviting only the collaborators needed to assess the problem. Agree
-on disclosure after a fix or mitigation is available. Publishing an advisory
-is a separate, public action; accepting a private report as a draft does not
-publish it. See [GitHub's advisory guidance](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/create-repository-advisory).
+Keep reproduction details and patches in the private report or a draft
+security advisory. Disclosure is agreed with the reporter once a fix or
+mitigation is available; accepting a private report does not publish it.
 
 Include, as far as you can:
 
@@ -145,7 +138,7 @@ Include, as far as you can:
 - steps to reproduce, with the commit of the repository you tested;
 - if relevant, a synthetic fixture that reproduces the problem without real
   private data (V does not accept private recordings as fixtures; see
-  [AGENTS.md](AGENTS.md)).
+  [docs/fixtures-licenses.md](docs/fixtures-licenses.md)).
 
 ## Response times
 
@@ -159,8 +152,7 @@ a contractual commitment:
 
 ## Supported versions
 
-V has no tagged release yet (see sections 15 and 16 of
-[ROADMAP.md](ROADMAP.md)). Until the first release, **only the `main` branch
+V has no tagged release yet. Until the first release, **only the `main` branch
 is supported** for security reports and fixes. There are no tagged versions and
 no maintenance cycle for older versions.
 

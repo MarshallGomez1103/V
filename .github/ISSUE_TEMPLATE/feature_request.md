@@ -23,16 +23,16 @@ Describe the feature or change you propose.
 Did you consider another way to solve the same problem? Why do you prefer this
 proposal?
 
-## Relation to the roadmap
+## Relation to existing work
 
-- Is there already a related ID in [`ROADMAP.md`](../../ROADMAP.md)? List it.
-- If not, which roadmap section would fit this proposal best?
+Is there an open issue, a pull request or an item in the
+[roadmap](../../ROADMAP.md) that already covers this? Link it.
 
 ## Architecture and privacy impact
 
 - Does this change need a new dependency? If so, explain why the standard
-  library and the existing dependencies are not enough (rule in
-  [`AGENTS.md`](../../AGENTS.md)).
+  library and the existing dependencies are not enough (see
+  [CONTRIBUTING.md](../../CONTRIBUTING.md)).
 - Does it affect the Clean/Hexagonal boundaries, offline mode, or the default
   binding to `127.0.0.1`?
 - Does it need a new or updated ADR in `docs/adr/`?

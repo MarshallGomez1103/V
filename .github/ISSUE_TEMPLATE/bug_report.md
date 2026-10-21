@@ -47,8 +47,3 @@ a synthetic fixture, like the ones documented in
 
 - [ ] Yes, it worked before (say in which commit or version, if you know).
 - [ ] I don't know, or not applicable.
-
-## Related roadmap IDs (optional)
-
-If the bug relates to an ID in `ROADMAP.md`, list it here (for example
-`S4.12`).

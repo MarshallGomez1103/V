@@ -1,24 +1,9 @@
 ## Summary
 
-Briefly describe what this pull request changes and why.
-
-## Roadmap IDs touched
-
-List the exact `ROADMAP.md` IDs (one to three) that belong to a single vertical
-slice:
-
--
+Briefly describe what this pull request changes and why. Link the related issue,
+if there is one.
 
 ## Checklist
-
-### Process (AGENTS.md / CONTRIBUTING.md)
-
-- [ ] I read `AGENTS.md` and the ADRs relevant to this change.
-- [ ] I recorded the assignment (exact IDs) in the "Trabajo activo" table of
-      `ROADMAP.md` before implementing.
-- [ ] `ROADMAP.md` is updated (checkbox, status and latest verified
-      achievement) in the same edit as this change, only after verifying the
-      result.
 
 ### Backend checks run
 
@@ -41,10 +26,9 @@ slice:
 ### Privacy and scope
 
 - [ ] Contains no recordings, transcripts or real private data.
-- [ ] Contains no models, weights, generated media, databases, caches or
-      `.ai/` content.
+- [ ] Contains no models, weights, generated media, databases or caches.
 - [ ] Contains no API keys, tokens or secrets.
-- [ ] This change does not span more than one vertical slice of the roadmap.
+- [ ] The change is focused on one purpose and does not mix unrelated work.
 
 ### Architecture and regression
 
@@ -52,6 +36,8 @@ slice:
 - [ ] Not applicable (not a durable architecture change).
 - [ ] If this PR fixes a bug, I added a regression test.
 - [ ] Not applicable (this PR does not fix a bug).
+- [ ] I updated the README, docs or CHANGELOG for user-visible changes, or none
+      are needed.
 
 ## Known risks / pending follow-ups
 
