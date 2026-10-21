@@ -300,7 +300,9 @@ class JobRunner:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
-                idle = self._queue.empty() and self._current is None
+                # unfinished_tasks also counts the item the worker already took
+                # but has not yet marked as current (task_done runs in _loop).
+                idle = self._queue.unfinished_tasks == 0 and self._current is None
             if idle:
                 return True
             time.sleep(0.01)

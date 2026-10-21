@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 from typing import BinaryIO
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import test_job_runner as tjr
@@ -268,6 +268,46 @@ def test_cancel_during_rendering_ends_cancelled_without_audio(
         SqliteSynthesizedAudioRepository(fixture.engine).get_by_job(fixture.job.id)
         is None
     )
+    fixture.engine.dispose()
+
+
+def test_wait_idle_is_not_idle_between_the_workers_get_and_run_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = harness(tmp_path)
+    taken = threading.Event()
+    release = threading.Event()
+    run_job = SynthesisRunner.run_job
+
+    def paused(self: SynthesisRunner, job_id: UUID) -> SynthesisJob | None:
+        taken.set()  # the queue is empty and _current is still None
+        assert release.wait(LONG)
+        return run_job(self, job_id)
+
+    monkeypatch.setattr(SynthesisRunner, "run_job", paused)
+    fixture.runner.start()
+    try:
+        fixture.runner.enqueue(fixture.job.id)
+        assert taken.wait(LONG)
+        assert not fixture.runner.wait_idle(0.1)
+        release.set()
+        assert fixture.runner.wait_idle(LONG)
+    finally:
+        release.set()
+        fixture.runner.stop()
+    assert fixture.persisted().state is SynthesisJobState.COMPLETED
+    fixture.engine.dispose()
+
+
+def test_wait_idle_returns_after_a_failed_job(tmp_path: Path) -> None:
+    fixture = harness(tmp_path, ScriptedTts(fail_on=1))
+    fixture.runner.start()
+    try:
+        fixture.runner.enqueue(fixture.job.id)
+        assert fixture.runner.wait_idle(LONG)
+    finally:
+        fixture.runner.stop()
+    assert fixture.persisted().state is SynthesisJobState.FAILED
     fixture.engine.dispose()
 
 

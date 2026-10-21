@@ -6,7 +6,7 @@ import hashlib
 import logging
 import math
 import shutil
-import time
+import threading
 import wave
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -380,17 +380,58 @@ def test_worker_thread_processes_enqueued_job(tmp_path: Path) -> None:
     fixture.runner.start()
     try:
         fixture.runner.enqueue(fixture.job.id)
-        # wait_idle() sees an empty queue between the worker's get() and the
-        # start of run_job (a slow Windows runner hits it), so count the tasks
-        # the worker has not finished instead.
-        queue = fixture.runner._queue  # pyright: ignore[reportPrivateUsage]
-        deadline = time.monotonic() + 10.0
-        while queue.unfinished_tasks and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert queue.unfinished_tasks == 0
+        assert fixture.runner.wait_idle(10.0)
     finally:
         fixture.runner.stop()
     assert fixture.persisted().state is TranscriptionJobState.COMPLETED
+    fixture.engine.dispose()
+
+
+def test_wait_idle_is_not_idle_between_the_workers_get_and_run_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = harness(tmp_path)
+    taken = threading.Event()
+    release = threading.Event()
+    run_job = JobRunner.run_job
+
+    def paused(self: JobRunner, job_id: UUID) -> TranscriptionJob | None:
+        taken.set()  # the queue is empty and _current is still None
+        assert release.wait(10.0)
+        return run_job(self, job_id)
+
+    monkeypatch.setattr(JobRunner, "run_job", paused)
+    fixture.runner.start()
+    try:
+        fixture.runner.enqueue(fixture.job.id)
+        assert taken.wait(10.0)
+        assert not fixture.runner.wait_idle(0.1)
+        release.set()
+        assert fixture.runner.wait_idle(10.0)
+    finally:
+        release.set()
+        fixture.runner.stop()
+    assert fixture.persisted().state is TranscriptionJobState.COMPLETED
+    fixture.engine.dispose()
+
+
+def test_wait_idle_returns_after_a_failed_or_cancelled_job(tmp_path: Path) -> None:
+    provider = Provider(fail_on_call=1)
+    fixture = harness(tmp_path, provider=provider)
+    other = _second_job(fixture)
+    fixture.runner.start()
+    try:
+        fixture.runner.enqueue(fixture.job.id)
+        assert fixture.runner.wait_idle(10.0)
+        assert fixture.persisted().state is TranscriptionJobState.FAILED
+        fixture.runner.cancel(other.id)
+        fixture.runner.enqueue(other.id)  # cancelled while queued: skipped
+        assert fixture.runner.wait_idle(10.0)
+    finally:
+        fixture.runner.stop()
+    cancelled = fixture.jobs.get(other.id)
+    assert cancelled is not None
+    assert cancelled.state is TranscriptionJobState.CANCELLED
     fixture.engine.dispose()
 
 
