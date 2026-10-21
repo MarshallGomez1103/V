@@ -384,6 +384,51 @@ def test_cancellation_keeps_input_until_service_finishes(
     asyncio.run(run())
 
 
+def test_completed_operation_stops_monitor_when_disconnect_poll_swallows_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from starlette.requests import Request
+
+    from voz.interfaces.api import openai_compat as api
+
+    async def run() -> None:
+        polling = threading.Event()
+        swallowed = False
+
+        async def is_disconnected() -> bool:
+            nonlocal swallowed
+            if not polling.is_set():
+                polling.set()
+                try:
+                    await asyncio.Future[None]()
+                except asyncio.CancelledError:
+                    swallowed = True
+            return False
+
+        request = Request({"type": "http"})
+        monkeypatch.setattr(request, "is_disconnected", is_disconnected)
+
+        def service(_cancelled: Callable[[], bool]) -> str:
+            assert polling.wait(1)
+            return "done"
+
+        existing_tasks = asyncio.all_tasks()
+        task = asyncio.create_task(api.invoke(request, service))
+        done, pending = await asyncio.wait({task}, timeout=1)
+        if pending:
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+        assert task in done, "Completed operation left its disconnect monitor running"
+        assert task.result() == "done"
+        assert swallowed
+        assert asyncio.all_tasks() == existing_tasks
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize(
     "body",
     [

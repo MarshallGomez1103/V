@@ -255,7 +255,7 @@ async def invoke[T](
 
     async def watch() -> None:
         nonlocal reason
-        while True:
+        while not cancelled.is_set():
             if time.monotonic() >= deadline:
                 reason = "request_timeout"
             elif await request.is_disconnected():
