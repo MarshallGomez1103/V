@@ -164,6 +164,12 @@ artifacts. What follows is everything that already exists in the repository.
   `vitest` 4.1.10 (development only); the 4.1.11 fix is left for a separate
   change.
 
+### Removed
+
+- The single-board computer (SBC) validation protocol and the edge/TinyML
+  feasibility research; the Edge Lab CPU experiments and generic Linux ARM
+  support are unchanged.
+
 ### Known limitations
 
 - Transcription with a real Faster Whisper model is **experimental**: the full

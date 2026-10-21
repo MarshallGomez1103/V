@@ -327,7 +327,7 @@ commit recordings, transcripts, models, databases or API keys.
   build recipes, not published packages.
 - **One verified platform.** Only the Linux machine in
   [Supported platforms](#supported-platforms) has been used end to end;
-  Windows, macOS, other GPUs and single-board computers are unverified.
+  Windows, macOS and other GPUs are unverified.
 - **Quality is not benchmarked broadly.** Speaker separation has no measured
   diarization error rate (DER), and generated voices had no listening
   evaluation; see the limits in [Benchmarks](docs/benchmarks.md). Review
