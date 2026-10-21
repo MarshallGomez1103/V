@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import stat
 import struct
 import threading
@@ -60,7 +61,11 @@ from voz.infrastructure.cloud.openai_compatible import (
     HttpConnectionTester,
     decode_speech,
 )
-from voz.infrastructure.cloud.openai_transport import urllib_transport
+from voz.infrastructure.cloud.openai_transport import (
+    HttpRequest,
+    TransportError,
+    urllib_transport,
+)
 from voz.infrastructure.paths import VozPaths
 
 KEY = "sk-compatible-secret-4242"
@@ -352,6 +357,32 @@ def test_cancellation_cuts_the_request_in_flight(
     assert time.monotonic() - started < 2.0
 
 
+def test_abort_does_not_depend_on_the_socket_waking_up(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On Windows a local shutdown() does not wake a socket blocked in recv.
+    def no_shutdown(self: socket.socket, how: int) -> None: ...
+
+    monkeypatch.setattr(socket.socket, "shutdown", no_shutdown)
+    server.speech_delay_s = 3.0
+    deadline = time.monotonic() + 0.2
+    started = time.monotonic()
+
+    with pytest.raises(TransportError) as raised:
+        urllib_transport(
+            HttpRequest(
+                f"{server.url}/v1/audio/speech",
+                {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
+                b'{"model": "kokoro", "input": "Hola"}',
+                timeout_s=10.0,
+                abort=lambda: time.monotonic() >= deadline,
+            )
+        )
+
+    assert raised.value.aborted
+    assert time.monotonic() - started < 2.0
+
+
 def test_edits_apply_live_and_never_move_a_model_to_the_cloud(
     tmp_path: Path, server: FakeServer
 ) -> None:
@@ -477,7 +508,9 @@ def test_transcription_key_stays_in_header_and_out_of_logs(
 def test_connection_tester_reports_models_auth_and_unreachable(
     server: FakeServer,
 ) -> None:
-    tester = HttpConnectionTester(urllib_transport, timeout_s=2.0)
+    # Windows retries a refused loopback connect for about two seconds, so a
+    # tight timeout would report endpoint_timeout instead of endpoint_unreachable.
+    tester = HttpConnectionTester(urllib_transport, timeout_s=10.0)
     endpoint = endpoint_for(server)
 
     ok = tester.check(endpoint, KEY)

@@ -73,7 +73,7 @@ def urllib_transport(request: HttpRequest) -> HttpResponse:
 
 
 def _abortable(request: HttpRequest, abort: Callable[[], bool]) -> HttpResponse:
-    """``http.client`` request whose socket a watcher shuts down on ``abort``.
+    """``http.client`` request on a helper thread, dropped once ``abort`` is true.
 
     ponytail: no proxy support on this path (urllib's env proxies are skipped);
     it is only used by engines that need cancellation mid-request.
@@ -85,44 +85,52 @@ def _abortable(request: HttpRequest, abort: Callable[[], bool]) -> HttpResponse:
         else http.client.HTTPConnection
     )
     connection = factory(parts.hostname or "", parts.port, timeout=request.timeout_s)
-    done = threading.Event()
-    aborted = threading.Event()
-
-    def watch() -> None:
-        while not done.wait(_ABORT_POLL_S):
-            if aborted.is_set() or abort():
-                aborted.set()
-                sock = connection.sock
-                if sock is not None:  # before connect(): retry on the next poll
-                    with contextlib.suppress(OSError):
-                        sock.shutdown(socket.SHUT_RDWR)
-                    return
-
-    watcher = threading.Thread(target=watch, name="voz-http-abort", daemon=True)
-    watcher.start()
     path = parts.path or "/"
     if parts.query:
         path += "?" + parts.query
+    done = threading.Event()
+    outcome: list[HttpResponse | Exception] = []
+
+    def exchange() -> None:
+        try:
+            connection.request(
+                request.method,
+                path,
+                body=request.body if request.body or request.method != "GET" else None,
+                headers=dict(request.headers),
+            )
+            reply = connection.getresponse()
+            outcome.append(
+                HttpResponse(reply.status, reply.read(), dict(reply.getheaders()))
+            )
+        except Exception as error:  # re-raised below, on the caller's thread
+            outcome.append(error)
+        finally:
+            done.set()
+
+    # The exchange runs on its own thread and the caller polls ``abort``: on
+    # Windows a local ``shutdown`` does not wake a socket blocked in recv, so
+    # waiting for the socket to fail would delay the cancellation until the
+    # server answers.
+    threading.Thread(target=exchange, name="voz-http-exchange", daemon=True).start()
     try:
-        connection.request(
-            request.method,
-            path,
-            body=request.body if request.body or request.method != "GET" else None,
-            headers=dict(request.headers),
-        )
-        reply = connection.getresponse()
-        body = reply.read()
-        if aborted.is_set():
-            raise TransportError(aborted=True)
-        return HttpResponse(reply.status, body, dict(reply.getheaders()))
-    except TimeoutError as error:
-        raise TransportError(timeout=True) from error
-    except (OSError, http.client.HTTPException) as error:
-        raise TransportError(aborted=aborted.is_set()) from error
+        while not done.wait(_ABORT_POLL_S):
+            if abort():
+                sock = connection.sock
+                if sock is not None:  # frees the thread at once where shutdown wakes it
+                    with contextlib.suppress(OSError):
+                        sock.shutdown(socket.SHUT_RDWR)
+                raise TransportError(aborted=True)
     finally:
-        done.set()
         connection.close()
-        watcher.join()
+    error = outcome[0]
+    if isinstance(error, HttpResponse):
+        return error
+    if isinstance(error, TimeoutError):
+        raise TransportError(timeout=True) from error
+    if isinstance(error, OSError | http.client.HTTPException):
+        raise TransportError from error
+    raise error
 
 
 def encode_multipart(
