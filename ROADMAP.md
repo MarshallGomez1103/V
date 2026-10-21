@@ -181,8 +181,7 @@ the validations before editing. Wave 3 (2026-09-30) closed S5 except S5.17
 S8 (S8.11 remained), S14.04/09/10/11 and packaging. Wave 4b+5a closed the Model
 Manager in the UI, S8.11, S14.05/06, the diarization core and adapter
 (sherpa-onnx) and words. Wave 5b closed S6 (except S6.03), S7 (except S7.02), S9
-(except S9.10), S11 (except S11.09), S12, S14.02/07/13, S15.10 and S16.19. Next
-(5c): S13 quality, the CLOUD badge (S11.09), S15.06, S16.02.
+(except S9.10), S11 (except S11.09), S12, S14.02/07/13, S15.10 and S16.19.
 
 
 Since 2026-10-10 the V Program has covered branding, hardening, English
@@ -602,7 +601,7 @@ README, without depending on the checkout.
 - [x] **S16.17** Document the licenses of all fixtures.
 - [x] **S16.18** Create `NOTICE` for reused code/dependencies.
 - [x] **S16.19** Audit secrets and ignored files before opening the repository.
-- [ ] **S16.20** Make the repository public only with explicit authorization.
+- [x] **S16.20** The repository is public, with the maintainer's authorization.
 
 **Exit criterion:** the repository is ready to receive external contributions,
 with real evidence and no private material.
