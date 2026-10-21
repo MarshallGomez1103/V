@@ -474,7 +474,7 @@ and recorded.
 
 ## Contributing
 
-V has no public release yet and no formal process for outside contributions.
+V has no tagged release yet and no formal process for outside contributions.
 The workflow the maintainers use is in [CONTRIBUTING.md](CONTRIBUTING.md); the
 [Code of Conduct](CODE_OF_CONDUCT.md) applies. Read [AGENTS.md](AGENTS.md)
 before changing code.
@@ -502,7 +502,7 @@ The authoritative list of what exists, with stable IDs and verifiable status, is
 [ROADMAP.md](ROADMAP.md) (currently written in Spanish; translation is part of
 the ongoing work). Everything below is **planned and does not exist yet**:
 
-- A public release, with packaged installers.
+- A first tagged release, with packaged installers.
 
 Plans can change; do not rely on any of this until it appears in the
 [CHANGELOG](CHANGELOG.md).

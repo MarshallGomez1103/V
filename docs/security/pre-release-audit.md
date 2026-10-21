@@ -1,4 +1,4 @@
-# Pre-publication repository audit
+# Repository security audit
 
 Date: 2026-10-20. This updates the earlier S16.19 audit; its earlier counts and
 release-readiness conclusions do not describe the current checkout.
@@ -27,10 +27,10 @@ vulnerability.
 | --- | --- |
 | Private context | `.ai/` is ignored, absent from the index and absent from reachable history. References to private research were removed from public documentation and replaced with public sources where needed. |
 | Credentials and private paths | Detected candidates were test literals; no actual credential or personal host path was identified in shipped source or documentation. Matched values are not reproduced here. |
-| Models, recordings and databases | No model weights, private recording or runtime database was identified among publication candidates. Six documented synthetic tone files remain intentional fixtures. |
+| Models, recordings and databases | No model weights, private recording or runtime database was identified among the tracked and non-ignored files. Six documented synthetic tone files remain intentional fixtures. |
 | Large blobs | No reachable historical blob exceeds 1 MiB. This is an inventory threshold, not a safe-file-size rule. |
 | Symlinks | The current index contains no symlink. Local worktrees and their internal Git paths are not application deliverables. |
-| Authorship | Reachable author and committer identities use one GitHub `noreply` identity. Publishing history still publishes that attribution and the commit messages. |
+| Authorship | Reachable author and committer identities use one GitHub `noreply` identity. The public history exposes that attribution and the commit messages. |
 | Binary assets | Fixtures have a size/hash/provenance manifest. PNG metadata was inspected separately; no personal-path, credential or GPS marker was identified. A contact-sheet review covered the 22 screenshots; no private path or credential was identified visually. Demo content is described in the README. This does not establish the provenance of every depicted name or waveform. |
 
 ## Exclusion corrections
@@ -100,21 +100,21 @@ requires its own inventory and notices. The JavaScript notice aggregate was
 refreshed against the installed Vite 8.2.4 originals; all 29 original notice files
 for the 27 package owners/helpers were preserved exactly.
 
-## Remaining publication checks
+## Remaining checks
 
 - Review the final staged diff, including newly generated assets and packaging
   notices, after all changes are finished. Repeat the scan on that exact state.
 - Verify third-party redistribution notices in each binary artifact. The
   project's MIT license does not relicense dependencies, fonts or model weights.
-- Repeat dependency database queries before publication if the lockfiles or
+- Repeat dependency database queries if the lockfiles or
   advisory data change; inspect installed and vendored distributions in each
   final artifact separately from the lockfile results above.
-- Enable and verify GitHub Private Vulnerability Reporting when the repository
-  is public. A security policy and issue template cannot activate it. Ordinary
-  issues and attachments in a public repository remain public; follow the
+- Verify that GitHub Private Vulnerability Reporting is enabled in the
+  repository settings. A security policy and issue template cannot activate it.
+  Ordinary issues and attachments remain public; follow the
   [reporting and maintainer setup instructions](../../SECURITY.md#how-to-report).
-- Review publication scope and permissions before changing visibility, pushing
-  or releasing. This audit did not change remote settings or publish anything.
+- Review scope and permissions before pushing or releasing. This audit did not
+  change remote settings or publish anything.
 
 ## Repeatable local checks
 
@@ -134,6 +134,6 @@ Review every finding, including those classified REVIEW. The scanner's
 expressions target recognizable formats and literal assignments; they miss
 arbitrary passwords, obfuscated values and secrets embedded in binary payloads.
 Reachable history is included; reflogs and unreachable objects are not, since
-they are not sent by a normal push. Local ignored files are outside publication
-candidates and were not content-scanned. Neither static analysis nor passing
+they are not sent by a normal push. Local ignored files are outside what a push
+sends and were not content-scanned. Neither static analysis nor passing
 tests proves complete security or authorizes a public release.

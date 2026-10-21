@@ -5,7 +5,7 @@ This document summarizes the workflow the repository actually uses, so that an
 outside contribution follows the same rules as the maintainers and the AI
 agents that already work here.
 
-> **Project status:** V has no public release yet and no formal process for
+> **Project status:** V has no tagged release yet and no formal process for
 > accepting external contributions (see section 16 of [ROADMAP.md](ROADMAP.md)).
 > This guide is the workflow the maintainers use; follow it for any change.
 

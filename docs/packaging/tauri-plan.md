@@ -127,7 +127,7 @@ In all three, CUDA is downloaded separately and only if there is an NVIDIA GPU
 
 Recommendation: do phase 0 now (almost free, gives the "application" effect on
 Windows, macOS and Linux) and phases 1–3 when publishing is wanted. Signing
-(phase 4) only makes sense with the public release.
+(phase 4) only makes sense with a tagged release.
 
 ## What does not change
 

@@ -7,7 +7,7 @@ labels: enhancement
 
 ## Problem or need
 
-Issues in a public repository are public. Do not include credentials, private
+Issues are public. Do not include credentials, private
 recordings or transcripts. Report suspected vulnerabilities through
 [SECURITY.md](../../SECURITY.md).
 

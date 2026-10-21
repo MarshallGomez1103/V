@@ -73,7 +73,7 @@ points, its package metadata and ensurepip, including their vendored CA bundles;
 the original runtime is preserved and `pipes.py` remains present. Installation
 into the target uses external uv rather than embedded pip. The workspace's
 separate certifi/Vite security updates and advisory-query limits are documented
-in the [pre-publication audit](../security/pre-release-audit.md).
+in the [security audit](../security/pre-release-audit.md).
 
 Construction, extraction and smoke steps each used a 60 s deadline, two logical
 CPUs, temporary HOME/XDG directories and an outer network namespace with local

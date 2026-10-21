@@ -1,8 +1,8 @@
 # Installing on Linux
 
 V is a local application: a command (`voz` today) that starts a
-server on `127.0.0.1` and serves a web interface from it. There is no public
-release yet, so you install it from a wheel built from the repository.
+server on `127.0.0.1` and serves a web interface from it. There is no
+tagged release yet, so you install it from a wheel built from the repository.
 
 > **Naming.** The product is now called V; see
 > [ADR-0009](../adr/0009-rename-to-v.md). The data directories are still named

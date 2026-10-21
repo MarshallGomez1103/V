@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# S16.19: pre-release audit of the working tree AND the whole git history for
+# S16.19: repository audit of the working tree AND the whole git history for
 # secrets, personal paths, private data and oversized/binary files.
 #
 # Usage: scripts/audit-secrets.sh [--tree-only] [--max-kib N]
@@ -144,7 +144,7 @@ else
   done < <(git rev-list --objects --all |
     git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)')
 
-  note "  INFO authors/committers that become public with the history:"
+  note "  INFO authors/committers exposed by the history:"
   git log --all --format='%an <%ae>%n%cn <%ce>' | sort | uniq -c | sed 's/^/    /'
 fi
 

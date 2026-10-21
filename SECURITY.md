@@ -104,20 +104,19 @@ Please do not open a public issue or pull request that describes an undisclosed
 vulnerability, and do not attach recordings or real data belonging to another
 person.
 
-- If this public repository has Private Vulnerability Reporting enabled, use
-  **Security and quality -> Advisories -> Report a vulnerability**. Follow
+- Use **Report a vulnerability** in the repository's **Security** tab (GitHub's
+  Private Vulnerability Reporting). Follow
   [GitHub's reporting instructions](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately).
-- If that button is missing, or the repository is private, ask the maintainer
+- If that button is missing, ask the maintainer
   @MarshallGomez1103 for a private security contact without including exploit
   details, credentials or private data. An ordinary issue may contain only the
   request for a contact method; use the **Request a private security contact**
   issue template for this public request. GitHub profiles do not provide private
   direct messages.
 
-Ordinary issues, pull requests, discussions and their attachments in a public
-repository are public. A `security` label, a closed issue or an issue template
-does not make them private. Adding this policy does not enable GitHub's private
-reporting feature.
+Ordinary issues, pull requests, discussions and their attachments are public.
+A `security` label, a closed issue or an issue template does not make them
+private.
 
 Private Vulnerability Reporting is for security findings. Confidential ordinary
 bugs or internal planning need a separately agreed private channel or a private
@@ -127,9 +126,9 @@ V does not publish an e-mail address for security reports.
 
 ### Maintainer setup
 
-On a public repository, an owner or administrator can enable **Settings ->
-Security and quality -> Advanced Security -> Private vulnerability reporting**.
-Verify that **Report a vulnerability** appears, then configure **Watch ->
+An owner or administrator enables **Settings -> Security and quality ->
+Advanced Security -> Private vulnerability reporting**. Verify that **Report a
+vulnerability** appears, then configure **Watch ->
 Custom -> Security alerts** and account notification preferences so reports are
 noticed. These are remote settings; the files in this repository cannot confirm
 or activate them. See [GitHub's configuration guide](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository).
@@ -150,7 +149,7 @@ Include, as far as you can:
 
 ## Response times
 
-V has no public release and no dedicated security team. These are targets, not
+V has no tagged release and no dedicated security team. These are targets, not
 a contractual commitment:
 
 - acknowledgement of the report: within 7 days;
@@ -160,7 +159,7 @@ a contractual commitment:
 
 ## Supported versions
 
-V has no public release yet (see sections 15 and 16 of
+V has no tagged release yet (see sections 15 and 16 of
 [ROADMAP.md](ROADMAP.md)). Until the first release, **only the `main` branch
 is supported** for security reports and fixes. There are no tagged versions and
 no maintenance cycle for older versions.
@@ -170,5 +169,5 @@ no maintenance cycle for older versions.
 | `main` (current checkout) | yes |
 | any fork, or any version before the first release | no |
 
-When a first public release exists, this table will be updated to show which
+When a first tagged release exists, this table will be updated to show which
 tagged versions receive security patches.
