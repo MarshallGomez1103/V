@@ -12,6 +12,15 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+_INSTALLER_FILES = (
+    "bin/pip",
+    "bin/pip3",
+    "bin/pip3.12",
+    "lib/python3.12/site-packages/pip/_vendor/certifi/cacert.pem",
+    "lib/python3.12/site-packages/pip-26.2.1.dist-info/METADATA",
+    "lib/python3.12/ensurepip/_bundled/pip-25.0.1-py3-none-any.whl",
+)
+_RUNTIME_FILES = ("lib/python3.12/pipes.py", "lib/python3.12/os.py")
 
 
 @pytest.fixture(params=["", "asr-local"])
@@ -40,6 +49,10 @@ def staged_appimage(
         "    binary = root / 'cpython-3.12-test-linux-x86_64-gnu/bin/python3'\n"
         "    binary.parent.mkdir(parents=True)\n"
         "    binary.symlink_to(sys.executable)\n"
+        f"    for name in {(*_INSTALLER_FILES, *_RUNTIME_FILES)!r}:\n"
+        "        path = binary.parent.parent / name\n"
+        "        path.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        path.write_text('runtime fixture')\n"
         "elif args[:2] == ['pip', 'install']:\n"
         "    target = pathlib.Path(args[args.index('--target') + 1])\n"
         "    (target / 'install.json').write_text(json.dumps(args))\n"
@@ -162,3 +175,21 @@ def test_apprun_uses_v_entrypoint_preserving_arguments_and_private_environment(
         "XDG_STATE_HOME",
     ):
         assert launched["env"][name] == env[name]
+
+
+def test_appimage_omits_installers_without_mutating_the_runtime_source(
+    staged_appimage: tuple[Path, Path, dict[str, str], str],
+) -> None:
+    appdir, _, env, _ = staged_appimage
+    runtime = appdir / "usr/python"
+    source = Path(env["VOZ_WORK"]) / "python-store/cpython-3.12-test-linux-x86_64-gnu"
+    for name in _INSTALLER_FILES:
+        assert (source / name).read_text() == "runtime fixture"
+        assert not (runtime / name).exists()
+    assert not (runtime / "lib/python3.12/site-packages/pip").exists()
+    assert not (runtime / "lib/python3.12/site-packages/pip-26.2.1.dist-info").exists()
+    assert not (runtime / "lib/python3.12/ensurepip").exists()
+    for name in _RUNTIME_FILES:
+        assert (runtime / name).read_bytes() == (source / name).read_bytes()
+    assert (runtime / "bin/python3").is_symlink()
+    assert (appdir / "AppRun").is_file()

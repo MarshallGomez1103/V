@@ -60,8 +60,8 @@ dev = [
   "ruff>=0.9,<1",
 ]
 
-# .gitignore is deliberately broad (`transcript.*`, `models/`, ...). Hatch would
-# apply it and silently drop tracked sources such as domain/entities/transcript.py,
+# .gitignore excludes local data directories such as `models/`. Hatch could
+# apply it and silently drop tracked sources with matching directory names,
 # so VCS ignores are off and every artifact lists what it ships explicitly.
 [tool.hatch.build]
 ignore-vcs = true

@@ -2,3 +2,7 @@
 *.bat text eol=crlf
 *.command text eol=lf
 *.sh text eol=lf
+
+# Preserve original third-party notices, including their line endings and spaces.
+apps/web/public/licenses/*.txt -text -whitespace
+src/voz/static/licenses/*.txt -text -whitespace

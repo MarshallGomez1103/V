@@ -45,13 +45,19 @@ id_ed25519.*
 *.pem
 *.p12
 *.pfx
+secrets.toml
+server-token
+server-token.*
 
 # Generated media, models, and databases
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
 *.sqlite
 *.sqlite3
+*.sqlite-*
+*.sqlite3-*
 *.log
 models/
 uploads/
@@ -62,9 +68,9 @@ normalized/
 originals/
 temp/
 transcripts/
-transcript.*
-transcript-*
-transcript_*
+/transcript.*
+/transcript-*
+/transcript_*
 cache/
 .cache/
 *.cache
@@ -92,9 +98,18 @@ cache/
 *.onnx
 *.pt
 *.pth
+*.bin
+*.AppImage
+*.flatpak
+*.AppDir/
 
-# Only small, licensed test media may be versioned deliberately.
-!tests/fixtures/**
+# Only the documented synthetic media bypass the media exclusions.
+!tests/fixtures/media/synthetic-tone.m4a
+!tests/fixtures/media/synthetic-tone.mp3
+!tests/fixtures/media/synthetic-tone.ogg
+!tests/fixtures/media/synthetic-tone.opus
+!tests/fixtures/media/synthetic-tone.wav
+!tests/fixtures/media/synthetic-tone.webm
 
 # Editors and OS metadata
 .idea/

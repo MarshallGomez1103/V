@@ -53,12 +53,13 @@ Frontend (Node, apps/web):
 | --- | --- | --- | --- |
 | React | 19.2.7 | MIT | verified (node_modules) |
 | React DOM | 19.2.7 | MIT | verified (node_modules) |
-| Vite | 8.2.0 | MIT | verified (node_modules) |
+| Vite | 8.2.4 | MIT | verified (node_modules) |
 
-None of the dependencies above requires, as of this edition, more than
-keeping its own license and copyright notice, which is already included in
-each package's distribution. V does not vendor or redistribute their source
-code: it depends on them as published packages.
+The compiled frontend redistributes JavaScript/CSS and font assets from its
+runtime dependencies. Their original licenses and copyright notices are
+provided in apps/web/public/licenses/ and copied unchanged into the built
+frontend's licenses/ directory. Portable base packages also carry the Python
+distributions' own dist-info license files.
 
 This file lists only the dependencies explicitly called out for this notice.
 It is not an exhaustive bill of materials (SBOM) of the whole tree of direct
@@ -71,7 +72,7 @@ in this file.
 Model weights
 =======================================================================
 
-Model weights (speech recognition, speaker diarization and, in the future,
+Model weights (speech recognition, speaker diarization and
 speech synthesis) are not part of this repository and are not covered by the
 MIT license of V. The user downloads them explicitly from their upstream
 sources. Their sources, licenses and verification status are listed in
@@ -98,3 +99,22 @@ The synthetic media fixtures in tests/fixtures/media/ are original test data
 of the project, generated locally with FFmpeg and distributed under the same
 MIT license as the project. See docs/fixtures-licenses.md for the full
 inventory and the provenance of every fixture in the repository.
+
+=======================================================================
+Bundled fonts
+=======================================================================
+
+IBM Plex: Copyright 2017 IBM Corp., Reserved Font Name "Plex".
+Roboto Flex: Copyright 2017 The Roboto Flex Project Authors
+(https://github.com/googlefonts/roboto-flex).
+Both are distributed under the SIL Open Font License 1.1. The complete
+unmodified copyright/license texts accompany the font files in the compiled
+frontend: licenses/IBM-Plex-OFL.txt and licenses/Roboto-Flex-OFL.txt.
+
+Bundled JavaScript licenses and copyright notices are reproduced in
+licenses/Third-party-JavaScript.txt in the compiled frontend, including
+React/React DOM (MIT), IBM Carbon (Apache-2.0), Material Color Utilities
+(Apache-2.0) and the included dependencies/helpers. The source copy is in
+apps/web/public/licenses/Third-party-JavaScript.txt. Font licenses are listed
+separately above. Build tooling dependencies are not all shipped as runtime
+code; the notice collection follows the generated JavaScript module owners.

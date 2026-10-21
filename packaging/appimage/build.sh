@@ -42,9 +42,12 @@ t0=$SECONDS
 uv python install 3.12 --install-dir "$work/python-store" >/dev/null 2>&1
 py_src="$(ls -d "$work"/python-store/cpython-3.12*-linux-x86_64-gnu | head -1)"
 mkdir -p "$appdir/usr/python"
-# Sin pruebas de CPython, IDLE ni Tk (no se usan); sin EXTERNALLY-MANAGED.
+# Sin pruebas, UI de CPython ni instaladores; uv instala al target sin pip local.
 tar -C "$py_src" --exclude=./lib/python3.12/test --exclude=./lib/python3.12/idlelib \
   --exclude=./lib/python3.12/tkinter --exclude=./lib/python3.12/turtledemo \
+  --exclude=./bin/pip --exclude=./bin/pip3 --exclude=./bin/pip3.12 \
+  --exclude=./lib/python3.12/ensurepip --exclude=./lib/python3.12/site-packages/pip \
+  --exclude='./lib/python3.12/site-packages/pip-*.dist-info' \
   --exclude=EXTERNALLY-MANAGED -cf - . | tar -C "$appdir/usr/python" -xf -
 
 uv pip install --python "$appdir/usr/python/bin/python3" --target "$appdir/usr/lib/voz" \
