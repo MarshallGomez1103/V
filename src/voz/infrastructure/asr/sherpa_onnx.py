@@ -32,6 +32,7 @@ from voz.infrastructure.asr.sherpa_onnx_options import (
     whisper_files,
 )
 from voz.infrastructure.audio.media_args import NO_WINDOW
+from voz.infrastructure.process_tree import kill_tree
 
 _MAX_AUDIO_BYTES = 256 * 1024**2
 _MAX_RESULT_BYTES = 8 * 1024**2
@@ -316,8 +317,8 @@ class SherpaOnnxProvider:
                 if os.name != "nt":
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(process.pid, signal.SIGKILL)
-                elif process.poll() is None:
-                    process.kill()
+                else:
+                    kill_tree(process)
                 with contextlib.suppress(subprocess.TimeoutExpired):
                     process.wait(timeout=2)
 
