@@ -34,6 +34,8 @@ from voz.application.ports.transcription import (
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.infrastructure.asr.whisper_cpp_catalog import PROVIDER_ID, model_filename
 from voz.infrastructure.audio.media_args import NO_WINDOW
+from voz.infrastructure.child_env import child_environment
+from voz.infrastructure.process_tree import kill_tree
 
 BINARY_ENV_VAR = "VOZ_WHISPER_CPP_BIN"
 _BINARY_NAME = "whisper-cli"
@@ -104,6 +106,7 @@ def probe_whisper_cpp(
             errors="replace",
             timeout=timeout_seconds,
             check=False,
+            env=child_environment(),
         )
     except subprocess.TimeoutExpired:
         return WhisperCppAvailability(False, WhisperCppUnavailableReason.PROBE_TIMEOUT)
@@ -279,6 +282,8 @@ class WhisperCppProvider:
                 stderr=subprocess.DEVNULL,
                 cwd=work_dir,
                 creationflags=NO_WINDOW,
+                start_new_session=os.name != "nt",
+                env=child_environment(),
             )
         except OSError as error:
             raise _failed("The whisper.cpp executable could not be started.") from error
@@ -298,12 +303,7 @@ class WhisperCppProvider:
 
     @staticmethod
     def _stop(process: subprocess.Popen[bytes]) -> None:
-        process.terminate()
-        try:
-            process.wait(timeout=2.0)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+        kill_tree(process)
 
     def _read_result(
         self, path: Path, options: TranscriptionOptions

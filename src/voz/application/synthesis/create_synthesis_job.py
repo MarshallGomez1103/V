@@ -15,6 +15,7 @@ from voz.application.ports.speech_synthesis import (
     SpeechSynthesisProvider,
     SynthesisError,
     SynthesisFailureCode,
+    SynthesisLocality,
 )
 from voz.application.ports.synthesis_repositories import (
     SynthesisJobRepository,
@@ -101,9 +102,23 @@ class CreateSynthesisJob:
         language: str | None = None,
         speed: float = 1.0,
         output_format: SynthesisOutputFormat = SynthesisOutputFormat.WAV_PCM16_MONO,
+        cloud_consent: bool = False,
     ) -> CreatedSynthesis:
-        """Validate and persist under the admission gate, so duplicates collapse."""
+        """Validate and persist under the admission gate, so duplicates collapse.
+
+        ``cloud_consent`` must be ``True`` for an engine that sends the text off
+        this machine; it is ignored for local engines.
+        """
         provider = self._provider(provider_id)
+        if (
+            provider.describe().locality is SynthesisLocality.CLOUD
+            and cloud_consent is not True
+        ):
+            raise SynthesisJobError(
+                SynthesisJobFailureCode.CLOUD_CONSENT_REQUIRED,
+                "This engine sends the text to a cloud provider. "
+                "Confirm that explicitly to continue.",
+            )
         model = self._model(provider_id, model_id)
         self._check_voice(provider, model, voice_id)
         try:

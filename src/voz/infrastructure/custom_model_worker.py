@@ -23,6 +23,7 @@ from voz.domain.entities.voice import Voice
 from voz.infrastructure.asr.sherpa_onnx_worker import load_nemo_transducer, load_whisper
 from voz.infrastructure.asr.whisper_cpp import locate_whisper_cli
 from voz.infrastructure.audio.media_args import NO_WINDOW
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.custom_models import model_files
 from voz.infrastructure.tts.model_store import validate_custom_tts_load
 
@@ -67,12 +68,13 @@ class SubprocessModelValidator:
                     stderr=subprocess.DEVNULL,
                     start_new_session=os.name != "nt",
                     creationflags=NO_WINDOW,
-                    env={
-                        **os.environ,
-                        "HF_HUB_OFFLINE": "1",
-                        "TRANSFORMERS_OFFLINE": "1",
-                        "HF_DATASETS_OFFLINE": "1",
-                    },
+                    env=child_environment(
+                        {
+                            "HF_HUB_OFFLINE": "1",
+                            "TRANSFORMERS_OFFLINE": "1",
+                            "HF_DATASETS_OFFLINE": "1",
+                        }
+                    ),
                 )
             except OSError:
                 raise CustomModelError(
@@ -169,6 +171,7 @@ def _load(
                 stderr=subprocess.DEVNULL,
                 timeout=110,
                 creationflags=NO_WINDOW,
+                env=child_environment(),
             )
             if result.returncode:
                 raise ValueError("cannot load model")

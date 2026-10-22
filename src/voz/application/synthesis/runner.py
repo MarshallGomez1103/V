@@ -22,7 +22,7 @@ from itertools import pairwise
 from uuid import UUID
 
 from voz.application.compute_slot import ComputeKind, ComputeSlot, SlotWaitCancelled
-from voz.application.ports.speech_synthesis import PcmAudio
+from voz.application.ports.speech_synthesis import SynthesisLocality
 from voz.application.ports.synthesis_audio_storage import SynthesisAudioStorage
 from voz.application.ports.synthesis_repositories import (
     SynthesisJobRepository,
@@ -49,6 +49,7 @@ class SynthesisRunnerFailureCode(StrEnum):
 
     INTERNAL = "synthesis_internal_error"
     CRASHED = "synthesis_runner_crashed"
+    CLOUD_CONSENT_EXPIRED = "cloud_consent_expired"
 
 
 class _Stopping(Exception):
@@ -99,7 +100,8 @@ class SynthesisRunner:
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:
-        if self._thread is not None:
+        # A worker that outlived ``stop`` keeps its handle: never run two on one queue.
+        if self._thread is not None and self._thread.is_alive():
             return
         self._stopping.clear()
         self._thread = threading.Thread(
@@ -107,13 +109,34 @@ class SynthesisRunner:
         )
         self._thread.start()
 
-    def stop(self, timeout: float = 10.0) -> None:
-        """Ask the worker to leave its job resumable and wait for it to exit."""
-        self._stopping.set()
-        self._queue.put(None)
-        if self._thread is not None:
-            self._thread.join(timeout)
-            self._thread = None
+    def request_stop(self) -> None:
+        """Signal the worker to leave its job resumable; does not wait for it."""
+        thread = self._thread
+        if not self._stopping.is_set():
+            self._stopping.set()
+            # One sentinel, and only for a live worker: a leftover would end a restart.
+            if thread is not None and thread.is_alive():
+                self._queue.put(None)
+
+    def join(self, timeout: float) -> bool:
+        """Wait for the worker after ``request_stop``; ``False`` if it is still alive.
+
+        Then the caller must not release what the worker uses, and ``start``
+        will not replace it.
+        """
+        thread = self._thread
+        if thread is None:
+            return True
+        thread.join(timeout)
+        if thread.is_alive():
+            return False
+        self._thread = None
+        return True
+
+    def stop(self, timeout: float = 10.0) -> bool:
+        """``request_stop`` then ``join``; ``True`` when the worker has exited."""
+        self.request_stop()
+        return self.join(timeout)
 
     def enqueue(self, job_id: UUID) -> None:
         """Queue a job once; a job already waiting or running is not duplicated."""
@@ -124,11 +147,26 @@ class SynthesisRunner:
         self._queue.put(job_id)
 
     def recover(self) -> tuple[UUID, ...]:
-        """Re-enqueue every non-terminal job, oldest first."""
-        recovered = tuple(job.id for job in self.jobs.list_recoverable())
-        for job_id in recovered:
-            self.enqueue(job_id)
-        return recovered
+        """Re-enqueue every non-terminal local job, oldest first.
+
+        Consent to use a cloud engine covers one run, so a cloud job left
+        unfinished by a restart is failed instead of sent again.
+        """
+        recovered: list[UUID] = []
+        for job in self.jobs.list_recoverable():
+            if job.state is not SynthesisJobState.CANCELLING and self._is_cloud(job):
+                self._fail(job, SynthesisRunnerFailureCode.CLOUD_CONSENT_EXPIRED.value)
+                continue
+            self.enqueue(job.id)
+            recovered.append(job.id)
+        return tuple(recovered)
+
+    def _is_cloud(self, job: SynthesisJob) -> bool:
+        try:
+            provider = self.providers.get(job.request.provider_id)
+        except SynthesisProviderNotFoundError:
+            return False  # it fails without network when it runs
+        return provider.describe().locality is SynthesisLocality.CLOUD
 
     def wait_idle(self, timeout: float) -> bool:
         deadline = time.monotonic() + timeout
@@ -266,40 +304,48 @@ class SynthesisRunner:
         # ponytail: a resumed job renders again from its first chunk (no
         # per-chunk audio checkpoints); progress keeps its high-water mark.
         # Ceiling: long texts lose the work done before a restart.
-        rendered: list[PcmAudio] = []
-        for index, chunk in enumerate(chunks):
-            self._check(stop)
-            rendered.append(
-                provider.synthesize(
-                    chunk.text,
-                    model=model,
-                    voice_id=request.voice_id,
-                    speed=request.speed,
-                    cancellation=stop,
-                )
-            )
-            # Engine and job may disagree on the count if the engine's chunk
-            # cap changed since creation: scale onto the job's total.
-            done = (index + 1) * job.chunks_total // len(chunks)
-            if done > job.chunks_done:
-                job = self._save(job.with_chunks_done(done, at=self._not_before(job)))
-            if job.state in _CANCEL_PATH:
-                raise _Stopping  # a cancel won the write; ``_settle`` finishes it
-        self._check(stop)
         gaps = [
             silence_gap_ms(request.text[before.end : after.start])
             for before, after in pairwise(chunks)
-        ]
-        if job.state is not SynthesisJobState.PERSISTING:
-            job = self._save(self._step(job, SynthesisJobState.PERSISTING))
-        if job.state is not SynthesisJobState.PERSISTING:
-            raise _Stopping
+        ] + [0]
         # No row yet, so any audio.wav here is left over from a run that died
         # between publishing it and recording it: it has no owner, drop it.
         # ponytail: delete_job removes the whole job directory, not just the
         # WAV. Ceiling: fine while a job directory holds only its audio.
         self.storage.delete_job(job.id)
-        self.audio.add(self.storage.write(job.id, rendered, gaps))
+        # Each chunk goes to disk as soon as it is rendered: memory stays at one
+        # chunk however long the text is. ``abort`` is a no-op after ``commit``.
+        writer = self.storage.begin(job.id)
+        try:
+            for index, chunk in enumerate(chunks):
+                self._check(stop)
+                writer.append(
+                    provider.synthesize(
+                        chunk.text,
+                        model=model,
+                        voice_id=request.voice_id,
+                        speed=request.speed,
+                        cancellation=stop,
+                    ),
+                    gaps[index],
+                )
+                # Engine and job may disagree on the count if the engine's chunk
+                # cap changed since creation: scale onto the job's total.
+                done = (index + 1) * job.chunks_total // len(chunks)
+                if done > job.chunks_done:
+                    job = self._save(
+                        job.with_chunks_done(done, at=self._not_before(job))
+                    )
+                if job.state in _CANCEL_PATH:
+                    raise _Stopping  # a cancel won the write; ``_settle`` finishes it
+            self._check(stop)
+            if job.state is not SynthesisJobState.PERSISTING:
+                job = self._save(self._step(job, SynthesisJobState.PERSISTING))
+            if job.state is not SynthesisJobState.PERSISTING:
+                raise _Stopping
+            self.audio.add(writer.commit())
+        finally:
+            writer.abort()
         return job
 
     def _check(self, stop: _AnyEventToken) -> None:

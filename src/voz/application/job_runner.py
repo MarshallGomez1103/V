@@ -96,6 +96,7 @@ class JobRunnerFailureCode(StrEnum):
     DURATION_UNKNOWN = "job_media_duration_unknown"
     INTERNAL = "job_internal_error"
     CRASHED = "job_runner_crashed"
+    CLOUD_CONSENT_EXPIRED = "cloud_consent_expired"
 
 
 class JobNotFound(LookupError):
@@ -248,6 +249,8 @@ class JobRunner:
     """Speakers from cloud ASR labels; only used when no local diarization is asked."""
     release_asr: ReleaseAsr = lambda selection: None
     """Free the ASR engine before diarizing (S6.15/S14.07); must be idempotent."""
+    cloud_provider_ids: frozenset[str] = frozenset()
+    """Providers that send audio off this machine; ``recover`` never resumes them."""
     chunk_duration_ms: int = DEFAULT_CHUNK_DURATION_MS
     overlap_ms: int = DEFAULT_OVERLAP_MS
     compute_slot: ComputeSlot = field(default_factory=ComputeSlot)
@@ -265,7 +268,8 @@ class JobRunner:
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:
-        if self._thread is not None:
+        # A worker that outlived ``stop`` keeps its handle: never run two on one queue.
+        if self._thread is not None and self._thread.is_alive():
             return
         self._stopping.clear()
         self._thread = threading.Thread(
@@ -273,13 +277,34 @@ class JobRunner:
         )
         self._thread.start()
 
-    def stop(self, timeout: float = 10.0) -> None:
-        """Ask the worker to leave its job recoverable and wait for it to exit."""
-        self._stopping.set()
-        self._queue.put(None)
-        if self._thread is not None:
-            self._thread.join(timeout)
-            self._thread = None
+    def request_stop(self) -> None:
+        """Signal the worker to leave its job recoverable; does not wait for it."""
+        thread = self._thread
+        if not self._stopping.is_set():
+            self._stopping.set()
+            # One sentinel, and only for a live worker: a leftover would end a restart.
+            if thread is not None and thread.is_alive():
+                self._queue.put(None)
+
+    def join(self, timeout: float) -> bool:
+        """Wait for the worker after ``request_stop``; ``False`` if it is still alive.
+
+        Then the caller must not release what the worker uses, and ``start``
+        will not replace it.
+        """
+        thread = self._thread
+        if thread is None:
+            return True
+        thread.join(timeout)
+        if thread.is_alive():
+            return False
+        self._thread = None
+        return True
+
+    def stop(self, timeout: float = 10.0) -> bool:
+        """``request_stop`` then ``join``; ``True`` when the worker has exited."""
+        self.request_stop()
+        return self.join(timeout)
 
     def enqueue(self, job_id: UUID) -> None:
         """Queue a job once; a job already waiting or running is not duplicated."""
@@ -290,11 +315,28 @@ class JobRunner:
         self._queue.put(job_id)
 
     def recover(self) -> tuple[UUID, ...]:
-        """Re-enqueue every non-terminal job; checkpoints make resume idempotent."""
-        recovered = tuple(job.id for job in self.jobs.list_recoverable())
-        for job_id in recovered:
-            self.enqueue(job_id)
-        return recovered
+        """Re-enqueue every non-terminal local job; checkpoints make resume idempotent.
+
+        Consent to use a cloud provider covers one run, so a cloud job left
+        unfinished by a restart is failed instead of sent again.
+        """
+        recovered: list[UUID] = []
+        for job in self.jobs.list_recoverable():
+            if job.state is not TranscriptionJobState.CANCELLING and self._is_cloud(
+                job
+            ):
+                self._fail(job, JobRunnerFailureCode.CLOUD_CONSENT_EXPIRED.value)
+                continue
+            self.enqueue(job.id)
+            recovered.append(job.id)
+        return tuple(recovered)
+
+    def _is_cloud(self, job: TranscriptionJob) -> bool:
+        selection = self.selections.get(job.id)
+        return (
+            selection is not None
+            and selection.model.provider_id in self.cloud_provider_ids
+        )
 
     def wait_idle(self, timeout: float) -> bool:
         deadline = time.monotonic() + timeout

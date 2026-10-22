@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 
 from voz.application.ports.speech_synthesis import PcmAudio, PcmSampleFormat
 from voz.application.ports.synthesis_audio_storage import (
+    SynthesisAudioWriter,
     SynthesisStorageError,
     SynthesisStorageErrorCode,
 )
@@ -98,55 +99,17 @@ class FileSystemSynthesisStorage:
                 "All chunks of one audio must share the same sample rate.",
             )
 
-        relative_path = f"{_ROOT_DIR}/{job_id}/{_AUDIO_NAME}"
-        directory: DirectoryHandle | None = None
-        temporary_name: str | None = None
-        published = False
+        writer = self.begin(job_id)
         try:
-            directory = self._open_job_directory(job_id, create=True)
-            temporary_name, temporary_fd = self._create_temporary(directory)
-            frames, digest, size = self._build_wav(
-                temporary_fd, sample_rate, chunks, gaps_ms
-            )
-            self._publish_without_replacement(directory, temporary_name)
-            published = True
-            return SynthesizedAudio(
-                job_id=job_id,
-                relative_path=relative_path,
-                duration_ms=max(1, round(frames * 1000 / sample_rate)),
-                sample_rate=sample_rate,
-                chunk_count=len(chunks),
-                sha256=digest,
-                size_bytes=size,
-            )
-        except SynthesisStorageError:
-            raise
-        except OSError as error:
-            raise _error(
-                _Code.IO_ERROR,
-                "The audio could not be stored due to a filesystem error.",
-            ) from error
+            for index, chunk in enumerate(chunks):
+                writer.append(chunk, gaps_ms[index] if index < len(gaps_ms) else 0)
+            return writer.commit()
         finally:
-            if directory is not None:
-                with suppress(OSError):
-                    if temporary_name is not None:
-                        self._remove_temporary(directory, temporary_name)
-                    if published and not hasattr(os, "fchmod"):
-                        # Windows < 3.13: the read-only attribute is shared by
-                        # every hard link, so it goes on the final name last.
-                        # ponytail: writable for those few microseconds.
-                        directory.chmod(_AUDIO_NAME, _READ_ONLY_MODE)
-                    if not published:
-                        # Drop the job directory only if it is still empty.
-                        parent = open_directory_chain(
-                            self._data_root, (_ROOT_DIR,), create=False
-                        )
-                        try:
-                            parent.rmdir(str(job_id))
-                        finally:
-                            parent.close()
-                with suppress(OSError):
-                    directory.close()
+            writer.abort()
+
+    def begin(self, job_id: UUID) -> SynthesisAudioWriter:
+        """Start an incremental write; nothing touches the disk until ``append``."""
+        return _Writer(self, job_id)
 
     def open_for_reading(self, relative_path: str) -> BinaryIO:
         """Open a stored WAV without returning its host path to callers."""
@@ -242,43 +205,6 @@ class FileSystemSynthesisStorage:
         raise _error(_Code.IO_ERROR, "A unique temporary audio could not be created.")
 
     @staticmethod
-    def _build_wav(
-        descriptor: int,
-        sample_rate: int,
-        chunks: Sequence[PcmAudio],
-        gaps_ms: Sequence[int],
-    ) -> tuple[int, str, int]:
-        """Write, hash, seal and flush the temporary WAV; returns frames, sha, size."""
-        try:
-            output = os.fdopen(descriptor, "w+b", closefd=True)
-        except (OSError, ValueError):
-            with suppress(OSError):
-                os.close(descriptor)
-            raise
-        with output:
-            frames = 0
-            with wave.open(output, "wb") as writer:
-                writer.setnchannels(1)
-                writer.setsampwidth(2)
-                writer.setframerate(sample_rate)
-                # ponytail: 4 GiB RIFF ceiling; ~6 h at 24 kHz, far above a job.
-                for index, chunk in enumerate(chunks):
-                    writer.writeframes(_int16_bytes(chunk))
-                    frames += chunk.frame_count
-                    if index < len(gaps_ms):
-                        silence = round(gaps_ms[index] * sample_rate / 1000)
-                        writer.writeframes(bytes(silence * 2))
-                        frames += silence
-            output.flush()
-            output.seek(0)
-            digest = hashlib.sha256()
-            while block := output.read(_HASH_CHUNK_BYTES):
-                digest.update(block)
-            fchmod(output.fileno(), _READ_ONLY_MODE)
-            os.fsync(output.fileno())
-            return frames, digest.hexdigest(), os.fstat(output.fileno()).st_size
-
-    @staticmethod
     def _publish_without_replacement(
         directory: DirectoryHandle, temporary_name: str
     ) -> None:
@@ -309,6 +235,153 @@ class FileSystemSynthesisStorage:
         except FileNotFoundError:
             return
         directory.fsync()
+
+
+class _Writer:
+    """One job's WAV, appended chunk by chunk to a temporary file in its directory.
+
+    The file is hashed, sealed and published with a non-replacing hard link on
+    ``commit``; ``abort`` (or any failure) removes the temporary.
+    """
+
+    def __init__(self, storage: FileSystemSynthesisStorage, job_id: UUID) -> None:
+        require_uuid(job_id, field="job_id")
+        self._storage = storage
+        self._job_id = job_id
+        self._directory: DirectoryHandle | None = None
+        self._temporary_name: str | None = None
+        self._output: BinaryIO | None = None
+        self._wav: wave.Wave_write | None = None
+        self._sample_rate = 0
+        self._frames = 0
+        self._chunks = 0
+        self._published = False
+
+    def append(self, chunk: PcmAudio, gap_after_ms: int = 0) -> None:
+        if type(gap_after_ms) is not int or gap_after_ms < 0:
+            raise ValueError("gap_after_ms must be a non-negative int")
+        if self._wav is not None and chunk.sample_rate != self._sample_rate:
+            raise _error(
+                _Code.SAMPLE_RATE_MISMATCH,
+                "All chunks of one audio must share the same sample rate.",
+            )
+        try:
+            if self._wav is None:
+                self._open(chunk.sample_rate)
+            assert self._wav is not None
+            self._wav.writeframes(_int16_bytes(chunk))
+            self._frames += chunk.frame_count
+            self._chunks += 1
+            if gap_after_ms:
+                silence = round(gap_after_ms * self._sample_rate / 1000)
+                self._wav.writeframes(bytes(silence * 2))
+                self._frames += silence
+        except SynthesisStorageError:
+            raise
+        except OSError as error:
+            raise _error(
+                _Code.IO_ERROR,
+                "The audio could not be stored due to a filesystem error.",
+            ) from error
+
+    def commit(self) -> SynthesizedAudio:
+        if self._wav is None or self._directory is None or self._output is None:
+            raise _error(_Code.NO_AUDIO, "There is no audio to store.")
+        try:
+            digest, size = self._seal(self._wav, self._output)
+            assert self._temporary_name is not None
+            FileSystemSynthesisStorage._publish_without_replacement(  # pyright: ignore[reportPrivateUsage]
+                self._directory, self._temporary_name
+            )
+            self._published = True
+            return SynthesizedAudio(
+                job_id=self._job_id,
+                relative_path=f"{_ROOT_DIR}/{self._job_id}/{_AUDIO_NAME}",
+                duration_ms=max(1, round(self._frames * 1000 / self._sample_rate)),
+                sample_rate=self._sample_rate,
+                chunk_count=self._chunks,
+                sha256=digest,
+                size_bytes=size,
+            )
+        except SynthesisStorageError:
+            raise
+        except OSError as error:
+            raise _error(
+                _Code.IO_ERROR,
+                "The audio could not be stored due to a filesystem error.",
+            ) from error
+        finally:
+            self.abort()
+
+    def abort(self) -> None:
+        """Close and remove the temporary (and an empty job directory); idempotent."""
+        directory, self._directory = self._directory, None
+        output, self._output = self._output, None
+        wav, self._wav = self._wav, None
+        if wav is not None:
+            with suppress(OSError, ValueError):
+                wav.close()
+        if output is not None:
+            with suppress(OSError):
+                output.close()
+        if directory is None:
+            return
+        with suppress(OSError):
+            if self._temporary_name is not None:
+                FileSystemSynthesisStorage._remove_temporary(  # pyright: ignore[reportPrivateUsage]
+                    directory, self._temporary_name
+                )
+            if self._published and not hasattr(os, "fchmod"):
+                # Windows < 3.13: the read-only attribute is shared by every
+                # hard link, so it goes on the final name last.
+                # ponytail: writable for those few microseconds.
+                directory.chmod(_AUDIO_NAME, _READ_ONLY_MODE)
+            if not self._published:
+                # Drop the job directory only if it is still empty.
+                parent = open_directory_chain(
+                    self._storage._data_root,  # pyright: ignore[reportPrivateUsage]
+                    (_ROOT_DIR,),
+                    create=False,
+                )
+                try:
+                    parent.rmdir(str(self._job_id))
+                finally:
+                    parent.close()
+        with suppress(OSError):
+            directory.close()
+
+    def _open(self, sample_rate: int) -> None:
+        directory = self._storage._open_job_directory(  # pyright: ignore[reportPrivateUsage]
+            self._job_id, create=True
+        )
+        self._directory = directory
+        name, descriptor = self._storage._create_temporary(directory)  # pyright: ignore[reportPrivateUsage]
+        self._temporary_name = name
+        try:
+            self._output = os.fdopen(descriptor, "w+b", closefd=True)
+        except (OSError, ValueError):
+            with suppress(OSError):
+                os.close(descriptor)
+            raise
+        self._sample_rate = sample_rate
+        # ponytail: 4 GiB RIFF ceiling; ~6 h at 24 kHz, far above a job.
+        self._wav = wave.open(self._output, "wb")  # noqa: SIM115 - closed in abort
+        self._wav.setnchannels(1)
+        self._wav.setsampwidth(2)
+        self._wav.setframerate(sample_rate)
+
+    @staticmethod
+    def _seal(wav: wave.Wave_write, output: BinaryIO) -> tuple[str, int]:
+        """Finish the header, hash, make read-only and flush; returns sha, size."""
+        wav.close()  # patches the sizes in the header
+        output.flush()
+        output.seek(0)
+        digest = hashlib.sha256()
+        while block := output.read(_HASH_CHUNK_BYTES):
+            digest.update(block)
+        fchmod(output.fileno(), _READ_ONLY_MODE)
+        os.fsync(output.fileno())
+        return digest.hexdigest(), os.fstat(output.fileno()).st_size
 
 
 __all__ = ["FileSystemSynthesisStorage"]

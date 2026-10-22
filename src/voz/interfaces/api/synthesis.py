@@ -20,7 +20,7 @@ import anyio
 import anyio.to_thread
 from fastapi import APIRouter, Header, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from voz.application.ports.speech_synthesis import SynthesisError
@@ -79,6 +79,7 @@ _STATUS: Final[dict[SynthesisJobFailureCode, int]] = {
     _Code.JOB_NOT_FOUND: 404,
     _Code.JOB_TERMINAL: 409,
     _Code.JOB_ACTIVE: 409,
+    _Code.CLOUD_CONSENT_REQUIRED: 422,
 }
 
 
@@ -98,6 +99,8 @@ class CreateSynthesisBody(BaseModel):
     voice_id: str
     language: str | None = None
     speed: float = 1.0
+    cloud_consent: StrictBool = False
+    """Explicit consent to send the text to a cloud engine; local engines ignore it."""
 
 
 def _job_error(error: SynthesisJobError) -> Exception:
@@ -297,6 +300,7 @@ def create_synthesis_router(
                 voice_id=body.voice_id,
                 language=body.language,
                 speed=body.speed,
+                cloud_consent=body.cloud_consent,
             )
         except SynthesisJobError as error:
             raise _job_error(error) from None

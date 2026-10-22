@@ -43,6 +43,7 @@ from voz.infrastructure.asr.whisper_cpp import (
     probe_whisper_cpp,
 )
 from voz.infrastructure.asr.whisper_cpp_catalog import whisper_cpp_catalog
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.paths import resolve_voz_paths
 
 MANIFEST_NAME = "manifest.json"
@@ -241,6 +242,7 @@ def audio_duration_seconds(path: Path) -> float:
             text=True,
             timeout=30,
             check=False,
+            env=child_environment(),
         )
         seconds = float(completed.stdout.strip())
     except (OSError, subprocess.SubprocessError, ValueError) as error:
@@ -318,6 +320,7 @@ def read_vram_used_mib() -> int | None:
             text=True,
             timeout=5,
             check=False,
+            env=child_environment(),
         )
         return int(completed.stdout.strip().splitlines()[0])
     except (OSError, subprocess.SubprocessError, IndexError, ValueError):

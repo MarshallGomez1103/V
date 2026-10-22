@@ -8,6 +8,7 @@ decoding and the default wiring through ``create_app``.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import socket
@@ -16,6 +17,8 @@ import struct
 import threading
 import time
 from collections.abc import Generator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
 
@@ -58,11 +61,13 @@ from voz.infrastructure.cloud.openai_compatible import (
     CLOUD_PROVIDER_ID,
     LOCAL_PROVIDER_ID,
     CompatibleModels,
+    CompatibleSpeechProvider,
     HttpConnectionTester,
     decode_speech,
 )
 from voz.infrastructure.cloud.openai_transport import (
     HttpRequest,
+    HttpResponse,
     TransportError,
     urllib_transport,
 )
@@ -714,3 +719,168 @@ def test_threads_do_not_leak(server: FakeServer, tmp_path: Path) -> None:
             voice_id=VOICES[0],
         )
     assert threading.active_count() <= before + 1
+
+
+# --- plain http only on this computer ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://192.168.1.5/v1",
+        "http://example.com/v1",
+        "http://localhost.example.com/v1",
+        "http://0.0.0.0:8000/v1",
+    ],
+)
+def test_plain_http_to_a_remote_host_is_invalid_even_with_consent(url: str) -> None:
+    with pytest.raises(EndpointError) as raised:
+        CompatibleEndpoint(
+            id="0123456789ab",
+            name="Remote",
+            base_url=url,
+            stt_models=("m",),
+            cloud_consent=True,
+        )
+    assert raised.value.code is EndpointFailureCode.INVALID
+    assert "https://" in raised.value.user_message
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://127.0.0.1:8080/v1", "http://localhost/v1", "http://[::1]/v1"],
+)
+def test_plain_http_to_loopback_is_valid(url: str) -> None:
+    endpoint = CompatibleEndpoint(
+        id="0123456789ab", name="Local", base_url=url, stt_models=("m",)
+    )
+    assert not endpoint.cloud
+
+
+class _CountingTransport:
+    def __init__(self) -> None:
+        self.requests: list[HttpRequest] = []
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        self.requests.append(request)
+        raise TransportError
+
+
+def test_a_stored_plain_http_remote_endpoint_is_unusable_but_never_breaks_listing(
+    tmp_path: Path, server: FakeServer
+) -> None:
+    configured = setup(tmp_path, server, key=KEY)
+    file = tmp_path / ENDPOINTS_FILENAME
+    document = json.loads(file.read_text(encoding="utf-8"))
+    document["endpoints"][0].update(
+        base_url="http://api.example.com/v1", cloud_consent=True
+    )
+    file.write_text(json.dumps(document), encoding="utf-8")
+    sent = _CountingTransport()
+
+    assert configured.store.list() == ()  # skipped, not fatal
+    for capability in (ModelCapability.TRANSCRIPTION, ModelCapability.SYNTHESIS):
+        assert CompatibleModels(configured.store, capability).list_models() == ()
+    cloud_speech = CompatibleSpeechProvider(
+        store=configured.store, secrets=configured.secrets, transport=sent, cloud=True
+    )
+    descriptor = configured.descriptor(ModelCapability.SYNTHESIS)
+    cloud_descriptor = dataclasses.replace(descriptor, provider_id=CLOUD_PROVIDER_ID)
+    with pytest.raises(SynthesisError) as raised:
+        cloud_speech.synthesize("Hola", model=cloud_descriptor, voice_id=VOICES[0])
+    assert raised.value.code is SynthesisFailureCode.MODEL_NOT_INSTALLED
+    assert sent.requests == [] and server.requests == []
+
+
+# --- redirects never carry the key elsewhere --------------------------------------
+
+
+@contextmanager
+def _redirector(target: str, hits: list[str]) -> Generator[str]:
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:
+            del format, args
+
+        def _bounce(self) -> None:
+            hits.append(self.command)
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            self.send_response(307)
+            self.send_header("Location", target)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        do_GET = do_POST = _bounce
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(
+        target=httpd.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+    )
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+
+def test_a_redirect_is_not_followed_and_the_key_stays_with_the_first_origin(
+    tmp_path: Path, server: FakeServer
+) -> None:
+    configured = setup(tmp_path, server, key=KEY)
+    hits: list[str] = []
+    target = server.base_url + "/models"
+    with _redirector(target, hits) as url:
+        configured.store.save(endpoint_for(FakeServer(url), id=configured.endpoint.id))
+        reply = configured.transcription()
+        with FIXTURE_WAV.open("rb") as audio, pytest.raises(TranscriptionError):
+            reply.transcribe(audio=audio, options=configured.transcription_options())
+        with pytest.raises(SynthesisError):
+            configured.speech().synthesize(
+                "Hola",
+                model=configured.descriptor(ModelCapability.SYNTHESIS),
+                voice_id=VOICES[0],
+            )
+        checked = HttpConnectionTester(urllib_transport, timeout_s=10.0).check(
+            configured.store.get(configured.endpoint.id) or configured.endpoint, KEY
+        )
+        assert checked.code == "endpoint_http_error" and checked.status == 307
+    assert len(hits) >= 3
+    assert server.requests == []  # the second origin never saw a request
+
+
+def test_saving_or_deleting_keeps_a_skipped_entry_untouched_in_the_file(
+    tmp_path: Path, server: FakeServer
+) -> None:
+    configured = setup(tmp_path, server, key=KEY)
+    file = tmp_path / ENDPOINTS_FILENAME
+    legacy_id = "ba9876543210"
+    legacy: dict[str, object] = {
+        "id": legacy_id,
+        "name": "LAN Ollama",
+        "base_url": "http://192.168.1.5:11434/v1",
+        "stt_models": ["whisper"],
+        "tts_models": [],
+        "tts_voices": [],
+        "cloud_consent": True,
+    }
+    document = json.loads(file.read_text(encoding="utf-8"))
+    document["endpoints"].append(legacy)
+    file.write_text(json.dumps(document), encoding="utf-8")
+    file.chmod(0o600)
+
+    def stored() -> list[dict[str, object]]:
+        return json.loads(file.read_text(encoding="utf-8"))["endpoints"]
+
+    assert configured.store.list() == (configured.endpoint,)  # hidden, unusable
+    configured.store.save(endpoint_for(server, id="0123456789cd", name="Third"))
+    assert legacy in stored()
+    assert {item["id"] for item in stored()} == {
+        configured.endpoint.id,
+        "0123456789cd",
+        legacy_id,
+    }
+    assert configured.store.delete(configured.endpoint.id) is True
+    assert legacy in stored()
+    assert configured.store.delete(legacy_id) is False  # not listed: untouched
+    assert legacy in stored()

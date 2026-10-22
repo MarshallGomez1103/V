@@ -62,7 +62,10 @@ def is_loopback_url(base_url: str) -> bool:
 
 
 def normalize_base_url(value: object) -> str:
-    """``http(s)://host[:port][/path]`` without credentials, query or trailing /."""
+    """``http(s)://host[:port][/path]`` without credentials, query or trailing /.
+
+    ``http://`` is accepted only for loopback hosts.
+    """
     if not isinstance(value, str) or not value.strip() or len(value) > 512:
         raise _invalid("The server URL must be 1-512 characters.")
     url = value.strip().rstrip("/")
@@ -85,7 +88,19 @@ def normalize_base_url(value: object) -> str:
             "The server URL must be http(s)://host[:port]/path, without "
             "credentials, query or fragment."
         )
+    if parts.scheme == "http" and not is_loopback_url(url):
+        raise _invalid(
+            "Remote servers must use https://; plain http:// is only allowed "
+            "for localhost."
+        )
     return url
+
+
+def origin(base_url: str) -> tuple[str, str, int]:
+    """``(scheme, host, port)`` of a normalized URL: what a saved key belongs to."""
+    parts = urlsplit(base_url)
+    default = 443 if parts.scheme == "https" else 80
+    return parts.scheme, parts.hostname or "", parts.port or default
 
 
 def _text(value: object, *, what: str, maximum: int) -> str:
@@ -204,4 +219,5 @@ __all__ = [
     "EndpointFailureCode",
     "is_loopback_url",
     "normalize_base_url",
+    "origin",
 ]

@@ -9,6 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from voz.infrastructure.child_env import child_environment
+
 _NVIDIA_SMI = (
     "nvidia-smi",
     "--query-gpu=name,memory.total,memory.free",
@@ -42,6 +44,7 @@ def read_gpu_memory(run: Runner = subprocess.run) -> GpuMemory | None:
             text=True,
             timeout=_TIMEOUT_SECONDS,
             check=False,
+            env=child_environment(),
         )
         if completed.returncode != 0:
             return None
@@ -107,6 +110,7 @@ def _macos_memory(run: Runner) -> SystemMemory:
         text=True,
         timeout=_TIMEOUT_SECONDS,
         check=True,
+        env=child_environment(),
     ).stdout
     stats = run(
         ["vm_stat"],
@@ -114,6 +118,7 @@ def _macos_memory(run: Runner) -> SystemMemory:
         text=True,
         timeout=_TIMEOUT_SECONDS,
         check=True,
+        env=child_environment(),
     ).stdout
     header = _VM_STAT_PAGE_SIZE.search(stats.splitlines()[0])
     if header is None:

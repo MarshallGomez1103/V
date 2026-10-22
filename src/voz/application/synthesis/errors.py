@@ -17,6 +17,7 @@ class SynthesisJobFailureCode(StrEnum):
     JOB_NOT_FOUND = "synthesis_job_not_found"
     JOB_TERMINAL = "synthesis_job_terminal"
     JOB_ACTIVE = "synthesis_job_active"
+    CLOUD_CONSENT_REQUIRED = "cloud_consent_required"
 
 
 class SynthesisJobError(RuntimeError):

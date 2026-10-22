@@ -4,6 +4,11 @@ A loopback bind alone does not stop DNS rebinding: a page on ``evil.example``
 can re-resolve its own name to ``127.0.0.1`` and read the API same-origin. The
 browser still sends ``Host: evil.example``, so checking it closes that door
 (ADR-0006). Any port is accepted; only the host name matters.
+
+It also refuses state changes and websocket handshakes that a page on another
+origin could send without a CORS preflight (form posts, ``text/plain`` or
+multipart ``fetch``). Requests without ``Origin`` and ``Sec-Fetch-Site`` come
+from non-browser clients and keep working.
 """
 
 from __future__ import annotations
@@ -13,16 +18,23 @@ from collections.abc import Iterable
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from voz.interfaces.api.server_auth import parse_origin
+
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
-_BODY = json.dumps(
-    {
-        "detail": {
-            "code": "host_not_allowed",
-            "message": "This server only answers requests addressed to its own host.",
-        }
-    }
-).encode()
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def _body(code: str, message: str) -> bytes:
+    return json.dumps({"detail": {"code": code, "message": message}}).encode()
+
+
+_HOST_BODY = _body(
+    "host_not_allowed", "This server only answers requests addressed to its own host."
+)
+_ORIGIN_BODY = _body(
+    "origin_not_allowed", "This request comes from another origin and was refused."
+)
 
 
 def normalize_host(value: str) -> str | None:
@@ -39,6 +51,52 @@ def normalize_host(value: str) -> str | None:
     return host or None
 
 
+def origin_allowed(
+    method: str, scheme: str, headers: Iterable[tuple[bytes, bytes]]
+) -> bool:
+    """Decide whether a request may act, given its method and raw headers.
+
+    ``method`` is ``"WEBSOCKET"`` for a handshake. Reads are always allowed. For
+    the rest, a present ``Origin`` must equal the scheme, host and port the
+    request was addressed to (``null`` and duplicates fail), and a present
+    ``Sec-Fetch-Site`` must be ``same-origin`` or ``none``.
+    """
+    if method in _SAFE_METHODS:
+        return True
+    seen: dict[bytes, bytes] = {}
+    for name, value in headers:
+        name = name.lower()
+        if name in {b"origin", b"host", b"sec-fetch-site"}:
+            if name in seen:
+                return False
+            seen[name] = value
+    if seen.get(b"sec-fetch-site", b"none") not in {b"same-origin", b"none"}:
+        return False
+    origin = seen.get(b"origin")
+    if origin is None:
+        return True
+    scheme = {"ws": "http", "wss": "https"}.get(scheme, scheme)
+    expected = parse_origin(scheme.encode("ascii") + b"://" + seen.get(b"host", b""))
+    return expected is not None and parse_origin(origin) == expected
+
+
+async def _refuse(scope: Scope, send: Send, status: int, body: bytes) -> None:
+    if scope["type"] == "websocket":
+        await send({"type": "websocket.close", "code": 1008})
+        return
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
 class HostGuardMiddleware:
     """Pure ASGI middleware, so SSE and file streaming pass through untouched."""
 
@@ -53,20 +111,13 @@ class HostGuardMiddleware:
             await self.app(scope, receive, send)
             return
         raw = dict(scope["headers"]).get(b"host", b"").decode("latin-1")
-        if normalize_host(raw) in self.allowed:
-            await self.app(scope, receive, send)
+        if normalize_host(raw) not in self.allowed:
+            await _refuse(scope, send, 400, _HOST_BODY)
             return
-        if scope["type"] == "websocket":
-            await send({"type": "websocket.close", "code": 1008})
-            return
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 400,
-                "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(_BODY)).encode()),
-                ],
-            }
+        method = (
+            "WEBSOCKET" if scope["type"] == "websocket" else scope.get("method", "POST")
         )
-        await send({"type": "http.response.body", "body": _BODY})
+        if not origin_allowed(method, scope.get("scheme", "http"), scope["headers"]):
+            await _refuse(scope, send, 403, _ORIGIN_BODY)
+            return
+        await self.app(scope, receive, send)

@@ -308,6 +308,71 @@ CUDA = frozenset({ComputePrecision.FLOAT16})
 CPU = frozenset({ComputePrecision.INT8})
 
 
+def _job_in(state: TranscriptionJobState) -> TranscriptionJob:
+    return TranscriptionJob(
+        id=uuid4(),
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        state=state,
+        progress=1.0 if state is TranscriptionJobState.COMPLETED else 0.0,
+        created_at=NOW,
+        updated_at=NOW,
+        error_code="ASR_PROVIDER_ERROR"
+        if state is TranscriptionJobState.FAILED
+        else None,
+    )
+
+
+@pytest.mark.parametrize("state", list(TranscriptionJobState))
+def test_media_asset_admits_a_new_job_only_when_no_job_is_unfinished(
+    state: TranscriptionJobState,
+) -> None:
+    # A CANCELLING job may still use the engine and the files of its media asset,
+    # so it blocks admission exactly like a running one until it is CANCELLED.
+    create, jobs, _ = use_case()
+    jobs.add(_job_in(state))
+
+    def attempt() -> None:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+        )
+
+    if state.is_terminal:
+        attempt()
+        assert sum(not j.state.is_terminal for j in jobs.items.values()) == 1
+        return
+    with pytest.raises(CreateJobError) as error:
+        attempt()
+    assert error.value.code is CreateJobFailureCode.JOB_ALREADY_ACTIVE
+    assert len(jobs.items) == 1
+
+
+def test_a_cancelling_job_blocks_the_media_asset_until_it_is_cancelled() -> None:
+    create, jobs, _ = use_case()
+    running = _job_in(TranscriptionJobState.TRANSCRIBING)
+    jobs.add(running)
+    cancelling = running.transition_to(TranscriptionJobState.CANCELLING, at=NOW)
+    jobs.save(cancelling)
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=ASSET.id,
+            option_id=option_identity(MODEL),
+        )
+    assert error.value.code is CreateJobFailureCode.JOB_ALREADY_ACTIVE
+
+    jobs.save(cancelling.transition_to(TranscriptionJobState.CANCELLED, at=NOW))
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=ASSET.id,
+        option_id=option_identity(MODEL),
+    )
+    assert created.job.state is TranscriptionJobState.QUEUED
+
+
 def _start(create: CreateTranscriptionJob, model: ModelDescriptor) -> None:
     create.execute(
         project_id=PROJECT.id,

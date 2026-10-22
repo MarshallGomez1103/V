@@ -118,6 +118,13 @@ describe('JobScreen', () => {
     expect(screen.queryByRole('progressbar')).toBeNull()
   })
 
+  it('FAILED por consentimiento cloud vencido explica que hay que volver a confirmar', () => {
+    render(<JobScreen job={makeJob('FAILED', { error_code: 'cloud_consent_expired' })} />)
+
+    expect(screen.getByText(/se reinició/i)).toBeDefined()
+    expect(screen.queryByText(/cloud_consent_expired/)).toBeNull()
+  })
+
   it('FAILED muestra un error seguro con el código', () => {
     render(<JobScreen job={makeJob('FAILED', { error_code: 'gpu_lost' })} />)
 

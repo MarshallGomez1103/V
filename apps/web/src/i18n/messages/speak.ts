@@ -254,6 +254,14 @@ export const speak = {
     'El proceso de voz se cerró de forma inesperada. Inténtalo de nuevo.',
     'The speech process closed unexpectedly. Try again.',
   ],
+  'err.synth.cloud_consent_required': [
+    'Confirma el permiso para enviar el texto a la nube antes de generar el audio.',
+    'Confirm the permission to send the text to the cloud before generating the audio.',
+  ],
+  'err.synth.cloud_consent_expired': [
+    'El trabajo se detuvo porque V se reinició: el permiso para enviar a la nube vale solo para una ejecución. Vuelve a lanzarlo y confirma de nuevo.',
+    'The job stopped because V restarted: the permission to send data to the cloud only lasts for one run. Launch it again and confirm again.',
+  ],
   'err.synth.events_lost': [
     'Se perdió la conexión con el progreso de la generación.',
     'The connection to the generation progress was lost.',

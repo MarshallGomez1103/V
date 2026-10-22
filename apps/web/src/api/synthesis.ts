@@ -96,6 +96,8 @@ export interface CreateSynthesisInput {
   voice_id: string
   language?: string | null
   speed?: number
+  /** Solo con un proveedor cloud y tras el permiso explícito; un proveedor local lo omite. */
+  cloud_consent?: boolean
 }
 
 export class SynthesisApiError extends Error {

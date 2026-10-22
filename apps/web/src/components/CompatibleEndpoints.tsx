@@ -43,6 +43,16 @@ function hostOf(url: string): string {
   }
 }
 
+/** Scheme, host and port: what a saved key belongs to (same rule as the server). */
+function originOf(url: string): string | null {
+  try {
+    const { protocol, hostname, port } = new URL(url.trim().replace(/\/+$/, ''))
+    return `${protocol}//${hostname}:${port === '' ? (protocol === 'https:' ? '443' : '80') : port}`
+  } catch {
+    return null
+  }
+}
+
 interface FormProps {
   endpoint: CompatibleEndpoint | null
   onDone: (saved: CompatibleEndpoint) => void
@@ -65,8 +75,18 @@ function EndpointForm({ endpoint, onDone, onCancel }: FormProps) {
   const [error, setError] = useState<string | null>(null)
 
   const cloud = baseUrl.trim() !== '' && !isLoopbackUrl(baseUrl)
+  const insecure = cloud && /^http:/i.test(baseUrl.trim())
+  const savedOrigin = endpoint ? originOf(endpoint.base_url) : null
+  const newOrigin = originOf(baseUrl)
+  const keyWillBeDropped =
+    endpoint?.key_configured === true &&
+    key.trim() === '' &&
+    !clearKey &&
+    savedOrigin !== null &&
+    newOrigin !== null &&
+    savedOrigin !== newOrigin
   const canSave =
-    !busy && name.trim() !== '' && baseUrl.trim() !== '' && (!cloud || consent)
+    !busy && name.trim() !== '' && baseUrl.trim() !== '' && !insecure && (!cloud || consent)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -128,6 +148,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: FormProps) {
               setConsent(false)
             }}
           />
+          {insecure ? <Notice kind="error" title={t('ep.url.insecure')} /> : null}
           {cloud ? (
             <Notice
               kind="warning"
@@ -160,6 +181,13 @@ function EndpointForm({ endpoint, onDone, onCancel }: FormProps) {
               setKey(event.target.value)
             }}
           />
+          {keyWillBeDropped ? (
+            <Notice
+              kind="warning"
+              title={t('ep.key.moved.title')}
+              subtitle={t('ep.key.moved.body')}
+            />
+          ) : null}
           {endpoint?.key_configured ? (
             <Checkbox
               id={id + '-clear'}

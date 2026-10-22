@@ -11,7 +11,7 @@ from __future__ import annotations
 import http.client
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import BinaryIO, Final, Protocol
+from typing import BinaryIO, Protocol
 from urllib.parse import urlsplit
 
 from voz.application.ports.transcription import (
@@ -19,8 +19,14 @@ from voz.application.ports.transcription import (
     TranscriptionError,
     TranscriptionFailureCode,
 )
+from voz.infrastructure.cloud.http_body import (
+    MAX_JSON_BYTES,
+    Aborted,
+    ResponseTooLarge,
+    read_bounded,
+    run_abortable,
+)
 
-MAX_RESPONSE_BYTES: Final = 64 * 1024 * 1024
 UploadProgress = Callable[[int, int], None]
 
 
@@ -37,6 +43,9 @@ class HttpRequest:
     body: _Readable
     content_length: int
     timeout_s: float
+    abort: Callable[[], bool] | None = None
+    """Polled while waiting for the answer; ``True`` cuts the connection."""
+    max_response_bytes: int = MAX_JSON_BYTES
 
     def __repr__(self) -> str:
         # Headers carry the API key: never render them.
@@ -50,14 +59,30 @@ class HttpResponse:
 
 
 class TransportError(Exception):
-    """Network-level failure (connect, TLS, reset, timeout) without a response."""
+    """No usable response (connect, TLS, reset, timeout, ``abort``, or too large)."""
 
-    def __init__(self, *, timeout: bool = False) -> None:
+    def __init__(
+        self, *, timeout: bool = False, aborted: bool = False, oversized: bool = False
+    ) -> None:
         self.timeout = timeout
-        super().__init__("timeout" if timeout else "network error")
+        self.aborted = aborted
+        self.oversized = oversized
+        super().__init__(
+            "aborted"
+            if aborted
+            else "response too large"
+            if oversized
+            else "timeout"
+            if timeout
+            else "network error"
+        )
 
 
 Transport = Callable[[HttpRequest], HttpResponse]
+
+
+def _never() -> bool:
+    return False
 
 
 def http_transport(request: HttpRequest) -> HttpResponse:
@@ -73,17 +98,28 @@ def http_transport(request: HttpRequest) -> HttpResponse:
     )
     connection = connection_type(host, parts.port, timeout=request.timeout_s)
     try:
-        connection.request(
-            "POST",
-            parts.path + (f"?{parts.query}" if parts.query else ""),
-            body=request.body,
-            headers={
-                **request.headers,
-                "Content-Length": str(request.content_length),
-            },
-        )
-        response = connection.getresponse()
-        return HttpResponse(response.status, response.read(MAX_RESPONSE_BYTES))
+
+        def exchange() -> HttpResponse:
+            connection.request(
+                "POST",
+                parts.path + (f"?{parts.query}" if parts.query else ""),
+                body=request.body,
+                headers={
+                    **request.headers,
+                    "Content-Length": str(request.content_length),
+                },
+            )
+            response = connection.getresponse()
+            body = read_bounded(
+                response, request.max_response_bytes, request.timeout_s, request.abort
+            )
+            return HttpResponse(response.status, body)
+
+        return run_abortable(exchange, connection, request.abort or _never)
+    except Aborted:
+        raise TransportError(aborted=True) from None
+    except ResponseTooLarge:
+        raise TransportError(oversized=True) from None
     except TimeoutError as error:
         raise TransportError(timeout=True) from error
     except (OSError, http.client.HTTPException) as error:
@@ -162,6 +198,7 @@ def multipart_parts(
 
 
 __all__ = [
+    "MAX_JSON_BYTES",
     "HttpRequest",
     "HttpResponse",
     "MultipartBody",

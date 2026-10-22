@@ -32,6 +32,7 @@ from voz.infrastructure.asr.sherpa_onnx_options import (
     whisper_files,
 )
 from voz.infrastructure.audio.media_args import NO_WINDOW
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.process_tree import kill_tree
 
 _MAX_AUDIO_BYTES = 256 * 1024**2
@@ -241,7 +242,9 @@ class SherpaOnnxProvider:
                 cwd=work,
                 start_new_session=os.name != "nt",
                 creationflags=NO_WINDOW,
-                env={**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"},
+                env=child_environment(
+                    {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
+                ),
             )
             try:
                 with events_path.open("rb") as incoming:

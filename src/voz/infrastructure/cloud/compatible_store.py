@@ -59,26 +59,28 @@ class FileCompatibleEndpointStore:
         return "FileCompatibleEndpointStore()"
 
     def list(self) -> tuple[CompatibleEndpoint, ...]:
-        return self._read()
+        return self._read()[0]
 
     def get(self, endpoint_id: str) -> CompatibleEndpoint | None:
-        return next((item for item in self._read() if item.id == endpoint_id), None)
+        return next((item for item in self._read()[0] if item.id == endpoint_id), None)
 
     def save(self, endpoint: CompatibleEndpoint) -> None:
         with self._lock:
-            items = [item for item in self._read() if item.id != endpoint.id]
-            self._write([*items, endpoint])
+            valid, skipped = self._read()
+            items = [item for item in valid if item.id != endpoint.id]
+            self._write([*items, endpoint], skipped)
 
     def delete(self, endpoint_id: str) -> bool:
         with self._lock:
-            items = self._read()
-            kept = [item for item in items if item.id != endpoint_id]
-            if len(kept) == len(items):
+            valid, skipped = self._read()
+            kept = [item for item in valid if item.id != endpoint_id]
+            if len(kept) == len(valid):
                 return False
-            self._write(kept)
+            self._write(kept, skipped)
             return True
 
-    def _read(self) -> tuple[CompatibleEndpoint, ...]:
+    def _read(self) -> tuple[tuple[CompatibleEndpoint, ...], list[object]]:
+        """Valid endpoints, and the raw entries that were skipped (kept on write)."""
         try:
             text = read_private_text(self._file)
         except InsecureFileError:
@@ -89,7 +91,7 @@ class FileCompatibleEndpointStore:
         except (OSError, UnicodeDecodeError):
             raise _unreadable() from None
         if text is None:
-            return ()
+            return (), []
         try:
             document = cast(object, json.loads(text))
         except ValueError:
@@ -101,14 +103,18 @@ class FileCompatibleEndpointStore:
         )
         if not isinstance(raw, list):
             raise _unreadable()
-        found = (_entry(item) for item in cast(list[object], raw))
-        return tuple(item for item in found if item is not None)
+        entries = [(item, _entry(item)) for item in cast(list[object], raw)]
+        valid = tuple(found for _, found in entries if found is not None)
+        return valid, [item for item, found in entries if found is None]
 
-    def _write(self, items: list[CompatibleEndpoint]) -> None:
+    def _write(self, items: list[CompatibleEndpoint], skipped: list[object]) -> None:
+        # ponytail: a skipped entry (e.g. a saved plain-http remote server, now
+        # refused) stays in the file untouched, so its data and key are not lost.
         body = {
             "version": 1,
             "endpoints": [
-                {name: getattr(item, name) for name in _FIELDS} for item in items
+                *({name: getattr(item, name) for name in _FIELDS} for item in items),
+                *skipped,
             ],
         }
         try:

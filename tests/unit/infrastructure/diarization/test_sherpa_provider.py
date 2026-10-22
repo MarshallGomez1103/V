@@ -461,7 +461,14 @@ def _child_provider(
     real_popen = subprocess.Popen
 
     def popen(
-        command: list[str], *, stdin: int, stdout: int, stderr: int, creationflags: int
+        command: list[str],
+        *,
+        stdin: int,
+        stdout: int,
+        stderr: int,
+        creationflags: int,
+        start_new_session: bool,
+        env: dict[str, str],
     ) -> subprocess.Popen[bytes]:
         return real_popen(
             [sys.executable, "-c", _FAKE_CHILD, *command[3:], mode],
@@ -469,6 +476,8 @@ def _child_provider(
             stdout=stdout,
             stderr=stderr,
             creationflags=creationflags,
+            start_new_session=start_new_session,
+            env=env,
         )
 
     monkeypatch.setattr(sherpa.subprocess, "Popen", popen)

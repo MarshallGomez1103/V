@@ -239,10 +239,14 @@ class ElevenLabsScribeProvider:
             body=body,
             content_length=body.length,
             timeout_s=self._timeout_s or min(_TIMEOUT_MAX_S, _TIMEOUT_BASE_S + seconds),
+            abort=None if cancellation is None else cancellation.is_cancelled,
         )
         try:
             response = self._transport(request)
         except TransportError as error:
+            _raise_if_cancelled(cancellation)
+            if error.oversized:
+                raise _failure("ElevenLabs returned an oversized response.") from None
             raise _failure(
                 "ElevenLabs did not answer in time."
                 if error.timeout

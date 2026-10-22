@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import wave
+from collections import deque
 from contextlib import suppress
 from pathlib import Path
 from typing import IO, BinaryIO
@@ -23,11 +24,16 @@ from voz.application.ports.media_normalization import (
     NormalizedAudio,
 )
 from voz.infrastructure._payload import require_uuid
+from voz.infrastructure.audio.ffmpeg_failure import (
+    FfmpegFailure,
+    classify_ffmpeg_exit,
+)
 from voz.infrastructure.audio.media_args import (
     NO_WINDOW,
     ffmpeg_input_arguments,
     ffmpeg_output_arguments,
 )
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.safe_fs import DirectoryHandle, open_directory_chain
 
 _SAMPLE_RATE_HZ = 16_000
@@ -35,6 +41,7 @@ _CHANNELS = 1
 _SAMPLE_WIDTH_BYTES = 2
 _PROGRESS_PREFIX = "out_time_us="
 _STREAM_END = object()
+_STDERR_TAIL_CHARS = 4096
 
 
 class FfmpegMediaNormalizer:
@@ -205,6 +212,7 @@ class FfmpegMediaNormalizer:
                 close_fds=True,
                 pass_fds=(*source_inherit, *output_inherit),
                 creationflags=NO_WINDOW,
+                env=child_environment(),
             )
         except FileNotFoundError as error:
             raise MediaNormalizationError(
@@ -240,9 +248,10 @@ class FfmpegMediaNormalizer:
             name="voz-ffmpeg-progress",
             daemon=True,
         )
+        stderr_tail: deque[str] = deque()
         stderr_thread = threading.Thread(
             target=self._drain_stream,
-            args=(process.stderr,),
+            args=(process.stderr, stderr_tail),
             name="voz-ffmpeg-stderr",
             daemon=True,
         )
@@ -277,8 +286,11 @@ class FfmpegMediaNormalizer:
                             on_progress=on_progress,
                         )
 
-            if process.wait() != 0:
-                raise self._corrupted_media_error()
+            returncode = process.wait()
+            if returncode != 0:
+                # The pump may still be flushing; only its bounded tail is read.
+                stderr_thread.join(timeout=self._terminate_grace_seconds)
+                raise self._exit_error(returncode, "".join(stderr_tail))
             self._report_progress(
                 processed_ms=duration_ms,
                 duration_ms=duration_ms,
@@ -315,10 +327,15 @@ class FfmpegMediaNormalizer:
             destination.put(_STREAM_END)
 
     @staticmethod
-    def _drain_stream(stream: IO[str]) -> None:
+    def _drain_stream(stream: IO[str], tail: deque[str]) -> None:
+        # Only used to classify the exit; never shown or logged.
+        kept = 0
         try:
-            for _ in stream:
-                pass
+            for line in stream:
+                tail.append(line)
+                kept += len(line)
+                while kept > _STDERR_TAIL_CHARS and len(tail) > 1:
+                    kept -= len(tail.popleft())
         except (OSError, ValueError):
             pass
 
@@ -570,6 +587,26 @@ class FfmpegMediaNormalizer:
         return MediaNormalizationError(
             MediaNormalizationFailureCode.CANCELLED,
             "Audio normalization was cancelled.",
+        )
+
+    @classmethod
+    def _exit_error(cls, returncode: int, stderr: str) -> MediaNormalizationError:
+        failure = classify_ffmpeg_exit(returncode, stderr)
+        if failure is FfmpegFailure.MEDIA:
+            return cls._corrupted_media_error()
+        if failure is FfmpegFailure.STORAGE:
+            return MediaNormalizationError(
+                MediaNormalizationFailureCode.IO_ERROR,
+                "The normalized audio could not be written.",
+            )
+        if failure is FfmpegFailure.TOOL:
+            return MediaNormalizationError(
+                MediaNormalizationFailureCode.TOOL_UNAVAILABLE,
+                "The audio normalization tool could not be run.",
+            )
+        return MediaNormalizationError(
+            MediaNormalizationFailureCode.PROCESS_FAILED,
+            "Audio normalization failed unexpectedly.",
         )
 
     @staticmethod

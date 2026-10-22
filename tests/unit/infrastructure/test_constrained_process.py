@@ -275,3 +275,29 @@ def test_direct_port_normalizes_paths_before_private_cwd(
     constrained.ConstrainedProcess(popen=capture).run(definition)
     assert requests[0]["input"]["path"] == str(Path.home() / "dataset")
     assert requests[0]["model"]["directory"] == str(tmp_path / "model")
+
+
+def test_real_child_never_sees_parent_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-parent-secret")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "xi-parent-secret")
+    monkeypatch.setenv("MY_SERVICE_TOKEN", "parent-token")
+    children: list[subprocess.Popen[bytes]] = []
+    script = """
+import os, sys
+from pathlib import Path
+from voz.infrastructure.edge_lab_worker import _write
+request, ready, result = map(Path, sys.argv[1:])
+names = sorted(os.environ)
+_write(ready, {"effective": {"device": "cpu"}, "observations": {"names": names}})
+_write(result, {"status": "completed", "measured": {"fixture": 1},
+                "estimated": {}, "observations": {}})
+"""
+    outcome = constrained.ConstrainedProcess(
+        popen=script_factory(script, children)
+    ).run(experiment(tmp_path))
+    assert outcome.status == "completed", outcome
+    names = cast(list[str], outcome.observations["names"])
+    assert not {"OPENAI_API_KEY", "ELEVENLABS_API_KEY", "MY_SERVICE_TOKEN"} & set(names)
+    assert "PATH" in names and "HF_HUB_OFFLINE" in names

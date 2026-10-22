@@ -472,18 +472,28 @@ def test_remove_refuses_a_tts_model_while_a_synthesis_uses_it(
     assert store.removed == []
 
 
-def test_remove_tts_model_ignores_other_models_and_cancelling_syntheses() -> None:
+def test_remove_tts_model_ignores_other_models() -> None:
     store = Store(VOICE)
-    jobs = SynthesisJobs(
-        synthesis_job("another-voice"),
-        synthesis_job(state=SynthesisJobState.CANCELLING),
-    )
+    jobs = SynthesisJobs(synthesis_job("another-voice"))
 
     result = RemoveModel(
         CatalogWithVoice(), store, Jobs(), Selections(), synthesis_jobs=jobs
     ).execute(VOICE_KEY, VOICE_KEY)
 
     assert (result.key, store.removed) == (VOICE_KEY, [VOICE])
+
+
+def test_remove_tts_model_waits_for_a_cancelling_synthesis() -> None:
+    # A cancelling job may still have its engine child reading the model.
+    store = Store(VOICE)
+    jobs = SynthesisJobs(synthesis_job(state=SynthesisJobState.CANCELLING))
+
+    with pytest.raises(ModelManagementError) as raised:
+        RemoveModel(
+            CatalogWithVoice(), store, Jobs(), Selections(), synthesis_jobs=jobs
+        ).execute(VOICE_KEY, VOICE_KEY)
+
+    assert (raised.value.code, store.removed) == ("model_in_use", [])
 
 
 def test_asr_removal_is_not_blocked_by_an_active_synthesis() -> None:

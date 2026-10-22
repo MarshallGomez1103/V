@@ -236,3 +236,30 @@ def test_probe_rejects_a_seekable_stream_without_an_os_descriptor() -> None:
 
     assert captured.value.code is MediaProbeFailureCode.INVALID_MEDIA
     assert "descriptor" not in captured.value.user_message.lower()
+
+
+@pytest.mark.parametrize(
+    ("returncode", "expected_code"),
+    [
+        (1, MediaProbeFailureCode.INVALID_MEDIA),
+        (127, MediaProbeFailureCode.TOOL_UNAVAILABLE),
+        (-11, MediaProbeFailureCode.INVALID_RESPONSE),
+    ],
+)
+def test_probe_exit_status_separates_bad_media_from_broken_tool(
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    expected_code: MediaProbeFailureCode,
+) -> None:
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return _completed(command, stdout="", returncode=returncode)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with TemporaryFile("w+b") as source, pytest.raises(MediaProbeError) as captured:
+        FfprobeMediaProbe().probe(source)
+
+    assert captured.value.code is expected_code

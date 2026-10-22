@@ -39,6 +39,7 @@ from voz.domain.entities.synthesis_request import (
     MIN_SYNTHESIS_SPEED,
 )
 from voz.domain.entities.voice import Voice
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.process_tree import kill_tree
 from voz.infrastructure.tts.protocol import (
     AudioChunk,
@@ -255,6 +256,8 @@ class SubprocessSynthesisProvider:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Win
+                    start_new_session=os.name != "nt",
+                    env=child_environment(),
                 )
             except OSError as error:
                 raise _error(_Code.RUNTIME_UNAVAILABLE) from error
@@ -317,15 +320,8 @@ class SubprocessSynthesisProvider:
     def _stop(self, child: subprocess.Popen[bytes]) -> None:
         """Terminate, kill after a short grace, always reap; idempotent."""
         try:
-            if child.poll() is None and os.name == "nt":
-                kill_tree(child)  # terminate() would orphan the venv launcher's child
-            elif child.poll() is None:
-                child.terminate()
-                try:
-                    child.wait(timeout=_TERMINATE_GRACE_SECONDS)
-                except subprocess.TimeoutExpired:
-                    child.kill()
-                    child.wait()
+            # terminate() would orphan the worker's own children
+            kill_tree(child, _TERMINATE_GRACE_SECONDS)
         finally:
             with self._lock:
                 self._active.discard(child)

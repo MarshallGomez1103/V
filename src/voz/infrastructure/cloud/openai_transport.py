@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-import contextlib
 import http.client
-import socket
-import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-_ABORT_POLL_S = 0.05
+from voz.infrastructure.cloud.http_body import (
+    MAX_JSON_BYTES,
+    Aborted,
+    Body,
+    ResponseTooLarge,
+    read_bounded,
+    run_abortable,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +30,7 @@ class HttpRequest:
     method: str = "POST"
     abort: Callable[[], bool] | None = field(default=None, repr=False, compare=False)
     """Polled while the request is in flight; ``True`` cuts the connection."""
+    max_response_bytes: int = MAX_JSON_BYTES
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,17 +41,36 @@ class HttpResponse:
 
 
 class TransportError(Exception):
-    """No response at all (connect, TLS, reset, timeout, or cut by ``abort``)."""
+    """No usable response (connect, TLS, reset, timeout, ``abort``, or too large)."""
 
-    def __init__(self, *, timeout: bool = False, aborted: bool = False) -> None:
+    def __init__(
+        self, *, timeout: bool = False, aborted: bool = False, oversized: bool = False
+    ) -> None:
         self.timeout = timeout
         self.aborted = aborted
+        self.oversized = oversized
         super().__init__(
-            "aborted" if aborted else "timeout" if timeout else "network error"
+            "aborted"
+            if aborted
+            else "response too large"
+            if oversized
+            else "timeout"
+            if timeout
+            else "network error"
         )
 
 
 Transport = Callable[[HttpRequest], HttpResponse]
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A 3xx is the answer: following it would resend the key to another origin."""
+
+    def redirect_request(self, *args: object, **kwargs: object) -> None:  # type: ignore[override]
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def urllib_transport(request: HttpRequest) -> HttpResponse:
@@ -59,16 +84,29 @@ def urllib_transport(request: HttpRequest) -> HttpResponse:
         method=request.method,
     )
     try:
-        with urllib.request.urlopen(prepared, timeout=request.timeout_s) as reply:
-            return HttpResponse(reply.status, reply.read(), dict(reply.headers))
+        with _OPENER.open(prepared, timeout=request.timeout_s) as reply:
+            body = read_bounded(reply, request.max_response_bytes, request.timeout_s)
+            return HttpResponse(reply.status, body, dict(reply.headers))
     except urllib.error.HTTPError as error:
         with error:
-            return HttpResponse(error.code, error.read(), dict(error.headers))
+            try:
+                body = read_bounded(
+                    cast(Body, error), request.max_response_bytes, request.timeout_s
+                )
+            except ResponseTooLarge:
+                raise TransportError(oversized=True) from None
+            except TimeoutError as timeout:
+                raise TransportError(timeout=True) from timeout
+            except (OSError, http.client.HTTPException) as failure:
+                raise TransportError from failure
+            return HttpResponse(error.code, body, dict(error.headers))
+    except ResponseTooLarge:
+        raise TransportError(oversized=True) from None
     except TimeoutError as error:
         raise TransportError(timeout=True) from error
     except urllib.error.URLError as error:
         raise TransportError(timeout=isinstance(error.reason, TimeoutError)) from error
-    except OSError as error:
+    except (OSError, http.client.HTTPException) as error:
         raise TransportError from error
 
 
@@ -76,7 +114,7 @@ def _abortable(request: HttpRequest, abort: Callable[[], bool]) -> HttpResponse:
     """``http.client`` request on a helper thread, dropped once ``abort`` is true.
 
     ponytail: no proxy support on this path (urllib's env proxies are skipped);
-    it is only used by engines that need cancellation mid-request.
+    it is used wherever a request must be cancellable while in flight.
     """
     parts = urlsplit(request.url)
     factory = (
@@ -88,49 +126,28 @@ def _abortable(request: HttpRequest, abort: Callable[[], bool]) -> HttpResponse:
     path = parts.path or "/"
     if parts.query:
         path += "?" + parts.query
-    done = threading.Event()
-    outcome: list[HttpResponse | Exception] = []
 
-    def exchange() -> None:
-        try:
-            connection.request(
-                request.method,
-                path,
-                body=request.body if request.body or request.method != "GET" else None,
-                headers=dict(request.headers),
-            )
-            reply = connection.getresponse()
-            outcome.append(
-                HttpResponse(reply.status, reply.read(), dict(reply.getheaders()))
-            )
-        except Exception as error:  # re-raised below, on the caller's thread
-            outcome.append(error)
-        finally:
-            done.set()
+    def exchange() -> HttpResponse:
+        connection.request(
+            request.method,
+            path,
+            body=request.body if request.body or request.method != "GET" else None,
+            headers=dict(request.headers),
+        )
+        reply = connection.getresponse()
+        body = read_bounded(reply, request.max_response_bytes, request.timeout_s, abort)
+        return HttpResponse(reply.status, body, dict(reply.getheaders()))
 
-    # The exchange runs on its own thread and the caller polls ``abort``: on
-    # Windows a local ``shutdown`` does not wake a socket blocked in recv, so
-    # waiting for the socket to fail would delay the cancellation until the
-    # server answers.
-    threading.Thread(target=exchange, name="voz-http-exchange", daemon=True).start()
     try:
-        while not done.wait(_ABORT_POLL_S):
-            if abort():
-                sock = connection.sock
-                if sock is not None:  # frees the thread at once where shutdown wakes it
-                    with contextlib.suppress(OSError):
-                        sock.shutdown(socket.SHUT_RDWR)
-                raise TransportError(aborted=True)
-    finally:
-        connection.close()
-    error = outcome[0]
-    if isinstance(error, HttpResponse):
-        return error
-    if isinstance(error, TimeoutError):
+        return run_abortable(exchange, connection, abort)
+    except Aborted:
+        raise TransportError(aborted=True) from None
+    except ResponseTooLarge:
+        raise TransportError(oversized=True) from None
+    except TimeoutError as error:
         raise TransportError(timeout=True) from error
-    if isinstance(error, OSError | http.client.HTTPException):
+    except (OSError, http.client.HTTPException) as error:
         raise TransportError from error
-    raise error
 
 
 def encode_multipart(
@@ -159,6 +176,7 @@ def encode_multipart(
 
 
 __all__ = [
+    "MAX_JSON_BYTES",
     "HttpRequest",
     "HttpResponse",
     "Transport",

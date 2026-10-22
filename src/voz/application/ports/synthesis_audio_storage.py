@@ -32,8 +32,32 @@ class SynthesisStorageError(RuntimeError):
 
 
 @runtime_checkable
+class SynthesisAudioWriter(Protocol):
+    """Builds one job's WAV chunk by chunk, so memory does not grow with its length."""
+
+    def append(self, chunk: PcmAudio, gap_after_ms: int = 0) -> None:
+        """Add ``chunk`` followed by ``gap_after_ms`` of silence (0 for the last).
+
+        All chunks must share one sample rate.
+        """
+        ...
+
+    def commit(self) -> SynthesizedAudio:
+        """Publish the WAV atomically; an existing audio is never replaced."""
+        ...
+
+    def abort(self) -> None:
+        """Discard everything written so far; safe to call after ``commit``."""
+        ...
+
+
+@runtime_checkable
 class SynthesisAudioStorage(Protocol):
     """Store, serve and remove the WAV of a synthesis job; files never change."""
+
+    def begin(self, job_id: UUID) -> SynthesisAudioWriter:
+        """Start an incremental write; the caller commits or aborts it."""
+        ...
 
     def write(
         self,
@@ -64,6 +88,7 @@ class SynthesisAudioStorage(Protocol):
 
 __all__ = [
     "SynthesisAudioStorage",
+    "SynthesisAudioWriter",
     "SynthesisStorageError",
     "SynthesisStorageErrorCode",
 ]

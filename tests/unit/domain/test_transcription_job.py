@@ -446,5 +446,23 @@ def test_reopen_for_diarization_only_from_a_finished_job() -> None:
     assert (reopened.progress, reopened.stage_progress) == (0.8, None)
     assert reopened.stage_started_at == at and reopened.started_at == STARTED_AT
     assert reopened.can_transition_to(TranscriptionJobState.MERGING)
-    with pytest.raises(ValueError, match="finished"):
+    with pytest.raises(InvalidJobTransition, match="DIARIZING"):
         reopened.reopen_for_diarization(progress=0.8, at=at)
+
+
+@pytest.mark.parametrize(
+    "state",
+    [s for s in TranscriptionJobState if s is not TranscriptionJobState.COMPLETED],
+)
+def test_reopen_for_diarization_rejects_every_state_but_completed(
+    state: TranscriptionJobState,
+) -> None:
+    job = make_job(
+        state=state,
+        error_code="ASR_PROVIDER_ERROR"
+        if state is TranscriptionJobState.FAILED
+        else None,
+    )
+
+    with pytest.raises(InvalidJobTransition, match=state.value):
+        job.reopen_for_diarization(progress=0.8, at=STARTED_AT)

@@ -6,7 +6,7 @@ from __future__ import annotations
 import shutil
 import wave
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO, cast
@@ -366,6 +366,38 @@ def test_refuses_while_another_job_runs(world: World) -> None:
         world.use_case().execute(world.transcript_id, DiarizationOptions())
 
     assert error.value.code is RediarizeFailureCode.JOB_ALREADY_ACTIVE
+
+
+@pytest.mark.parametrize(
+    "state", [TranscriptionJobState.FAILED, TranscriptionJobState.CANCELLED]
+)
+def test_refuses_a_job_that_did_not_complete_and_changes_nothing(
+    world: World, state: TranscriptionJobState
+) -> None:
+    jobs = SqliteTranscriptionJobRepository(world.engine)
+    jobs.save(
+        replace(
+            world.job,
+            state=state,
+            progress=0.4,
+            error_code="ASR_PROVIDER_ERROR"
+            if state is TranscriptionJobState.FAILED
+            else None,
+        )
+    )
+    before = jobs.get(world.job.id)
+    selections = SqliteTranscriptionJobSelectionRepository(world.engine)
+    options = selections.get(world.job.id)
+
+    with pytest.raises(RediarizeError) as error:
+        world.use_case().execute(
+            world.transcript_id,
+            DiarizationOptions(speakers=SpeakerCountHint(exact=3)),
+        )
+
+    assert error.value.code is RediarizeFailureCode.JOB_NOT_FOUND
+    assert jobs.get(world.job.id) == before
+    assert selections.get(world.job.id) == options
 
 
 def test_unknown_transcript_and_orphan_transcript(world: World) -> None:

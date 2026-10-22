@@ -313,13 +313,17 @@ class TranscriptionJob:
     def reopen_for_diarization(
         self, *, progress: object, at: datetime | None = None
     ) -> Self:
-        """Return a finished job sent back to ``DIARIZING`` to redo only speakers.
+        """Return a completed job sent back to ``DIARIZING`` to redo only speakers.
 
         The transcript is kept; the pipeline then ends in ``COMPLETED`` again.
+        Only ``COMPLETED`` has a transcript to keep; any other state is rejected.
         """
 
-        if not self.state.is_terminal:
-            raise ValueError("only a finished job can be reopened")
+        if self.state is not TranscriptionJobState.COMPLETED:
+            raise InvalidJobTransition(
+                f"cannot reopen transcription job from {self.state.value} "
+                f"to {TranscriptionJobState.DIARIZING.value}"
+            )
         timestamp = self._monotonic_timestamp(at, "reopen")
         return replace(
             self,

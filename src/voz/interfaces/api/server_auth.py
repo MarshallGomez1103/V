@@ -24,7 +24,7 @@ _BODY = json.dumps(
 ).encode("ascii")
 
 
-def _origin(raw: bytes) -> tuple[str, str, int] | None:
+def parse_origin(raw: bytes) -> tuple[str, str, int] | None:
     """Parse an ASCII HTTP origin without accepting URL paths or user info."""
     if not raw or any(byte <= 32 or byte >= 127 for byte in raw):
         return None
@@ -143,5 +143,7 @@ class ServerAuthMiddleware:
             scheme = "http"
         elif scheme == "wss":
             scheme = "https"
-        expected = _origin(scheme.encode("ascii") + b"://" + headers.get(b"host", b""))
-        return expected is not None and _origin(origin) == expected
+        expected = parse_origin(
+            scheme.encode("ascii") + b"://" + headers.get(b"host", b"")
+        )
+        return expected is not None and parse_origin(origin) == expected

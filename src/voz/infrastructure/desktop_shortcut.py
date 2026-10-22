@@ -27,6 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from voz.application.ports.desktop_shortcut import DesktopShortcutError
+from voz.infrastructure.child_env import child_environment
 
 NAME = "V"
 LEGACY_NAME = "VOZ"
@@ -54,7 +55,11 @@ def checkout_root() -> Path:
 def default_desktop_directory(platform: str = sys.platform) -> Path:
     if platform.startswith("linux") and shutil.which("xdg-user-dir"):
         shown = subprocess.run(
-            ["xdg-user-dir", "DESKTOP"], capture_output=True, text=True, check=False
+            ["xdg-user-dir", "DESKTOP"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=child_environment(),
         ).stdout.strip()
         if shown:
             return Path(shown)
@@ -271,6 +276,7 @@ class LocalDesktopShortcut:
                 capture_output=True,
                 text=True,
                 check=False,
+                env=child_environment(),
             )
         return on_desktop
 
@@ -342,6 +348,7 @@ class LocalDesktopShortcut:
             capture_output=True,
             text=True,
             check=False,
+            env=child_environment(),
         )
         png.unlink()
         with (contents / "Info.plist").open("wb") as output:
@@ -377,12 +384,15 @@ class LocalDesktopShortcut:
         launcher = str(self._root / LAUNCHERS["win32"])
         done = self._run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            env={
-                **os.environ,
-                "VOZ_LAUNCHER": launcher,
-                "VOZ_ROOT": str(self._root),
-                "VOZ_ICON": str(self._root / "packaging" / "icons" / ICONS["win32"]),
-            },
+            env=child_environment(
+                {
+                    "VOZ_LAUNCHER": launcher,
+                    "VOZ_ROOT": str(self._root),
+                    "VOZ_ICON": str(
+                        self._root / "packaging" / "icons" / ICONS["win32"]
+                    ),
+                }
+            ),
             capture_output=True,
             text=True,
             check=True,

@@ -54,6 +54,7 @@ from voz.application.ports.transcription_options import (
 )
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.voice import Voice
+from voz.infrastructure.cloud.http_body import MAX_AUDIO_BYTES
 from voz.infrastructure.cloud.openai_limits import OpenAIModelSpec
 from voz.infrastructure.cloud.openai_transcription import OpenAITranscriptionProvider
 from voz.infrastructure.cloud.openai_transport import (
@@ -71,6 +72,8 @@ MAX_TTS_CHUNK_CHARS: Final = 4000
 """OpenAI documents 4096 input characters for ``/audio/speech``; kept below."""
 MAX_STT_UPLOAD_BYTES: Final = 25_000_000
 """OpenAI's documented limit, assumed for unknown servers (conservative)."""
+MAX_SPEECH_BYTES: Final = MAX_AUDIO_BYTES
+"""Most audio accepted back for one chunk; more is refused, not truncated."""
 PCM_SAMPLE_RATE: Final = 24_000
 """OpenAI's ``pcm`` format: 24 kHz, 16-bit little-endian mono."""
 PROBE_TIMEOUT_S: Final = 5.0
@@ -408,12 +411,15 @@ class CompatibleSpeechProvider:
             body,
             self._timeout_s,
             abort=cancelled,
+            max_response_bytes=MAX_SPEECH_BYTES,
         )
         try:
             reply = self._transport(request)
         except TransportError as error:
             if error.aborted or cancelled():
                 raise _cancelled() from None
+            if error.oversized:
+                raise _failed(f"The {LABEL} returned too much audio.") from None
             raise _synthesis_error(
                 SynthesisFailureCode.RUNTIME_UNAVAILABLE,
                 f"The {LABEL} did not answer in time."

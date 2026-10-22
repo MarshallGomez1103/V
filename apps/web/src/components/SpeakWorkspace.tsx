@@ -144,9 +144,11 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
   const [preference, setPreference] = useState<SpeakPreference>(loadPreference)
   const choice = resolveChoice(options, preference, lang)
   const request = requestOf(choice)
-  const cloud = options.providers.some(
-    (provider) => provider.provider_id === choice.model.provider_id && provider.locality === 'cloud',
+  // Fail-closed: solo es local un proveedor conocido que lo declara; lo demás pide consentimiento.
+  const cloud = !options.providers.some(
+    (provider) => provider.provider_id === choice.model.provider_id && provider.locality === 'local',
   )
+  const consent = cloud ? { cloud_consent: true } : {}
   const [confirmedCloud, setConfirmedCloud] = useState<string | null>(null)
   const usable = request !== null && choice.model.runtime_ready &&
     (!cloud || confirmedCloud === modelKey(choice.model))
@@ -179,7 +181,7 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
     setCreating(true)
     setProblem(null)
     const voiceName = choice.voice?.name ?? request.voice_id
-    createSynthesis({ text, ...request })
+    createSynthesis({ text, ...request, ...consent })
       .then((created) => {
         setGeneration({ id: created.id, reused: created.reused, seed: created, voiceName })
       })
@@ -216,6 +218,7 @@ function SpeakEditor({ options, text, onText }: SpeakEditorProps) {
     }
     sample.start({
       ...request,
+      ...consent,
       text: firstSentence(text) || t(`speak.sample.text.${sampleLanguage(choice)}`),
     })
   }

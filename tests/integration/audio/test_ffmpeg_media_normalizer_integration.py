@@ -561,3 +561,57 @@ def test_real_ffmpeg_uses_absolute_stream_index_one(tmp_path: Path) -> None:
     assert _probe(destination).audio_streams[0].codec_name == "pcm_s16le"
     _assert_no_normalization_temporary(tmp_path / "media")
     _assert_no_ffmpeg_monitor_threads()
+
+
+def _normalize_with_executable(
+    tmp_path: Path, executable: str
+) -> MediaNormalizationError:
+    normalizer = FfmpegMediaNormalizer(tmp_path / "media", executable=executable)
+    with (
+        MEDIA_FIXTURE.open("rb") as original,
+        pytest.raises(MediaNormalizationError) as captured,
+    ):
+        normalizer.normalize(
+            original=original,
+            project_id=uuid4(),
+            media_asset_id=uuid4(),
+            duration_ms=250,
+            audio_stream_index=0,
+        )
+    assert str(tmp_path) not in str(captured.value)
+    _assert_no_normalization_temporary(tmp_path / "media")
+    _assert_no_ffmpeg_monitor_threads()
+    return captured.value
+
+
+def test_missing_ffmpeg_is_tool_unavailable_not_corrupted(tmp_path: Path) -> None:
+    error = _normalize_with_executable(tmp_path, str(tmp_path / "no-such-ffmpeg"))
+
+    assert error.code is MediaNormalizationFailureCode.TOOL_UNAVAILABLE
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs a POSIX shell script")
+@pytest.mark.parametrize(
+    ("stderr", "expected"),
+    [
+        ("No space left on device", MediaNormalizationFailureCode.IO_ERROR),
+        ("Permission denied", MediaNormalizationFailureCode.IO_ERROR),
+        ("something unexpected broke", MediaNormalizationFailureCode.PROCESS_FAILED),
+        (
+            "Invalid data found when processing input",
+            MediaNormalizationFailureCode.CORRUPTED_MEDIA,
+        ),
+    ],
+)
+def test_ffmpeg_exit_is_not_always_reported_as_corrupted_media(
+    tmp_path: Path, stderr: str, expected: MediaNormalizationFailureCode
+) -> None:
+    fake = tmp_path / "tools" / "ffmpeg"
+    fake.parent.mkdir()
+    fake.write_text(f"#!/bin/sh\necho '{stderr}' >&2\nexit 1\n", encoding="utf-8")
+    fake.chmod(0o755)
+
+    error = _normalize_with_executable(tmp_path, str(fake))
+
+    assert error.code is expected
+    assert stderr not in error.user_message

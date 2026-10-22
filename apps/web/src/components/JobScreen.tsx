@@ -194,6 +194,7 @@ function failureMessage(code: string | null, t: Translate): string {
     model_missing: 'job.fail.model_missing',
     out_of_memory: 'job.fail.out_of_memory',
     timeout: 'job.fail.timeout',
+    cloud_consent_expired: 'job.fail.cloud_consent_expired',
   }
   return Object.hasOwn(known, code)
     ? t(known[code] ?? 'job.fail.generic')

@@ -26,7 +26,10 @@ from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
 )
-from voz.domain.entities.transcription_job import TranscriptionJob
+from voz.domain.entities.transcription_job import (
+    InvalidJobTransition,
+    TranscriptionJob,
+)
 
 
 class RediarizeFailureCode(StrEnum):
@@ -110,11 +113,17 @@ class RediarizeTranscript:
                 "The speaker models are not installed. "
                 "Download them in the model manager.",
             )
+        try:
+            reopened = owner.reopen_for_diarization(
+                progress=TRANSCRIBE_END_WITH_SPEAKERS,
+                at=max(self.clock(), owner.updated_at),
+            )
+        except InvalidJobTransition:
+            raise RediarizeError(
+                RediarizeFailureCode.JOB_NOT_FOUND,
+                "Only a completed transcription can recompute its speakers.",
+            ) from None
         self.selections.replace_diarization(owner.id, options)
-        reopened = owner.reopen_for_diarization(
-            progress=TRANSCRIBE_END_WITH_SPEAKERS,
-            at=max(self.clock(), owner.updated_at),
-        )
         self.jobs.save(reopened)
         selection = self.selections.get(owner.id)
         assert selection is not None

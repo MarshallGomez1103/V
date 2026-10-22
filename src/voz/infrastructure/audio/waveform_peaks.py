@@ -22,6 +22,7 @@ from voz.application.ports.waveform import (
     WaveformFailureCode,
 )
 from voz.infrastructure.audio.media_args import NO_WINDOW, ffmpeg_input_arguments
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
 from voz.infrastructure.media_storage import FileSystemMediaStorage
 
@@ -211,6 +212,7 @@ class FfmpegWaveformPeaks:
                 close_fds=True,
                 pass_fds=inherited,
                 creationflags=NO_WINDOW,
+                env=child_environment(),
             )
         except OSError as error:
             raise _unavailable("The audio decoder could not be started.") from error

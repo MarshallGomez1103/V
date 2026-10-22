@@ -398,3 +398,80 @@ def test_unsafe_storage_root_is_refused(tmp_path: Path) -> None:
 
     assert caught.value.code is Code.UNSAFE_STORAGE_PATH
     assert list(real.iterdir()) == []
+
+
+def test_incremental_writer_matches_write_byte_for_byte(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    chunks = [_int16([1, 2, 3] * 300), _float32([0.5, -0.25] * 400), _int16([9] * 50)]
+    whole = storage.write(uuid4(), chunks, [30, 0])
+
+    writer = storage.begin(uuid4())
+    writer.append(chunks[0], 30)
+    writer.append(chunks[1])
+    writer.append(chunks[2], 0)
+    streamed = writer.commit()
+
+    assert (streamed.sha256, streamed.size_bytes) == (whole.sha256, whole.size_bytes)
+    assert streamed.duration_ms == whole.duration_ms
+    assert streamed.chunk_count == whole.chunk_count == 3
+    assert (tmp_path / "data" / streamed.relative_path).read_bytes() == (
+        tmp_path / "data" / whole.relative_path
+    ).read_bytes()
+
+
+def test_incremental_writer_grows_the_temporary_before_commit(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    job_id = uuid4()
+    writer = storage.begin(job_id)
+    assert not (tmp_path / "data").exists()  # lazy: nothing before the first chunk
+
+    writer.append(_int16([1] * 100_000), 0)
+
+    (temporary,) = (tmp_path / "data" / "synthesis" / str(job_id)).glob("*.tmp")
+    assert temporary.stat().st_size >= 200_000
+    writer.abort()
+
+
+def test_incremental_writer_abort_removes_everything_and_is_idempotent(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    writer = storage.begin(uuid4())
+    writer.append(_int16([1] * 10), 5)
+
+    writer.abort()
+    writer.abort()
+
+    assert list((tmp_path / "data" / "synthesis").iterdir()) == []
+
+
+def test_abort_after_commit_keeps_the_published_audio(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    writer = storage.begin(uuid4())
+    writer.append(_int16([1] * 10), 0)
+    result = writer.commit()
+
+    writer.abort()
+
+    assert (tmp_path / "data" / result.relative_path).is_file()
+
+
+def test_incremental_writer_validates_input(
+    tmp_path: Path, storage: FileSystemSynthesisStorage
+) -> None:
+    empty = storage.begin(uuid4())
+    with pytest.raises(SynthesisStorageError) as nothing:
+        empty.commit()
+    assert nothing.value.code is Code.NO_AUDIO
+
+    writer = storage.begin(uuid4())
+    with pytest.raises(ValueError, match="gap_after_ms"):
+        writer.append(_int16([1]), -1)
+    writer.append(_int16([1]), 0)
+    with pytest.raises(SynthesisStorageError) as mismatch:
+        writer.append(_int16([1], rate=22_050), 0)
+    assert mismatch.value.code is Code.SAMPLE_RATE_MISMATCH
+    writer.abort()
+    assert list((tmp_path / "data" / "synthesis").iterdir()) == []

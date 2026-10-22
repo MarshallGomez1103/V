@@ -22,6 +22,18 @@ export const endpoints = {
     'Incluye /v1. Ejemplo: http://127.0.0.1:8880/v1',
     'Include /v1. Example: http://127.0.0.1:8880/v1',
   ],
+  'ep.url.insecure': [
+    'Los servidores que no están en tu equipo deben usar https://. El http:// solo se admite para localhost.',
+    'Servers that are not on your computer must use https://. Plain http:// is only allowed for localhost.',
+  ],
+  'ep.key.moved.title': [
+    'La clave guardada se borrará al guardar',
+    'The saved key will be deleted when you save',
+  ],
+  'ep.key.moved.body': [
+    'Cambiaste el esquema, el servidor o el puerto de la URL: una clave nunca se envía a otro servidor. Vuelve a escribir la clave en este campo si el nuevo servidor la necesita.',
+    'You changed the scheme, host or port of the URL: a key is never sent to another server. Type the key again in this field if the new server needs one.',
+  ],
   'ep.key': ['Clave de API (opcional)', 'API key (optional)'],
   'ep.key.keep': ['Deja vacío para conservar la clave guardada', 'Leave empty to keep the saved key'],
   'ep.key.none': ['Solo si el servidor la pide', 'Only if the server asks for one'],
@@ -58,8 +70,8 @@ export const endpoints = {
   'ep.test.endpoint_http_error': ['El servidor respondió con un error ({status}).', 'The server answered with an error ({status}).'],
 
   'err.provider.endpoint_invalid': [
-    'Revisa los datos: URL http(s) sin usuario ni parámetros, al menos un modelo y, si hay modelos de voz, al menos una voz.',
-    'Check the data: an http(s) URL without user or parameters, at least one model and, with speech models, at least one voice.',
+    'Revisa los datos: URL http(s) sin usuario ni parámetros (fuera de tu equipo solo https://), al menos un modelo y, si hay modelos de voz, al menos una voz.',
+    'Check the data: an http(s) URL without user or parameters (https:// only outside your computer), at least one model and, with speech models, at least one voice.',
   ],
   'err.provider.endpoint_cloud_consent_required': [
     'Este servidor está fuera de tu equipo: confirma que aceptas enviarle audio y texto.',

@@ -30,6 +30,8 @@ from voz.application.ports.diarization import (
     SpeakerCountHint,
 )
 from voz.application.ports.transcription import TranscriptionCancellationToken
+from voz.infrastructure.child_env import child_environment
+from voz.infrastructure.process_tree import kill_tree
 
 if TYPE_CHECKING:
     import numpy as np
@@ -208,6 +210,8 @@ class _ChildEngine:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Windows
+            start_new_session=os.name != "nt",
+            env=child_environment(),
         )
         assert child.stdin is not None and child.stdout is not None
         lines: queue.Queue[str | None] = queue.Queue()
@@ -237,8 +241,7 @@ class _ChildEngine:
                 elif fields[1] == "END":
                     finished = True
         finally:
-            if child.poll() is None:
-                child.kill()
+            kill_tree(child)
             child.wait()
         if not finished:
             raise RuntimeError("the diarization worker ended without a result")

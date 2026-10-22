@@ -4,6 +4,8 @@ Framework and infrastructure wiring belongs here so that the domain remains
 independent of transport concerns.
 """
 
+import logging
+import time
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -161,6 +163,9 @@ from voz.infrastructure.diarization.sherpa import (
 )
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
+from voz.infrastructure.interrupted_temporaries import (
+    discard_interrupted_temporaries,
+)
 from voz.infrastructure.media_storage import FileSystemMediaStorage
 from voz.infrastructure.model_registry import (
     DIARIZATION_DESCRIPTOR,
@@ -224,6 +229,9 @@ from voz.interfaces.api.speakers import create_speakers_router
 from voz.interfaces.api.synthesis import create_synthesis_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
 from voz.interfaces.api.waveform import create_waveform_router
+
+_LOG = logging.getLogger(__name__)
+WORKER_STOP_SECONDS = 10.0
 
 STATIC_DIRECTORY = Path(__file__).with_name("static")
 DATABASE_FILENAME = "voz.sqlite3"
@@ -594,6 +602,7 @@ def create_app(
         ),
         assign_provider_speakers=AssignProviderSpeakers(speakers, segments),
         release_asr=release_asr,
+        cloud_provider_ids=frozenset(cloud_probe.provider_ids) | {COMPATIBLE_CLOUD_ID},
         audio_source_for=audio_source_for,
         audio_preparer=PrepareInferenceAudio(
             media_storage=media_storage,
@@ -690,6 +699,7 @@ def create_app(
 
         async def __aenter__(self) -> None:
             upgrade_to_head(resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY)
+            discard_interrupted_temporaries(resolved_paths.data)
             runner.recover()
             runner.start()
             synthesis_runner.recover()
@@ -706,8 +716,19 @@ def create_app(
         ) -> None:
             model_tasks.stop()
             custom_uploads.close()
-            runner.stop()
-            synthesis_runner.stop()
+            # Signal both before waiting, so they stop in parallel under one deadline.
+            runner.request_stop()
+            synthesis_runner.request_stop()
+            deadline = time.monotonic() + WORKER_STOP_SECONDS
+            transcription_stopped = runner.join(max(0.0, deadline - time.monotonic()))
+            synthesis_stopped = synthesis_runner.join(
+                max(0.0, deadline - time.monotonic())
+            )
+            if not (transcription_stopped and synthesis_stopped):
+                # A worker still runs on these engines and the database; the
+                # process is exiting, so leaking them beats a use-after-close.
+                _LOG.warning("A job worker did not stop in time; resources kept open")
+                return
             synthesis_registry.close_all()
             runtimes.close()
             for diarization_engine in diarization_engines:

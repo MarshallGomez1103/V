@@ -151,6 +151,10 @@ export const job = {
     'La transcripción tardó demasiado y se detuvo.',
     'The transcription took too long and was stopped.',
   ],
+  'job.fail.cloud_consent_expired': [
+    'La transcripción se detuvo porque V se reinició: el permiso para enviar a la nube vale solo para una ejecución. Vuelve a lanzarla y confirma de nuevo.',
+    'The transcription stopped because V restarted: the permission to send data to the cloud only lasts for one run. Launch it again and confirm again.',
+  ],
   'job.cancelled.note': [
     'Cancelaste esta transcripción. La grabación original sigue intacta.',
     'You cancelled this transcription. The original recording is intact.',

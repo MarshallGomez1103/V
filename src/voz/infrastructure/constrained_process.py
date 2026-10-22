@@ -24,6 +24,7 @@ from voz.application.edge_lab import (
     decode_definition,
     definition_payload,
 )
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.paths import resolve_voz_paths
 
 WORKER_MODULE = "voz.infrastructure.edge_lab_worker"
@@ -164,8 +165,7 @@ class ConstrainedProcess:
         with request.open("x", encoding="utf-8") as handle:
             os.chmod(request, 0o600)
             json.dump(definition_payload(definition), handle, allow_nan=False)
-        environment = dict(os.environ)
-        environment.update(
+        environment = child_environment(
             {
                 "HF_HUB_OFFLINE": "1",
                 "TRANSFORMERS_OFFLINE": "1",

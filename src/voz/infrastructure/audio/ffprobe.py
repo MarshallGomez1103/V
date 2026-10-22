@@ -16,7 +16,12 @@ from voz.application.ports.media_probe import (
     MediaStreamKind,
     ProbedMediaStream,
 )
+from voz.infrastructure.audio.ffmpeg_failure import (
+    FfmpegFailure,
+    classify_ffmpeg_exit,
+)
 from voz.infrastructure.audio.media_args import NO_WINDOW, ffprobe_file_arguments
+from voz.infrastructure.child_env import child_environment
 
 _DECODER_LINE = re.compile(r"^\s*[AV][A-Z.]{5}\s+([a-zA-Z0-9_.-]+)(?:\s|$)")
 _DECODER_CODEC_ALIAS = re.compile(r"(?:^|\s)\(codec\s+([a-zA-Z0-9_.-]+)\)(?:\s|$)")
@@ -67,10 +72,7 @@ class FfprobeMediaProbe:
             pass_fds=inherited,
         )
         if completed.returncode != 0:
-            raise MediaProbeError(
-                MediaProbeFailureCode.INVALID_MEDIA,
-                "The selected file is not readable media.",
-            )
+            raise _probe_exit_error(completed.returncode, completed.stderr)
 
         payload = _load_payload(completed.stdout)
         decoder_names = self._load_decoder_names()
@@ -130,6 +132,7 @@ class FfprobeMediaProbe:
                 timeout=self.timeout_seconds,
                 pass_fds=pass_fds,
                 creationflags=NO_WINDOW,
+                env=child_environment(),
             )
         except FileNotFoundError as error:
             raise MediaProbeError(
@@ -146,6 +149,23 @@ class FfprobeMediaProbe:
                 MediaProbeFailureCode.TOOL_UNAVAILABLE,
                 "The media inspection tool could not be started.",
             ) from error
+
+
+def _probe_exit_error(returncode: int, stderr: str) -> MediaProbeError:
+    if classify_ffmpeg_exit(returncode, stderr) is FfmpegFailure.TOOL:
+        return MediaProbeError(
+            MediaProbeFailureCode.TOOL_UNAVAILABLE,
+            "The media inspection tool could not be run.",
+        )
+    if returncode < 0:  # killed by a signal: the tool broke, not the file
+        return MediaProbeError(
+            MediaProbeFailureCode.INVALID_RESPONSE,
+            "The media inspection tool returned an invalid response.",
+        )
+    return MediaProbeError(
+        MediaProbeFailureCode.INVALID_MEDIA,
+        "The selected file is not readable media.",
+    )
 
 
 def _prepare_source_descriptor(source: BinaryIO) -> int:

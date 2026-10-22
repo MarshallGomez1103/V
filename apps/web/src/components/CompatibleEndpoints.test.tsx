@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { CompatibleEndpoint } from '../api/providers'
+import { setLang } from '../i18n/i18n'
 import { CompatibleEndpoints } from './CompatibleEndpoints'
 
 const URL = '/api/providers/compatible'
@@ -28,6 +29,7 @@ const CONSENT = 'Entiendo que el audio y el texto saldrán de mi equipo hacia es
 
 afterEach(() => {
   cleanup()
+  setLang('es')
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -190,5 +192,71 @@ describe('CompatibleEndpoints', () => {
       expect(screen.getByRole('button', { name: 'Guardar' })).toHaveProperty('disabled', false)
     })
     for (const log of logs) expect(JSON.stringify(log.mock.calls)).not.toContain(KEY)
+  })
+
+  it('refuses plain http to a remote host before saving', async () => {
+    const fetchMock = stubFetch(jsonResponse(200, []))
+    render(<CompatibleEndpoints />)
+    await newForm('http://example.com/v1')
+    expect(screen.getByText(/deben usar https:\/\//)).toBeDefined()
+    fireEvent.click(screen.getByRole('checkbox', { name: CONSENT }))
+    expect(screen.getByRole('button', { name: 'Guardar' })).toHaveProperty('disabled', true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the server https hint when the API refuses the URL', async () => {
+    stubFetch(jsonResponse(200, []), jsonResponse(422, { detail: { code: 'endpoint_invalid' } }))
+    render(<CompatibleEndpoints />)
+    await newForm(CLOUD.base_url)
+    fireEvent.click(screen.getByRole('checkbox', { name: CONSENT }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    expect(await screen.findByText(/solo https:\/\//)).toBeDefined()
+  })
+
+  describe('saved key and origin', () => {
+    const WARNING = 'La clave guardada se borrará al guardar'
+
+    async function edit(nextUrl: string, [editLabel, urlLabel] = ['Editar', 'URL base']) {
+      stubFetch(jsonResponse(200, [CLOUD]))
+      render(<CompatibleEndpoints />)
+      await screen.findByRole('heading', { name: CLOUD.name })
+      fireEvent.click(screen.getByRole('button', { name: editLabel }))
+      fireEvent.change(screen.getByLabelText(urlLabel), { target: { value: nextUrl } })
+    }
+
+    it.each([
+      'https://other.example.com/v1',
+      'https://speech.example.com:8443/v1',
+      'http://speech.example.com/v1',
+    ])('warns before saving when %s moves the origin without a new key', async (url) => {
+      await edit(url)
+      expect(screen.getByText(WARNING)).toBeDefined()
+      expect(screen.getByText(/Vuelve a escribir la clave/)).toBeDefined()
+    })
+
+    it('does not warn for a path-only change, a new key or a cleared key', async () => {
+      await edit('https://speech.example.com:443/other/')
+      expect(screen.queryByText(WARNING)).toBeNull()
+      fireEvent.change(screen.getByLabelText('URL base'), {
+        target: { value: 'https://other.example.com/v1' },
+      })
+      expect(screen.getByText(WARNING)).toBeDefined()
+      fireEvent.change(screen.getByLabelText('Clave de API (opcional)'), {
+        target: { value: KEY },
+      })
+      expect(screen.queryByText(WARNING)).toBeNull()
+      fireEvent.change(screen.getByLabelText('Clave de API (opcional)'), {
+        target: { value: '' },
+      })
+      expect(screen.getByText(WARNING)).toBeDefined()
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Quitar la clave guardada' }))
+      expect(screen.queryByText(WARNING)).toBeNull()
+    })
+
+    it('shows the warning in English too', async () => {
+      setLang('en')
+      await edit('https://other.example.com/v1', ['Edit', 'Base URL'])
+      expect(screen.getByText('The saved key will be deleted when you save')).toBeDefined()
+    })
   })
 })

@@ -294,8 +294,8 @@ def test_compatible_endpoint_errors_are_stable(tmp_path: Path) -> None:
     "base_url",
     [
         "https://api.example.com/v1",
-        "http://192.168.1.20:8000/v1",
-        "http://localhost.example.com/v1",
+        "https://192.168.1.20:8000/v1",
+        "https://localhost.example.com/v1",
     ],
 )
 def test_cloud_consent_is_required_before_saving_or_testing(
@@ -432,3 +432,128 @@ def test_malformed_url_with_consent_returns_safe_validation_error(
     assert response.json()["detail"]["code"] == "endpoint_invalid"
     assert KEY not in response.text and KEY not in caplog.text
     assert not (tmp_path / "voz" / SECRETS_FILENAME).exists()
+
+
+# --- the key belongs to the origin it was saved for -------------------------------
+
+
+def _saved_key_text(tmp_path: Path) -> str:
+    file = tmp_path / "voz" / SECRETS_FILENAME
+    return file.read_text(encoding="utf-8") if file.exists() else ""
+
+
+def test_moving_to_another_host_without_a_new_key_deletes_the_saved_key(
+    tmp_path: Path,
+) -> None:
+    tester = _Tester()
+    client = _endpoints_client(tmp_path, tester)
+    created = client.post(
+        "/api/providers/compatible",
+        json=_endpoint_body(base_url="https://a.example.com/v1", cloud_consent=True),
+    ).json()
+    url = f"/api/providers/compatible/{created['id']}"
+    assert created["key_configured"] is True and KEY in _saved_key_text(tmp_path)
+
+    moved = client.put(
+        url,
+        json=_endpoint_body(
+            base_url="https://b.example.com/v1", key=None, cloud_consent=True
+        ),
+    )
+
+    assert moved.status_code == 200
+    assert moved.json()["key_configured"] is False
+    assert KEY not in _saved_key_text(tmp_path)
+    assert client.post(url + "/test").status_code == 200
+    assert tester.keys == [None]  # nothing authorises the new host
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "kept"),
+    [
+        ("https://a.example.com/v1", "https://a.example.com/other", True),
+        ("https://a.example.com/v1", "https://A.Example.com:443/v1/", True),
+        ("https://a.example.com/v1", "https://a.example.com:8443/v1", False),
+        ("https://a.example.com/v1", "https://sub.a.example.com/v1", False),
+        ("http://127.0.0.1:8000/v1", "https://127.0.0.1:8000/v1", False),
+        ("http://127.0.0.1:8000/v1", "http://127.0.0.1:8001/v1", False),
+        ("http://127.0.0.1:8000/v1", "http://127.0.0.1:8000/v2", True),
+    ],
+)
+def test_only_an_origin_change_drops_the_key(
+    tmp_path: Path, old: str, new: str, kept: bool
+) -> None:
+    client = _endpoints_client(tmp_path)
+    created = client.post(
+        "/api/providers/compatible",
+        json=_endpoint_body(base_url=old, cloud_consent=True),
+    ).json()
+    moved = client.put(
+        f"/api/providers/compatible/{created['id']}",
+        json=_endpoint_body(base_url=new, key=None, cloud_consent=True),
+    )
+    assert moved.status_code == 200
+    assert moved.json()["key_configured"] is kept
+    assert (KEY in _saved_key_text(tmp_path)) is kept
+
+
+def test_a_new_key_on_a_new_origin_replaces_the_old_one(tmp_path: Path) -> None:
+    client = _endpoints_client(tmp_path)
+    created = client.post(
+        "/api/providers/compatible",
+        json=_endpoint_body(base_url="https://a.example.com/v1", cloud_consent=True),
+    ).json()
+    moved = client.put(
+        f"/api/providers/compatible/{created['id']}",
+        json=_endpoint_body(
+            base_url="https://b.example.com/v1", key="fresh-key", cloud_consent=True
+        ),
+    )
+    assert moved.json()["key_configured"] is True
+    assert "fresh-key" in _saved_key_text(tmp_path)
+    assert KEY not in _saved_key_text(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://192.168.1.5/v1",
+        "http://example.com/v1",
+        "http://localhost.example.com/v1",
+        "http://0.0.0.0:8000/v1",
+    ],
+)
+def test_plain_http_is_refused_for_every_non_loopback_host(
+    tmp_path: Path, base_url: str
+) -> None:
+    client = _endpoints_client(tmp_path)
+    url = "/api/providers/compatible"
+    refused = client.post(
+        url, json=_endpoint_body(base_url=base_url, cloud_consent=True)
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "endpoint_invalid"
+    assert "https://" in refused.json()["detail"]["message"]
+    assert client.get(url).json() == []
+    assert KEY not in _saved_key_text(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    ["http://127.0.0.1:8080/v1", "http://localhost/v1", "http://[::1]/v1"],
+)
+def test_plain_http_is_allowed_for_loopback(tmp_path: Path, base_url: str) -> None:
+    created = _endpoints_client(tmp_path).post(
+        "/api/providers/compatible", json=_endpoint_body(base_url=base_url)
+    )
+    assert created.status_code == 201 and created.json()["cloud"] is False
+
+
+def test_https_remote_is_accepted_with_consent(tmp_path: Path) -> None:
+    created = _endpoints_client(tmp_path).post(
+        "/api/providers/compatible",
+        json=_endpoint_body(
+            base_url="https://remote.example.com/v1", cloud_consent=True
+        ),
+    )
+    assert created.status_code == 201 and created.json()["cloud"] is True

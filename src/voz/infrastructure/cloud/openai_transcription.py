@@ -258,20 +258,31 @@ class OpenAITranscriptionProvider:
         headers = {"Content-Type": content_type}
         if key is not None:
             headers["Authorization"] = f"Bearer {key}"
-        request = HttpRequest(self._endpoint, headers, body, self._timeout_s)
+        request = HttpRequest(
+            self._endpoint,
+            headers,
+            body,
+            self._timeout_s,
+            abort=None if cancellation is None else cancellation.is_cancelled,
+        )
         for attempt in range(1, self._max_attempts + 1):
             self._check(cancellation)
             retry_after: float | None = None
             try:
                 reply = self._transport(request)
             except TransportError as error:
+                if error.aborted:
+                    raise _cancelled() from None
                 # Only timeouts are recoverable; other network errors are not retried.
-                failure = _fail(
-                    f"{self._label} did not answer in time."
-                    if error.timeout
-                    else f"{self._label} could not be reached.",
-                    retryable=True,
-                )
+                if error.oversized:
+                    failure = _fail(f"{self._label} returned an oversized response.")
+                else:
+                    failure = _fail(
+                        f"{self._label} did not answer in time."
+                        if error.timeout
+                        else f"{self._label} could not be reached.",
+                        retryable=True,
+                    )
                 recoverable = error.timeout
             else:
                 if reply.status == 200:

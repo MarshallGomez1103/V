@@ -24,6 +24,7 @@ from voz.application.ports.compatible_endpoints import (
     EndpointError,
     EndpointFailureCode,
     is_loopback_url,
+    origin,
 )
 from voz.application.ports.provider_secrets import (
     ProviderSecretsPort,
@@ -165,7 +166,11 @@ def _add_endpoint_routes(
             )
         return found
 
-    def save(endpoint_id: str, body: EndpointBody) -> EndpointView:
+    def save(
+        endpoint_id: str,
+        body: EndpointBody,
+        previous: CompatibleEndpoint | None = None,
+    ) -> EndpointView:
         try:
             endpoint = CompatibleEndpoint(
                 id=endpoint_id,
@@ -181,7 +186,12 @@ def _add_endpoint_routes(
             # Key first: a rejected key leaves no half-saved endpoint behind.
             if body.key is not None and body.key.strip():
                 secrets.set(endpoint.secret_id, body.key.strip())
-            elif body.clear_key:
+            elif body.clear_key or (
+                # A key belongs to the origin it was saved for: it never follows
+                # the endpoint to another scheme, host or port.
+                previous is not None
+                and origin(previous.base_url) != origin(endpoint.base_url)
+            ):
                 secrets.delete(endpoint.secret_id)
             store.save(endpoint)
         except EndpointError as error:
@@ -203,8 +213,7 @@ def _add_endpoint_routes(
         return await run_in_threadpool(save, uuid4().hex[:12], body)
 
     def replace(endpoint_id: str, body: EndpointBody) -> EndpointView:
-        existing(endpoint_id)
-        return save(endpoint_id, body)
+        return save(endpoint_id, body, existing(endpoint_id))
 
     async def put_endpoint(endpoint_id: str, body: EndpointBody) -> EndpointView:
         return await run_in_threadpool(replace, endpoint_id, body)

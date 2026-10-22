@@ -17,6 +17,7 @@ from voz.application.ports.transcription_options import TranscriptionRuntimeProb
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.infrastructure.asr.hardware import CTranslate2HardwareProbe
 from voz.infrastructure.asr.options import FasterWhisperRuntimeProbe
+from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.model_storage import FileSystemModelStore
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 
@@ -66,6 +67,7 @@ def _run_version(command: list[str]) -> subprocess.CompletedProcess[str]:
         text=True,
         errors="replace",
         timeout=VERSION_TIMEOUT_SECONDS,
+        env=child_environment(),
     )
 
 

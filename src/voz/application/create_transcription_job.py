@@ -183,8 +183,9 @@ class CreateTranscriptionJob:
                     "or project glossaries.",
                 )
             quality_profile = None
+        # CANCELLING is unfinished: the worker may still hold the engine and files.
         if any(
-            job.state.is_processable
+            not job.state.is_terminal
             for job in self.jobs.list_by_media_asset(media_asset_id)
         ):
             raise CreateJobError(

@@ -269,9 +269,7 @@ class RemoveModel:
                 ):
                     raise _in_use()
             if self.synthesis_jobs is not None and any(
-                job.state.is_processable
-                and (job.request.provider_id, job.request.model_id)
-                == descriptor.identity
+                (job.request.provider_id, job.request.model_id) == descriptor.identity
                 for job in self.synthesis_jobs.list_recoverable()
             ):
                 raise _in_use()

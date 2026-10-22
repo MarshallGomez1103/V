@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -361,13 +361,7 @@ def test_job_created_while_a_transcript_is_rediarized_sees_it_active() -> None:
     owner = TranscriptionJob.create(
         job_id=uuid4(), project_id=PROJECT.id, media_asset_id=ASSET.id, now=NOW
     )
-    done = owner
-    for state in (
-        TranscriptionJobState.CANCELLING,
-        TranscriptionJobState.CANCELLED,
-    ):
-        done = done.transition_to(state, at=NOW)
-    jobs.add(done)
+    jobs.add(replace(owner, state=TranscriptionJobState.COMPLETED, progress=1.0))
     selections = Selections()
     selections.add(
         JobSelection(
