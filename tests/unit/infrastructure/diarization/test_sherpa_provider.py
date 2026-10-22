@@ -9,6 +9,7 @@ import wave
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -460,24 +461,14 @@ def _child_provider(
 
     real_popen = subprocess.Popen
 
-    def popen(
-        command: list[str],
-        *,
-        stdin: int,
-        stdout: int,
-        stderr: int,
-        creationflags: int,
-        start_new_session: bool,
-        env: dict[str, str],
-    ) -> subprocess.Popen[bytes]:
+    def popen(command: list[str], **kwargs: Any) -> subprocess.Popen[Any]:
+        # Patching ``sherpa.subprocess`` patches the module for everyone: other
+        # spawns (``taskkill`` from ``kill_tree`` on Windows) must stay real.
+        if command[1:3] != ["-m", "voz.infrastructure.diarization.worker"]:
+            return real_popen(command, **kwargs)
+        assert "env" in kwargs and "start_new_session" in kwargs
         return real_popen(
-            [sys.executable, "-c", _FAKE_CHILD, *command[3:], mode],
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            creationflags=creationflags,
-            start_new_session=start_new_session,
-            env=env,
+            [sys.executable, "-c", _FAKE_CHILD, *command[3:], mode], **kwargs
         )
 
     monkeypatch.setattr(sherpa.subprocess, "Popen", popen)

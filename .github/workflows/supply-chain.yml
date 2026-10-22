@@ -67,7 +67,7 @@ jobs:
           node-version: "22"
       # Reads package-lock.json only; nothing is installed or executed.
       - name: npm audit (high and critical)
-        run: npm audit --audit-level=high
+        run: npm audit --package-lock-only --audit-level=high
 
   secrets:
     name: Audit / secrets in history

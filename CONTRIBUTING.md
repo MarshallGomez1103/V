@@ -100,7 +100,7 @@ To run the same audits locally:
 ```bash
 uv export --frozen --no-hashes --no-dev --all-extras --no-emit-project -o /tmp/requirements.txt
 uvx pip-audit==2.10.1 --disable-pip --no-deps -r /tmp/requirements.txt
-npm audit --audit-level=high --prefix apps/web
+npm audit --package-lock-only --audit-level=high --prefix apps/web
 ```
 
 Prefer upgrading the dependency. If an advisory does not apply, record it with
