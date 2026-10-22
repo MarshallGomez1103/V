@@ -90,6 +90,24 @@ npm run build
 `npm run build` regenerates the web bundle committed under `src/voz/static`.
 Run it only when you mean to change that bundle.
 
+### Supply-chain checks
+
+The `Supply chain` workflow audits the locked dependencies (`pip-audit`,
+`npm audit`) and scans the Git history for secrets (gitleaks). It also runs
+weekly, so it can fail on an unchanged branch when a new advisory is published.
+To run the same audits locally:
+
+```bash
+uv export --frozen --no-hashes --no-dev --all-extras --no-emit-project -o /tmp/requirements.txt
+uvx pip-audit==2.10.1 --disable-pip --no-deps -r /tmp/requirements.txt
+npm audit --audit-level=high --prefix apps/web
+```
+
+Prefer upgrading the dependency. If an advisory does not apply, record it with
+a dated reason: `--ignore-vuln <ID>` in `.github/workflows/supply-chain.yml`,
+or a narrow regex and path in the allowlist of `.gitleaks.toml`. Use obviously fake values
+in test fixtures; a real credential in history must be revoked, not ignored.
+
 Ordinary verification does not need Whisper or other speech models, paid
 providers or changes to your operating system, and a change should not require
 them.

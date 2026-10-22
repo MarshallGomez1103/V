@@ -1,0 +1,16 @@
+# Gitleaks configuration: the default rules plus one narrow allowlist.
+[extend]
+useDefault = true
+
+[[allowlists]]
+# 2026-10-21: dummy credentials used as fixtures in tests. Both conditions must
+# hold, so the same strings elsewhere (or any other key in tests) still count.
+description = "Fake API keys in test fixtures"
+condition = "AND"
+paths = [
+  '''^tests/''',
+  '''^apps/web/src/.*\.test\.tsx?$''',
+]
+regexes = [
+  '''^(sk-compatible-ui-secret-4242|sk-compatible-secret-4242|sk-wrong-key-1234|sk-test-0123456789abcdef|xi-secret-key-123)$''',
+]

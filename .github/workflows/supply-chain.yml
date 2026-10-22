@@ -1,0 +1,102 @@
+name: Supply chain
+
+# Dependency vulnerabilities and committed secrets. Kept apart from ci.yml so a
+# new advisory (which appears without any code change) never hides a code
+# failure, and so each job can be removed on its own.
+#
+# Exceptions are recorded here, in the open, each with a date and a reason:
+#   - Python: add `--ignore-vuln <ID>` to the pip-audit step.
+#   - Secrets: extend the allowlist in .gitleaks.toml (narrow regex + path).
+#   - npm: fix through the lockfile or a package.json "overrides" entry.
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+  workflow_dispatch:
+  # New advisories land every day: re-audit the unchanged default branch weekly.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-audit:
+    name: Audit / Python dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      # Everything an end user can install (runtime + every extra), exactly as
+      # locked. The project itself and the dev group are not shipped.
+      - name: Export the locked runtime dependencies
+        run: |
+          uv export --frozen --no-hashes --no-dev --all-extras --no-emit-project \
+            --output-file "$RUNNER_TEMP/requirements.txt"
+      # pip-audit runs in uv's throwaway tool environment, never in the
+      # project's. Any known advisory fails the job (pip-audit has no severity
+      # filter). Pinned version: raise it deliberately.
+      - name: pip-audit
+        run: |
+          uvx pip-audit==2.10.1 \
+            --disable-pip --no-deps --progress-spinner off \
+            -r "$RUNNER_TEMP/requirements.txt"
+
+  npm-audit:
+    name: Audit / npm dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22"
+      # Reads package-lock.json only; nothing is installed or executed.
+      - name: npm audit (high and critical)
+        run: npm audit --audit-level=high
+
+  secrets:
+    name: Audit / secrets in history
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # gitleaks is MIT licensed and has no per-owner licence check. The
+      # archive is verified against a SHA-256 taken from the official release
+      # (gitleaks_8.30.1_checksums.txt) before it is unpacked.
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks (checksum verified)
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check -
+          mkdir "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+      # Scans every commit reachable from the checkout. --redact keeps the
+      # secret values out of the public log; nothing is uploaded.
+      - name: Scan the git history
+        run: |
+          "$RUNNER_TEMP/gitleaks/gitleaks" git \
+            --redact --verbose --no-banner --exit-code 1 \
+            --config .gitleaks.toml .
