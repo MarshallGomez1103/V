@@ -110,8 +110,10 @@ are declared explicitly; testing a connection does not install or select models.
 
 Only `localhost`, `127.0.0.0/8` and `::1` count as local. All other hosts,
 including LAN addresses, display **CLOUD** and require `cloud_consent: true`
-before saving. Editing the URL clears the UI consent checkbox. Registering a
-server never sends audio or text, selects a provider or creates a fallback.
+before saving. Plain `http://` is accepted only for those loopback hosts; any
+other server must use `https://`, otherwise the request is rejected with
+`endpoint_invalid`. Editing the URL clears the UI consent checkbox. Registering
+a server never sends audio or text, selects a provider or creates a fallback.
 The connection test is an explicit request to the saved server. In Voice,
 remote synthesis and samples also require an unchecked confirmation control;
 local models take priority when a previous choice disappears. CLOUD remains
@@ -141,10 +143,16 @@ Create and replace accept this body (the optional `key` is write-only):
 ```
 
 A null or blank key preserves the saved key; a nonblank value replaces it;
-`clear_key: true` removes it unless a replacement is supplied. Credentials in
+`clear_key: true` removes it unless a replacement is supplied. A saved key
+belongs to the scheme, host and port it was saved for: replacing an endpoint
+with a different scheme, host or port deletes its stored key unless a new `key`
+is sent in the same request (changing only the path keeps it). Credentials in
 the URL, query strings and fragments are rejected. The endpoint configuration
 is stored atomically in `$XDG_CONFIG_HOME/voz/openai-compatible.json` with mode
-`0600` on POSIX. Keys use `ProviderSecrets` in the separate `secrets.toml` file,
+`0600` on POSIX. An entry that no longer passes validation, such as a remote
+`http://` server saved by an earlier version, is not listed and cannot be
+selected or tested, but it stays in the file unchanged when other endpoints
+are saved or deleted, and its stored key is not removed. Keys use `ProviderSecrets` in the separate `secrets.toml` file,
 with the same protection; neither file belongs in SQLite. Symlinks and
 files accessible to group or other users are rejected. Windows relies on the
 user profile ACL rather than POSIX modes.
@@ -169,8 +177,10 @@ data to a different locality.
 
 STT sends multipart WAV to `{base_url}/audio/transcriptions`; TTS sends text,
 model, voice and speed to `{base_url}/audio/speech` and requests WAV. Keys travel
-only in the Authorization header. Redirects are not followed, environment
-proxies are bypassed, and cancellation closes the in-flight connection. Speech
+only in the Authorization header. Redirects are not followed: a 3xx response is
+treated as the answer, so a key is never resent to another origin (this applies
+to every cloud provider's HTTP transport). Environment proxies are bypassed, and
+cancellation closes the in-flight connection. Speech
 accepts PCM16 or float32 WAV, keeping the first channel for multichannel audio;
 raw PCM responses use 24 kHz PCM16 mono. Transcription requests use a conservative
 25 MB upload ceiling; speech chunks are limited to 4,000 characters. Compatibility

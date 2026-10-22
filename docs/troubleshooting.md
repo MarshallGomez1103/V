@@ -70,6 +70,41 @@ voz --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.lo
 
 Reason: [ADR-0006](adr/0006-local-first-privacy.md).
 
+## Requests rejected with 403 `origin_not_allowed`
+
+V refuses writes (`POST`, `PUT`, `PATCH`, `DELETE`) and WebSocket connections
+that come from another origin: the `Origin` header must match the address the
+request was sent to, and `Sec-Fetch-Site`, if present, must be `same-origin` or
+`none`. Open V at the address it prints (for example `http://127.0.0.1:8765`)
+and not from another site, a different port or a page that embeds it. The `voz`
+CLI, `curl` and other clients that send no `Origin` are not affected.
+
+If you reach V through a reverse proxy that terminates TLS, the server must see
+the same scheme as the browser; otherwise every write from the browser is
+refused. Configure the ASGI server's trusted proxy handling as described in
+[authentication](api/authentication.md). Reason:
+[ADR-0006](adr/0006-local-first-privacy.md).
+
+## A cloud job failed with `cloud_consent_expired`
+
+Consent to send audio or text to a cloud provider covers one run. If V was
+closed or restarted while a cloud transcription or speech job was not finished,
+the job is marked as failed at the next start instead of being sent again.
+Nothing was uploaded after the restart. Create the job again and confirm the
+cloud notice to retry. Local jobs are resumed automatically.
+
+## An OpenAI-compatible server is rejected or missing
+
+- **`endpoint_invalid` for an `http://` URL**: plain `http://` is accepted only
+  for `localhost`, `127.0.0.0/8` and `::1`. Use the server's `https://` address.
+- **A server saved before this rule no longer appears**: an `http://` server
+  that is not on this machine is hidden and cannot be used, but its entry stays
+  in `$XDG_CONFIG_HOME/voz/openai-compatible.json`. Register it again with an
+  `https://` URL.
+- **The key is gone after editing the URL**: changing the scheme, host or port
+  of an endpoint removes its stored key so it is never sent to a different
+  server. Enter the key again when you save the new address.
+
 ## Warning when using `--host`
 
 If the bind address is not loopback (`127.0.0.1`, `::1`, `localhost`), `voz`

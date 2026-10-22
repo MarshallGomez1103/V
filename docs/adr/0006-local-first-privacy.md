@@ -104,6 +104,34 @@ limits.
 - Platform rating follows the invariants of AGENTS.md: anything not exercised is
   experimental (for example, real CUDA).
 
+## Amendment (2026-10-21)
+
+Further rules that narrow the network surface and the use of cloud providers:
+
+1. **Consent for cloud synthesis.** `POST /api/synthesis` accepts a strict
+   boolean `cloud_consent`. With a cloud engine and anything other than `true`,
+   it answers 422 `cloud_consent_required` and creates no job, as
+   `POST /api/jobs` already does for cloud transcription.
+2. **Consent covers one run.** After a restart, an unfinished cloud job
+   (transcription or synthesis) is not resumed: it is set to `FAILED` with
+   `cloud_consent_expired`. Local jobs keep resuming.
+3. **Cross-origin writes refused.** The Host guard also answers 403
+   `origin_not_allowed` to `POST`, `PUT`, `PATCH` and `DELETE` requests, and
+   closes WebSocket handshakes, whose `Origin` differs from the origin they were
+   addressed to or whose `Sec-Fetch-Site` is not `same-origin` or `none`.
+   Requests without those headers (CLI, `curl`, OpenAI clients) are unaffected.
+   Behind a TLS-terminating proxy the scheme seen by the server must match the
+   external origin.
+4. **HTTPS for remote compatible endpoints.** `http://` is accepted only for
+   loopback hosts; other endpoints need `https://`. Changing the scheme, host or
+   port of an endpoint deletes its stored key unless a new one is supplied. An
+   earlier remote `http://` entry is hidden and unusable but kept in the file.
+   Cloud provider transports do not follow redirects.
+5. **Minimal environment for child processes.** Engines, FFmpeg and other child
+   processes receive an allowlist of technical variables (paths, locale,
+   temporary directories, GPU and thread settings). Names containing `KEY`,
+   `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL` or `AUTH` are never passed.
+
 ## Alternatives considered
 
 ### Cloud ASR by default

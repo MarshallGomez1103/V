@@ -31,6 +31,21 @@ when judging a report:
   rejects any request whose `Host` is not `127.0.0.1`, `localhost`, `[::1]` or
   a name the user passed explicitly (`--host`, `--allow-host`). See
   [ADR-0006](docs/adr/0006-local-first-privacy.md).
+- **Cross-origin writes.** The same middleware answers 403 `origin_not_allowed`
+  to state-changing requests and WebSocket handshakes whose `Origin` is another
+  origin or whose `Sec-Fetch-Site` is `cross-site` or `same-site`, which stops
+  form posts and preflight-free `fetch` calls from other sites. Clients that
+  send neither header keep working. Behind a TLS-terminating proxy the server's
+  scheme must match the external origin.
+- **Cloud consent.** Cloud transcription and synthesis require an explicit
+  `cloud_consent: true` per request, and a cloud job interrupted by a restart
+  fails with `cloud_consent_expired` instead of being resumed. OpenAI-compatible
+  servers outside loopback must use `https://`; changing an endpoint's scheme,
+  host or port deletes its stored key, and cloud HTTP transports do not follow
+  redirects.
+- **Child processes.** Engines, FFmpeg and other child processes get a minimal
+  environment; variables whose names contain `KEY`, `TOKEN`, `SECRET`,
+  `PASSWORD`, `CREDENTIAL` or `AUTH` are not passed.
 - **Shared-token authentication.** CLI binds outside loopback require a private
   token file. A configured token protects API, UI, static assets and streams;
   Basic browser state changes also require a matching Origin. Default loopback
@@ -71,7 +86,8 @@ that replace the application middleware are outside this guarantee.
 
 Run `npm audit` from `apps/web` and audit the installed Python environment with
 `pip-audit --path .venv/lib/python3.12/site-packages --skip-editable` from an
-isolated audit-tool environment. Check tracked files and history with
+isolated audit-tool environment (CI runs the same audits in the `Supply chain`
+workflow; see [CONTRIBUTING.md](CONTRIBUTING.md#supply-chain-checks)). Check tracked files and history with
 `bash scripts/audit-secrets.sh`. Review findings rather than treating a successful
 scan as proof that every optional runtime or historical secret is covered.
 

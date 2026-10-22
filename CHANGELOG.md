@@ -158,6 +158,24 @@ artifacts. What follows is everything that already exists in the repository.
   (DNS-rebinding protection). An ASGI middleware serves only loopback hosts
   (`127.0.0.1`, `localhost`, `::1`) or the explicit `--host`, on any port,
   covering API, SSE and static files.
+- `POST /api/synthesis` accepts `cloud_consent` (strict boolean) and answers 422
+  `cloud_consent_required` for a cloud engine without `true`. After a restart,
+  unfinished cloud transcription and synthesis jobs are no longer resumed: they
+  fail with `cloud_consent_expired`.
+- State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) and WebSocket
+  handshakes with a foreign `Origin`, or a `Sec-Fetch-Site` other than
+  `same-origin` or `none`, are rejected with 403 `origin_not_allowed`. Clients
+  without those headers (CLI, `curl`, OpenAI clients) are unaffected; behind a
+  TLS-terminating proxy the scheme seen by the server must match the external
+  origin.
+- OpenAI-compatible endpoints: `http://` is accepted only for loopback hosts and
+  other servers need `https://` (`endpoint_invalid`). Changing an endpoint's
+  scheme, host or port deletes its stored key unless a new one is sent. Remote
+  `http://` endpoints saved earlier are hidden and unusable but remain in the
+  file. Cloud provider transports no longer follow redirects.
+- Child processes (engines, FFmpeg, probes) run with a minimal environment that
+  excludes variables whose names contain `KEY`, `TOKEN`, `SECRET`, `PASSWORD`,
+  `CREDENTIAL` or `AUTH`.
 - Patched frontend dependencies in the lockfile: `source-map-js` 1.2.2,
   `brace-expansion` and `undici`. `npm audit --omit=dev` reports 0
   vulnerabilities (previously 1 high). One moderate advisory remains in

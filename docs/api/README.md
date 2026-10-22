@@ -27,6 +27,26 @@ limited local subset under `/v1`; its endpoint error envelope differs from `/api
   re-resolves its own name to `127.0.0.1`. WebSocket upgrades with a disallowed
   `Host` are closed with code 1008. Implementation:
   `src/voz/interfaces/api/host_guard.py`.
+- **Cross-origin check.** A `POST`, `PUT`, `PATCH` or `DELETE` request, and a
+  WebSocket handshake, is refused with HTTP 403 when its `Origin` header names
+  another origin than the one the request was addressed to (scheme, host and
+  port; `null` and repeated headers fail) or when `Sec-Fetch-Site` is anything
+  other than `same-origin` or `none` (so `cross-site` and `same-site` are
+  refused):
+
+  ```json
+  {"detail": {"code": "origin_not_allowed", "message": "This request comes from another origin and was refused."}}
+  ```
+
+  A refused WebSocket handshake is closed with code 1008. Reads (`GET`, `HEAD`,
+  `OPTIONS`) are not affected. This stops a page on another site from changing
+  state with a form post or a `text/plain` or multipart `fetch`, which browsers
+  send without a CORS preflight. Clients that send neither `Origin` nor
+  `Sec-Fetch-Site` (the `voz` CLI, `curl`, OpenAI client libraries) keep
+  working. The scheme is the one the server sees: behind a reverse proxy that
+  terminates TLS, the server must be configured to trust the proxy so that its
+  scheme matches the external origin (see
+  [authentication](authentication.md)); otherwise browser writes are refused.
 - **Errors** always have the shape
   `{"detail": {"code": "<snake_case_code>", "message": "<safe text>"}}`, with
   optional extra fields documented per endpoint. Codes are stable; messages are
@@ -42,6 +62,10 @@ limited local subset under `/v1`; its endpoint error envelope differs from `/api
   through a CORS preflight, which the server never grants.
 - **No cloud calls** unless the user explicitly selects a cloud provider for a
   job (see [providers.md](providers.md) and [privacy/](../privacy/openai.md)).
+  Creating a cloud transcription or synthesis job requires
+  `cloud_consent: true` in the request, and a cloud job interrupted by a restart
+  is failed instead of resumed (see [jobs.md](jobs.md#cloud-consent-cloud_consent)
+  and [synthesis.md](synthesis.md#cloud-consent)).
 
 ## Endpoints
 

@@ -19,7 +19,7 @@ Responses never contain host paths: audio is addressed by job id.
 | Method and path | Request | Response |
 | --- | --- | --- |
 | `GET /api/synthesis/options` | — | `Options` (below) |
-| `POST /api/synthesis` | `{"text","provider_id","model_id","voice_id","language"?: str\|null,"speed"?: float}` | 201 `SynthesisView` + `"reused": false`; 200 with `"reused": true` when an identical request is already done or in progress (see "Reuse"); errors below |
+| `POST /api/synthesis` | `{"text","provider_id","model_id","voice_id","language"?: str\|null,"speed"?: float,"cloud_consent"?: bool}` | 201 `SynthesisView` + `"reused": false`; 200 with `"reused": true` when an identical request is already done or in progress (see "Reuse"); errors below |
 | `GET /api/synthesis/{id}` | — | `SynthesisView` plus the full `text`; 404 `synthesis_job_not_found` |
 | `GET /api/synthesis/{id}/events` | — | `text/event-stream` (see "Progress events"); 404 `synthesis_job_not_found` |
 | `POST /api/synthesis/{id}/cancel` | — | 202 `SynthesisView` (`CANCELLING` or `CANCELLED`); 404 `synthesis_job_not_found`; 409 `synthesis_job_terminal` |
@@ -75,7 +75,7 @@ the engine (`voice_not_found`, `model_not_installed`, `runtime_unavailable`,
 `synthesis_failed`, `text_too_long`), the use cases
 (`synthesis_provider_not_found`, `synthesis_model_unknown`), storage
 (`io_error`, ...) or the runner (`synthesis_internal_error`,
-`synthesis_runner_crashed`).
+`synthesis_runner_crashed`, `cloud_consent_expired`).
 
 ## Creating a job
 
@@ -89,9 +89,27 @@ Errors of `POST /api/synthesis`:
 | 409 | `synthesis_model_not_installed` | the model is known but its files are missing |
 | 409 | `synthesis_runtime_unavailable` | the engine cannot run that model now |
 | 422 | `synthesis_request_invalid` | blank text, text over `max_chars`, speed out of range, NUL characters |
+| 422 | `cloud_consent_required` | the engine is cloud and `cloud_consent` is not `true` (see below) |
 
 A body that is not valid JSON, misses a field, or carries a text longer than
 twice `max_chars` gets FastAPI's standard 422 validation payload.
+
+### Cloud consent
+
+An engine whose `locality` is `cloud` (see "Options") sends the text off this
+machine. `POST /api/synthesis` accepts it only with `cloud_consent: true`, a
+strict JSON boolean (`"true"`, `1` and the like are rejected with the standard
+422 validation payload). Without it, or with `false`, the answer is 422
+`cloud_consent_required`: nothing is created or enqueued and no text reaches the
+provider. The check runs once the engine is found, before the model and voice
+are validated. Local engines ignore the field, which is not stored: it
+authorizes this one request.
+
+Consent covers a single run. If V stops while a cloud synthesis job is
+`QUEUED`, `RUNNING` or `PERSISTING`, the job is not resumed at the next start:
+it is set to `FAILED` with `error_code` `cloud_consent_expired` and nothing is
+sent. Create the job again with `cloud_consent: true` to retry. Local jobs are
+resumed as before.
 
 ### Reuse
 

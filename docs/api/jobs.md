@@ -177,6 +177,11 @@ loopback OpenAI-compatible server) ignore the field. The field is not stored in
 the job: it authorizes this one request. A client that predates the field keeps
 working for local options and fails closed for cloud ones.
 
+Consent covers a single run. If V stops while a cloud job is not finished, the
+job is not resumed at the next start (see "Execution and recovery"): it becomes
+`FAILED` with `error_code` `cloud_consent_expired` and nothing is sent to the
+provider. Start a new job with `cloud_consent: true` to retry.
+
 ### Shutting down the server (`POST /api/shutdown`)
 
 Intended for the web UI's "Close V" button. It requires the header
@@ -281,8 +286,9 @@ A single-threaded `JobRunner` processes jobs one at a time: `PREPROCESSING`
 normalizes if the derivative is missing, `TRANSCRIBING` runs recoverable
 chunked transcription with SQLite checkpoints, `ALIGNING` creates the literal
 `Transcript` and `Segment`s (visible immediately) and `DIARIZING` assigns the
-speakers. On server start, processable jobs are re-enqueued without repeating
-confirmed chunks. `POST …/cancel` marks `CANCELLING` and the runner ends in
+speakers. On server start, processable local jobs are re-enqueued without
+repeating confirmed chunks; unfinished cloud jobs are failed with
+`cloud_consent_expired` instead (see "Cloud consent"). `POST …/cancel` marks `CANCELLING` and the runner ends in
 `CANCELLED` between recoverable units. Failures are exposed as a stable
 `error_code`.
 
