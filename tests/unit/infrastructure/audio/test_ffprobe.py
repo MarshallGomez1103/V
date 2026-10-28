@@ -33,8 +33,9 @@ def _completed(
     *,
     stdout: str,
     returncode: int = 0,
+    stderr: str = "",
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(command, returncode, stdout, "")
+    return subprocess.CompletedProcess(command, returncode, stdout, stderr)
 
 
 def test_probe_uses_argv_and_validates_detected_codecs(
@@ -263,3 +264,25 @@ def test_probe_exit_status_separates_bad_media_from_broken_tool(
         FfprobeMediaProbe().probe(source)
 
     assert captured.value.code is expected_code
+
+
+@pytest.mark.parametrize("returncode", [1, 127, -11])
+def test_probe_exit_errors_never_carry_stderr_or_host_paths(
+    monkeypatch: pytest.MonkeyPatch, returncode: int
+) -> None:
+    stderr = "/home/someone/private/talk.mp4: Invalid data found when processing input"
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return _completed(command, stdout="", returncode=returncode, stderr=stderr)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with TemporaryFile("w+b") as source, pytest.raises(MediaProbeError) as captured:
+        FfprobeMediaProbe().probe(source)
+
+    assert "/home" not in captured.value.user_message
+    assert "Invalid data" not in captured.value.user_message
+    assert "/home" not in str(captured.value)

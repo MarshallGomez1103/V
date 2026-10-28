@@ -61,6 +61,11 @@ def is_loopback_url(base_url: str) -> bool:
         return False
 
 
+def consent_to_record(consent: bool, base_url: str) -> bool:
+    """Consent belongs to a non-loopback URL; a local server records none."""
+    return consent and not is_loopback_url(base_url.strip())
+
+
 def normalize_base_url(value: object) -> str:
     """``http(s)://host[:port][/path]`` without credentials, query or trailing /.
 
@@ -217,6 +222,7 @@ __all__ = [
     "EndpointConnectionTester",
     "EndpointError",
     "EndpointFailureCode",
+    "consent_to_record",
     "is_loopback_url",
     "normalize_base_url",
     "origin",

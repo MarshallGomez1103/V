@@ -71,14 +71,13 @@ class BlockingAsr(diar.FakeAsr):
         return super().transcribe(audio=audio, options=options)
 
 
-def _stop_while(started: threading.Event, runner: object) -> float:
+def _stop_while(started: threading.Event, runner: object) -> None:
+    """Stop mid-work; the blocked fake only returns on its token, so a worker that
+    exits within ``timeout`` (far below ``LONG``) was stopped, not waited for."""
     assert started.wait(5)
     worker = runner._thread  # type: ignore[attr-defined]
-    t0 = time.monotonic()
-    runner.stop(timeout=5)  # type: ignore[attr-defined]
-    elapsed = time.monotonic() - t0
+    assert runner.stop(timeout=5) is True  # type: ignore[attr-defined]
     assert worker is not None and not worker.is_alive()
-    return elapsed
 
 
 def test_shutdown_stops_the_asr_chunk_and_recover_resumes(tmp_path: Path) -> None:
@@ -89,7 +88,7 @@ def test_shutdown_stops_the_asr_chunk_and_recover_resumes(tmp_path: Path) -> Non
     runner.start()
     runner.enqueue(fx.job.id)
 
-    assert _stop_while(asr.started, runner) < 2.0  # not the whole chunk
+    _stop_while(asr.started, runner)
 
     stopped = fx.persisted()
     assert stopped.state is S.TRANSCRIBING  # resumable, never CANCELLED
@@ -163,7 +162,7 @@ def test_shutdown_stops_preprocessing_and_recover_resumes(tmp_path: Path) -> Non
     runner.start()
     runner.enqueue(fx.job.id)
 
-    assert _stop_while(preparer.started, runner) < 2.0
+    _stop_while(preparer.started, runner)
 
     assert fx.persisted().state is S.PREPROCESSING  # resumable, never CANCELLED
 

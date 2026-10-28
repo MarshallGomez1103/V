@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from voz.infrastructure.process_tree import kill_tree
+from voz.infrastructure.process_tree import kill_tree, stop_group
 
 _SLEEP = "import time; time.sleep(30)"
 
@@ -150,3 +150,66 @@ def test_every_cancellable_spawn_gets_its_own_session(module: str) -> None:
     assert spawns, module
     for spawn in spawns:
         assert "start_new_session" in {k.arg for k in spawn.keywords}, spawn.lineno
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ends trees by process group")
+def test_only_process_tree_signals_process_groups() -> None:
+    root = Path(__file__).parents[3] / "src"
+
+    offenders = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "killpg" in path.read_text(encoding="utf-8")
+        and path.name != "process_tree.py"
+    )
+
+    assert offenders == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ends trees by process group")
+def test_stop_group_sweeps_a_descendant_that_outlived_the_leader(
+    tmp_path: Path,
+) -> None:
+    pid_file = tmp_path / "pid"
+    grandchild_code = (
+        "import signal, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "time.sleep(30)\n"
+    )
+    script = (
+        "import subprocess, sys\n"
+        f"g = subprocess.Popen([sys.executable, '-c', {grandchild_code!r}])\n"
+        f"open({str(pid_file)!r}, 'w').write(str(g.pid))\n"
+    )
+    child = subprocess.Popen([sys.executable, "-c", script], start_new_session=True)
+    grandchild = _wait_for(pid_file)
+    child.wait()  # the leader is gone and reaped; its descendant keeps the group
+
+    try:
+        stop_group(child, 0)
+        deadline = time.monotonic() + 5
+        while _alive(grandchild) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not _alive(grandchild)
+    finally:
+        if _alive(grandchild):
+            os.kill(grandchild, signal.SIGKILL)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ends trees by process group")
+def test_stop_group_tolerates_eperm_from_a_zombie_only_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[int] = []
+
+    def killpg(pgid: int, sig: int) -> None:
+        sent.append(sig)
+        raise PermissionError
+
+    monkeypatch.setattr(os, "killpg", killpg)
+    child = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+    child.wait()
+
+    stop_group(child, 0.1)
+
+    assert sent == [signal.SIGTERM, signal.SIGKILL]

@@ -21,6 +21,7 @@ from voz.application.job_runner import (
     JobTerminal,
     transcript_id_for,
 )
+from voz.application.job_status import job_has_transcript, preview_segments
 from voz.application.ports.diarization import DiarizationOptions, SpeakerCountHint
 from voz.application.ports.repositories import (
     SegmentRepository,
@@ -219,27 +220,6 @@ def job_view(
     }
 
 
-_NO_TRANSCRIPT_YET = frozenset(
-    {
-        TranscriptionJobState.QUEUED,
-        TranscriptionJobState.PROBING,
-        TranscriptionJobState.PREPROCESSING,
-        TranscriptionJobState.TRANSCRIBING,
-    }
-)
-
-
-def job_has_transcript(
-    job: TranscriptionJob, transcripts: TranscriptRepository
-) -> bool:
-    """The transcript row exists from the end of transcription, before the speakers."""
-    if job.state is TranscriptionJobState.COMPLETED:
-        return True
-    if job.state in _NO_TRANSCRIPT_YET:
-        return False
-    return transcripts.get(transcript_id_for(job.id)) is not None
-
-
 def create_jobs_router(
     create_job: CreateTranscriptionJob,
     jobs_repo: TranscriptionJobRepository,
@@ -325,11 +305,8 @@ def create_jobs_router(
         confirmed = () if checkpoints is None else checkpoints.list_for_job(job_id)
         return {
             "segments": [
-                {"start_ms": item.start_ms, "end_ms": item.end_ms, "text": text}
-                for checkpoint in confirmed
-                if checkpoint.owned_end_ms > after_ms
-                for item in checkpoint.segments
-                if item.end_ms > after_ms and (text := item.text.strip())
+                {"start_ms": item.start_ms, "end_ms": item.end_ms, "text": item.text}
+                for item in preview_segments(confirmed, after_ms)
             ]
         }
 

@@ -28,6 +28,7 @@ from voz.application.get_transcription_options import (
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner, transcript_id_for
 from voz.application.ports.compatible_audio import (
+    REQUEST_DEADLINE_SECONDS,
     CompatibleAudioError,
     CompatibleModel,
     CompatibleSpeech,
@@ -72,7 +73,7 @@ class LocalCompatibleAudioService:
     transcripts: TranscriptRepository
     segments: SegmentRepository
     synthesis_storage: SynthesisAudioStorage
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = REQUEST_DEADLINE_SECONDS
     monotonic: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
 
@@ -80,7 +81,7 @@ class LocalCompatibleAudioService:
         if (
             isinstance(self.timeout_seconds, bool)
             or not math.isfinite(self.timeout_seconds)
-            or not 0 < self.timeout_seconds <= 300
+            or not 0 < self.timeout_seconds <= REQUEST_DEADLINE_SECONDS
         ):
             raise ValueError(
                 "Audio request timeout must be finite and at most 300 seconds."

@@ -26,6 +26,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.types import Receive, Scope, Send
 
 from voz.application.ports.compatible_audio import (
+    REQUEST_DEADLINE_SECONDS,
     CompatibleAudioError,
     CompatibleAudioService,
     CompatibleSpeech,
@@ -36,7 +37,7 @@ from voz.domain.filename_safety import has_unsafe_filename_character
 BODY_LIMIT = 26 * 1024**2
 FILE_LIMIT = 25 * 1024**2
 TEXT_LIMIT = 8 * 1024
-DEADLINE_SECONDS = 300.0
+DEADLINE_SECONDS = REQUEST_DEADLINE_SECONDS
 SUFFIXES = {
     ".wav",
     ".mp3",

@@ -102,6 +102,10 @@ def _silent(seconds: float) -> Callable[[BaseHTTPRequestHandler], None]:
 FAILS = (openai.TransportError, eleven.TransportError)
 
 
+def test_both_transports_raise_the_same_error_type() -> None:
+    assert openai.TransportError is eleven.TransportError
+
+
 def _openai_call(
     url: str,
     *,

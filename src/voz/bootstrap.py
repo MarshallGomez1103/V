@@ -38,6 +38,7 @@ from voz.application.import_custom_model import ImportCustomModel
 from voz.application.import_external_model import ImportExternalModel
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
+from voz.application.job_status import job_has_transcript
 from voz.application.library import ListLibrary
 from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.model_tasks import ModelTaskRunner
@@ -163,6 +164,7 @@ from voz.infrastructure.diarization.sherpa import (
 )
 from voz.infrastructure.disk_space import ShutilDiskSpace
 from voz.infrastructure.inference_audio import FileSystemInferenceAudioSource
+from voz.infrastructure.instance_lock import InstanceLock
 from voz.infrastructure.interrupted_temporaries import (
     discard_interrupted_temporaries,
 )
@@ -211,7 +213,7 @@ from voz.interfaces.api.health import router as health_router
 from voz.interfaces.api.host_guard import LOOPBACK_HOSTS, HostGuardMiddleware
 from voz.interfaces.api.job_events import create_job_events_router
 from voz.interfaces.api.job_views import job_view as job_view_without_selection
-from voz.interfaces.api.jobs import create_jobs_router, job_has_transcript, job_view
+from voz.interfaces.api.jobs import create_jobs_router, job_view
 from voz.interfaces.api.library import create_library_router
 from voz.interfaces.api.media import create_media_router
 from voz.interfaces.api.media_stream import create_media_stream_router
@@ -691,6 +693,8 @@ def create_app(
         admission=admission,
     )
 
+    instance_lock = InstanceLock(resolved_paths.state / "instance.lock")
+
     class Lifespan:
         """Migrate on startup and dispose an owned engine on shutdown."""
 
@@ -698,15 +702,28 @@ def create_app(
             return self
 
         async def __aenter__(self) -> None:
-            upgrade_to_head(resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY)
-            discard_interrupted_temporaries(resolved_paths.data)
-            runner.recover()
-            runner.start()
-            synthesis_runner.recover()
-            synthesis_runner.start()
-            # Re-point a broken or pre-V shortcut; never creates one (V1-05).
-            desktop_shortcut.refresh()
-            model_tasks.start()
+            # Before anything that writes: a second server on this data must not
+            # recover the first one's jobs or sweep its live temporaries.
+            instance_lock.acquire()
+            try:
+                upgrade_to_head(
+                    resolved_engine, resolved_paths.state / BACKUPS_DIRECTORY
+                )
+                discard_interrupted_temporaries(resolved_paths.data)
+                runner.recover()
+                runner.start()
+                synthesis_runner.recover()
+                synthesis_runner.start()
+                # Re-point a broken or pre-V shortcut; never creates one (V1-05).
+                desktop_shortcut.refresh()
+                model_tasks.start()
+            except BaseException:
+                # A failed startup gets no __aexit__: undo it here, lock last.
+                try:
+                    await self._shutdown()
+                finally:
+                    instance_lock.release()
+                raise
 
         async def __aexit__(
             self,
@@ -714,6 +731,12 @@ def create_app(
             exc: BaseException | None,
             tb: TracebackType | None,
         ) -> None:
+            try:
+                await self._shutdown()
+            finally:
+                instance_lock.release()
+
+        async def _shutdown(self) -> None:
             model_tasks.stop()
             custom_uploads.close()
             # Signal both before waiting, so they stop in parallel under one deadline.

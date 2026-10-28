@@ -7,34 +7,10 @@ canonical strings. No host paths ever leave through this view.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
+from voz.application.job_status import eta_seconds
 from voz.domain.entities.transcription_job import TranscriptionJob
-
-_MIN_ETA_BASIS = 0.02
-"""Below this stage fraction the elapsed time says too little to extrapolate."""
-
-
-def eta_seconds(job: TranscriptionJob, now: datetime | None = None) -> float | None:
-    """Seconds left in the current stage, from its progress and elapsed time.
-
-    ``None`` without a basis: the job is not running, the stage has no measure
-    yet, or its clock is unknown. The estimate assumes a constant rate.
-    """
-    if (
-        not job.state.is_processable
-        or job.stage_progress is None
-        or job.stage_started_at is None
-    ):
-        return None
-    if job.stage_progress >= 1.0:
-        return 0.0
-    if job.stage_progress < _MIN_ETA_BASIS:
-        return None
-    elapsed = ((now or datetime.now(UTC)) - job.stage_started_at).total_seconds()
-    if elapsed <= 0:
-        return None
-    return round(elapsed * (1.0 - job.stage_progress) / job.stage_progress, 1)
 
 
 def timing_view(
@@ -69,4 +45,4 @@ def job_view(job: TranscriptionJob, now: datetime | None = None) -> dict[str, ob
     }
 
 
-__all__ = ["eta_seconds", "job_view", "timing_view"]
+__all__ = ["job_view", "timing_view"]

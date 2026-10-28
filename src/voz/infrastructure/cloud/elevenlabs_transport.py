@@ -23,6 +23,7 @@ from voz.infrastructure.cloud.http_body import (
     MAX_JSON_BYTES,
     Aborted,
     ResponseTooLarge,
+    TransportError,
     read_bounded,
     run_abortable,
 )
@@ -56,26 +57,6 @@ class HttpRequest:
 class HttpResponse:
     status: int
     body: bytes
-
-
-class TransportError(Exception):
-    """No usable response (connect, TLS, reset, timeout, ``abort``, or too large)."""
-
-    def __init__(
-        self, *, timeout: bool = False, aborted: bool = False, oversized: bool = False
-    ) -> None:
-        self.timeout = timeout
-        self.aborted = aborted
-        self.oversized = oversized
-        super().__init__(
-            "aborted"
-            if aborted
-            else "response too large"
-            if oversized
-            else "timeout"
-            if timeout
-            else "network error"
-        )
 
 
 Transport = Callable[[HttpRequest], HttpResponse]

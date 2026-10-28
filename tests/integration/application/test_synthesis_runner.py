@@ -359,9 +359,9 @@ def test_resumed_job_replaces_an_orphan_wav_that_has_no_row(
 ) -> None:
     fixture = harness(tmp_path)
     # A previous run published audio.wav and died before recording its row.
-    orphan = fixture.storage.write(
-        fixture.job.id, [PcmAudio(bytes(64), 16_000, PcmSampleFormat.INT16)], []
-    )
+    writer = fixture.storage.begin(fixture.job.id)
+    writer.append(PcmAudio(bytes(64), 16_000, PcmSampleFormat.INT16))
+    orphan = writer.commit()
     job_dir = tmp_path / "data" / "synthesis" / str(fixture.job.id)
     (job_dir / "stray.tmp").write_bytes(b"junk")
     if state == "PERSISTING":

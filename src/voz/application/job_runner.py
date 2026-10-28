@@ -68,6 +68,7 @@ from voz.application.ports.transcription_job_selection import (
 from voz.application.progress_throttle import ProgressThrottle
 from voz.application.quality_flags import quality_flags
 from voz.application.recoverable_transcription import RecoverableTranscription
+from voz.application.runner_support import AnyEventToken, not_before
 from voz.domain.entities.segment import Segment
 from voz.domain.entities.transcript import Transcript
 from voz.domain.entities.transcription_job import (
@@ -141,16 +142,6 @@ class _EventToken:
 
     def is_cancelled(self) -> bool:
         return self.event.is_set()
-
-
-@dataclass(frozen=True, slots=True)
-class _AnyEventToken:
-    """Cancelled when the user cancels *or* the server is shutting down."""
-
-    events: tuple[threading.Event, ...]
-
-    def is_cancelled(self) -> bool:
-        return any(event.is_set() for event in self.events)
 
 
 _CANCEL_PATH = frozenset(
@@ -386,7 +377,7 @@ class JobRunner:
             self._current = job_id
             self._cancel.clear()
         try:
-            wait = _AnyEventToken((self._cancel, self._stopping))
+            wait = AnyEventToken((self._cancel, self._stopping))
             try:
                 with self.compute_slot.hold(
                     ComputeKind.TRANSCRIPTION, job_id, cancellation=wait
@@ -430,7 +421,7 @@ class JobRunner:
         token = _EventToken(self._cancel)
         shutdown = _EventToken(self._stopping)
         # Long work (normalization, a chunk) must also see shutdown, not just cancel.
-        stop = _AnyEventToken((self._cancel, self._stopping))
+        stop = AnyEventToken((self._cancel, self._stopping))
         try:
             if job.state is TranscriptionJobState.CANCELLING:
                 return self._save(
@@ -594,7 +585,7 @@ class JobRunner:
         """Run diarization; a failure is recorded and never loses the transcript."""
         options = selection.diarization
         assert options is not None
-        stop = _AnyEventToken((self._cancel, self._stopping))
+        stop = AnyEventToken((self._cancel, self._stopping))
         try:
             # The ASR engine and the diarization models must not share memory.
             self.release_asr(selection)
@@ -805,8 +796,7 @@ class JobRunner:
         return job
 
     def _not_before(self, job: TranscriptionJob) -> datetime:
-        now = self.clock()
-        return job.updated_at if now < job.updated_at else now
+        return not_before(self.clock(), job.updated_at)
 
 
 def _domain_words(segment_id: UUID, item: TranscriptionSegment) -> tuple[Word, ...]:

@@ -31,6 +31,26 @@ class Aborted(Exception):
     """Cancellation cut the exchange."""
 
 
+class TransportError(Exception):
+    """No usable response (connect, TLS, reset, timeout, ``abort``, or too large)."""
+
+    def __init__(
+        self, *, timeout: bool = False, aborted: bool = False, oversized: bool = False
+    ) -> None:
+        self.timeout = timeout
+        self.aborted = aborted
+        self.oversized = oversized
+        super().__init__(
+            "aborted"
+            if aborted
+            else "response too large"
+            if oversized
+            else "timeout"
+            if timeout
+            else "network error"
+        )
+
+
 class Body(Protocol):
     def read1(self, size: int = -1, /) -> bytes: ...
 

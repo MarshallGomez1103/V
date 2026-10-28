@@ -28,6 +28,7 @@ from voz.application.ports.synthesis_repositories import (
     SynthesisJobRepository,
     SynthesizedAudioRepository,
 )
+from voz.application.runner_support import AnyEventToken, not_before
 from voz.application.synthesis.cancel_synthesis_job import CancelSynthesisJob
 from voz.application.synthesis.create_synthesis_job import SynthesisModelCatalog
 from voz.application.synthesis.errors import SynthesisJobFailureCode
@@ -60,14 +61,6 @@ class _CodedFailure(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
-
-
-@dataclass(frozen=True, slots=True)
-class _AnyEventToken:
-    events: tuple[threading.Event, ...]
-
-    def is_cancelled(self) -> bool:
-        return any(event.is_set() for event in self.events)
 
 
 @dataclass(slots=True)
@@ -211,7 +204,7 @@ class SynthesisRunner:
                 return job
             self._current = job_id
             self._cancel.clear()
-        stop = _AnyEventToken((self._cancel, self._stopping))
+        stop = AnyEventToken((self._cancel, self._stopping))
         try:
             try:
                 with self.compute_slot.hold(
@@ -248,7 +241,7 @@ class SynthesisRunner:
         except Exception:
             _LOG.exception("Could not mark synthesis job %s as failed", job_id)
 
-    def _execute(self, job_id: UUID, stop: _AnyEventToken) -> SynthesisJob | None:
+    def _execute(self, job_id: UUID, stop: AnyEventToken) -> SynthesisJob | None:
         # Re-read: the job may have been cancelled while it waited for the slot.
         job = self.jobs.get(job_id)
         if job is None or job.state.is_terminal:
@@ -285,7 +278,7 @@ class SynthesisRunner:
         _LOG.info("Synthesis job %s left resumable on shutdown", job.id)
         return persisted
 
-    def _render(self, job: SynthesisJob, stop: _AnyEventToken) -> SynthesisJob:
+    def _render(self, job: SynthesisJob, stop: AnyEventToken) -> SynthesisJob:
         """Render every chunk and store the WAV; returns the job in PERSISTING."""
         request = job.request
         try:
@@ -348,7 +341,7 @@ class SynthesisRunner:
             writer.abort()
         return job
 
-    def _check(self, stop: _AnyEventToken) -> None:
+    def _check(self, stop: AnyEventToken) -> None:
         if stop.is_cancelled():
             raise _Stopping
 
@@ -392,8 +385,7 @@ class SynthesisRunner:
         return job
 
     def _not_before(self, job: SynthesisJob) -> datetime:
-        now = self.clock()
-        return job.updated_at if now < job.updated_at else now
+        return not_before(self.clock(), job.updated_at)
 
 
 def _error_code(error: BaseException) -> str:

@@ -6,7 +6,6 @@ import contextlib
 import importlib
 import json
 import os
-import signal
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,7 @@ from voz.infrastructure.asr.whisper_cpp import locate_whisper_cli
 from voz.infrastructure.audio.media_args import NO_WINDOW
 from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.custom_models import model_files
+from voz.infrastructure.process_tree import stop_group
 from voz.infrastructure.tts.model_store import validate_custom_tts_load
 
 
@@ -121,8 +121,7 @@ class SubprocessModelValidator:
                 if os.name != "nt":
                     # This process group belongs only to this validation. Kill
                     # remaining descendants even if their parent already exited.
-                    with contextlib.suppress(ProcessLookupError):
-                        os.killpg(child.pid, signal.SIGKILL)
+                    stop_group(child, 0)
                 elif child.poll() is None:
                     with contextlib.suppress(ProcessLookupError):
                         child.kill()

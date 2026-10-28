@@ -6,7 +6,6 @@ import contextlib
 import json
 import math
 import os
-import signal
 import subprocess
 import sys
 import tempfile
@@ -33,7 +32,7 @@ from voz.infrastructure.asr.sherpa_onnx_options import (
 )
 from voz.infrastructure.audio.media_args import NO_WINDOW
 from voz.infrastructure.child_env import child_environment
-from voz.infrastructure.process_tree import kill_tree
+from voz.infrastructure.process_tree import kill_tree, stop_group
 
 _MAX_AUDIO_BYTES = 256 * 1024**2
 _MAX_RESULT_BYTES = 8 * 1024**2
@@ -318,8 +317,7 @@ class SherpaOnnxProvider:
                 raise _failure() from None
             finally:
                 if os.name != "nt":
-                    with contextlib.suppress(ProcessLookupError):
-                        os.killpg(process.pid, signal.SIGKILL)
+                    stop_group(process, 0)
                 else:
                     kill_tree(process)
                 with contextlib.suppress(subprocess.TimeoutExpired):

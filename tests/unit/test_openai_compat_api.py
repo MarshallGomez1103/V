@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from starlette.types import Message
 
 from voz.application.ports.compatible_audio import (
+    REQUEST_DEADLINE_SECONDS,
     CompatibleAudioError,
     CompatibleModel,
     CompatibleSpeech,
@@ -24,6 +25,7 @@ from voz.application.ports.compatible_audio import (
     CompatibleTranscription,
 )
 from voz.application.ports.transcription import TranscriptionSegment
+from voz.interfaces.api import openai_compat
 from voz.interfaces.api.openai_compat import create_openai_compat_router
 
 
@@ -689,3 +691,7 @@ def test_unsafe_unicode_filename_rejected(
     assert response.status_code == 400
     assert not service.sources
     assert "grabación" not in response.text
+
+
+def test_the_http_deadline_is_the_shared_request_deadline() -> None:
+    assert openai_compat.DEADLINE_SECONDS == REQUEST_DEADLINE_SECONDS

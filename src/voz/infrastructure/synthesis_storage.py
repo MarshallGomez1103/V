@@ -14,7 +14,6 @@ import stat
 import sys
 import wave
 from array import array
-from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO
@@ -77,35 +76,6 @@ class FileSystemSynthesisStorage:
 
     def __init__(self, data_root: Path) -> None:
         self._data_root = Path(data_root).absolute()
-
-    def write(
-        self,
-        job_id: UUID,
-        chunks: Sequence[PcmAudio],
-        gaps_ms: Sequence[int],
-    ) -> SynthesizedAudio:
-        """Join chunks and silences into one immutable WAV."""
-        require_uuid(job_id, field="job_id")
-        if not chunks:
-            raise _error(_Code.NO_AUDIO, "There is no audio to store.")
-        if len(gaps_ms) != len(chunks) - 1 or any(
-            type(gap) is not int or gap < 0 for gap in gaps_ms
-        ):
-            raise ValueError("gaps_ms needs one non-negative int per chunk boundary")
-        sample_rate = chunks[0].sample_rate
-        if any(chunk.sample_rate != sample_rate for chunk in chunks):
-            raise _error(
-                _Code.SAMPLE_RATE_MISMATCH,
-                "All chunks of one audio must share the same sample rate.",
-            )
-
-        writer = self.begin(job_id)
-        try:
-            for index, chunk in enumerate(chunks):
-                writer.append(chunk, gaps_ms[index] if index < len(gaps_ms) else 0)
-            return writer.commit()
-        finally:
-            writer.abort()
 
     def begin(self, job_id: UUID) -> SynthesisAudioWriter:
         """Start an incremental write; nothing touches the disk until ``append``."""

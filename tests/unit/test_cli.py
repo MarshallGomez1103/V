@@ -199,6 +199,50 @@ def test_run_server_reuses_a_running_voz_instead_of_binding_again(
     assert "VOZ ya está abierto" in capsys.readouterr().out
 
 
+def test_second_launch_on_the_same_data_exits_1_without_traceback_or_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from voz.infrastructure.audio.ffmpeg_tools import FfmpegSetup
+    from voz.infrastructure.instance_lock import InstanceLock
+    from voz.infrastructure.paths import resolve_voz_paths
+    from voz.interfaces.cli import main
+
+    def fake_ensure(*, announce: object) -> FfmpegSetup:
+        return FfmpegSetup("system", "")
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("a second launch must not get this far")
+
+    monkeypatch.setattr(main, "ensure_ffmpeg", fake_ensure)
+    monkeypatch.setattr(main, "is_server_ready", _not_ready)
+    monkeypatch.setattr(main, "start_browser_opener", forbidden)
+    monkeypatch.setattr(main, "create_app", forbidden)
+    first = InstanceLock(resolve_voz_paths().state / "instance.lock")
+    first.acquire()
+    try:
+        result = CliRunner().invoke(cli_app, [])
+    finally:
+        first.release()
+
+    assert result.exit_code == 1
+    assert "Another V server is already using this data directory." in result.output
+    assert "Traceback" not in result.output
+
+
+def test_first_launch_leaves_the_lock_free_for_the_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from voz.infrastructure.instance_lock import InstanceLock
+    from voz.infrastructure.paths import resolve_voz_paths
+    from voz.interfaces.cli import main
+
+    _stub_server(monkeypatch)
+
+    main.run_server(host="127.0.0.1", port=8765, open_browser=False)
+
+    InstanceLock(resolve_voz_paths().state / "instance.lock").acquire()
+
+
 def _not_ready(_url: str, *, auth_token: str | None = None) -> bool:
     return False
 

@@ -18,6 +18,7 @@ from voz.application.ports.synthesis_audio_storage import (
     SynthesisStorageError,
     SynthesisStorageErrorCode,
 )
+from voz.domain.entities.synthesized_audio import SynthesizedAudio
 from voz.infrastructure.synthesis_storage import FileSystemSynthesisStorage
 
 RATE = 16_000
@@ -41,6 +42,23 @@ def _read_wav(path: Path) -> tuple[wave._wave_params, list[int]]:  # pyright: ig
     return params, list(array("h", frames))
 
 
+def _store(
+    storage: FileSystemSynthesisStorage,
+    job_id: UUID,
+    chunks: list[PcmAudio],
+    gaps_ms: list[int] | None = None,
+) -> SynthesizedAudio:
+    """Publish ``chunks`` (silence ``gaps_ms[i]`` after each) through the writer."""
+    writer = storage.begin(job_id)
+    try:
+        for index, chunk in enumerate(chunks):
+            gaps = gaps_ms or []
+            writer.append(chunk, gaps[index] if index < len(gaps) else 0)
+        return writer.commit()
+    finally:
+        writer.abort()
+
+
 @pytest.fixture
 def storage(tmp_path: Path, platform_mode: str) -> FileSystemSynthesisStorage:
     assert platform_mode
@@ -58,7 +76,7 @@ def test_writes_valid_wav_with_silences_between_chunks(
     first = _int16([1, 2, 3, 4] * 400)  # 1600 frames = 100 ms
     second = _int16([-5, 6] * 800)  # 1600 frames = 100 ms
 
-    result = storage.write(job_id, [first, second], [250])
+    result = _store(storage, job_id, [first, second], [250])
 
     assert result.relative_path == f"synthesis/{job_id}/audio.wav"
     assert result.job_id == job_id
@@ -76,7 +94,7 @@ def test_writes_valid_wav_with_silences_between_chunks(
 def test_sha256_and_size_describe_the_stored_file(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    result = storage.write(uuid4(), [_int16([7] * 100)], [])
+    result = _store(storage, uuid4(), [_int16([7] * 100)], [])
 
     stored = (tmp_path / "data" / result.relative_path).read_bytes()
     assert result.sha256 == hashlib.sha256(stored).hexdigest()
@@ -88,7 +106,8 @@ def test_sha256_and_size_describe_the_stored_file(
 def test_float32_is_converted_with_saturation(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    result = storage.write(
+    result = _store(
+        storage,
         uuid4(),
         [_float32([0.0, 0.5, -0.5, 1.0, -1.0, 3.5, -7.0, float("inf"), float("nan")])],
         [],
@@ -101,7 +120,7 @@ def test_float32_is_converted_with_saturation(
 def test_int16_extremes_pass_through_untouched(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    result = storage.write(uuid4(), [_int16([32767, -32768, 0])], [])
+    result = _store(storage, uuid4(), [_int16([32767, -32768, 0])], [])
 
     _, samples = _read_wav(tmp_path / "data" / result.relative_path)
     assert samples == [32767, -32768, 0]
@@ -110,47 +129,22 @@ def test_int16_extremes_pass_through_untouched(
 def test_mixed_sample_formats_join_in_order(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    result = storage.write(uuid4(), [_float32([0.5]), _int16([9])], [0])
+    result = _store(storage, uuid4(), [_float32([0.5]), _int16([9])], [0])
 
     _, samples = _read_wav(tmp_path / "data" / result.relative_path)
     assert samples == [16384, 9]
-
-
-def test_different_sample_rates_are_rejected_before_any_io(
-    tmp_path: Path, storage: FileSystemSynthesisStorage
-) -> None:
-    with pytest.raises(SynthesisStorageError) as caught:
-        storage.write(uuid4(), [_int16([1]), _int16([1], rate=22_050)], [10])
-
-    assert caught.value.code is Code.SAMPLE_RATE_MISMATCH
-    assert not (tmp_path / "data").exists()
-
-
-def test_no_chunks_is_a_typed_error(storage: FileSystemSynthesisStorage) -> None:
-    with pytest.raises(SynthesisStorageError) as caught:
-        storage.write(uuid4(), [], [])
-
-    assert caught.value.code is Code.NO_AUDIO
-
-
-@pytest.mark.parametrize("gaps", [[], [1, 2], [-1]])
-def test_gap_count_and_sign_are_validated(
-    storage: FileSystemSynthesisStorage, gaps: list[int]
-) -> None:
-    with pytest.raises(ValueError, match="gaps_ms"):
-        storage.write(uuid4(), [_int16([1]), _int16([2])], gaps)
 
 
 def test_never_overwrites_an_existing_audio(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
     job_id = uuid4()
-    first = storage.write(job_id, [_int16([1] * 50)], [])
+    first = _store(storage, job_id, [_int16([1] * 50)], [])
     path = tmp_path / "data" / first.relative_path
     original = path.read_bytes()
 
     with pytest.raises(SynthesisStorageError) as caught:
-        storage.write(job_id, [_int16([2] * 80)], [])
+        _store(storage, job_id, [_int16([2] * 80)], [])
 
     assert caught.value.code is Code.AUDIO_EXISTS
     assert path.read_bytes() == original
@@ -160,7 +154,7 @@ def test_never_overwrites_an_existing_audio(
 def test_stored_audio_is_read_only_and_leaves_no_temporaries(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    result = storage.write(uuid4(), [_int16([1] * 50)], [])
+    result = _store(storage, uuid4(), [_int16([1] * 50)], [])
 
     path = tmp_path / "data" / result.relative_path
     assert os.stat(path).st_mode & 0o222 == 0
@@ -170,7 +164,7 @@ def test_stored_audio_is_read_only_and_leaves_no_temporaries(
 def test_open_for_reading_is_seekable_for_ranges(
     storage: FileSystemSynthesisStorage,
 ) -> None:
-    result = storage.write(uuid4(), [_int16(list(range(100)))], [])
+    result = _store(storage, uuid4(), [_int16(list(range(100)))], [])
 
     with storage.open_for_reading(result.relative_path) as handle:
         handle.seek(44 + 2)
@@ -185,7 +179,7 @@ def test_open_for_reading_missing_and_invalid_paths(
         storage.open_for_reading(f"synthesis/{uuid4()}/audio.wav")
     assert missing.value.code is Code.AUDIO_NOT_FOUND
 
-    storage.write(uuid4(), [_int16([1])], [])
+    _store(storage, uuid4(), [_int16([1])], [])
     with pytest.raises(SynthesisStorageError) as missing_file:
         storage.open_for_reading(f"synthesis/{uuid4()}/audio.wav")
     assert missing_file.value.code is Code.AUDIO_NOT_FOUND
@@ -221,8 +215,8 @@ def test_invalid_relative_paths_are_rejected(
 def test_delete_removes_only_that_job_and_is_idempotent(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    keep = storage.write(uuid4(), [_int16([1] * 10)], [])
-    gone = storage.write(uuid4(), [_int16([2] * 10)], [])
+    keep = _store(storage, uuid4(), [_int16([1] * 10)], [])
+    gone = _store(storage, uuid4(), [_int16([2] * 10)], [])
 
     storage.delete(gone.relative_path)
     storage.delete(gone.relative_path)
@@ -241,10 +235,10 @@ def test_a_deleted_job_can_be_written_again(
     storage: FileSystemSynthesisStorage,
 ) -> None:
     job_id = uuid4()
-    first = storage.write(job_id, [_int16([1] * 10)], [])
+    first = _store(storage, job_id, [_int16([1] * 10)], [])
     storage.delete(first.relative_path)
 
-    again = storage.write(job_id, [_int16([2] * 10)], [])
+    again = _store(storage, job_id, [_int16([2] * 10)], [])
 
     assert again.relative_path == first.relative_path
     assert again.sha256 != first.sha256
@@ -290,8 +284,8 @@ def test_delete_refuses_a_job_directory_that_is_a_symlink(
 def test_delete_job_removes_leftovers_idempotently_and_allows_a_rewrite(
     tmp_path: Path, storage: FileSystemSynthesisStorage
 ) -> None:
-    keep = storage.write(uuid4(), [_int16([1] * 10)], [])
-    orphan = storage.write(uuid4(), [_int16([2] * 10)], [])
+    keep = _store(storage, uuid4(), [_int16([1] * 10)], [])
+    orphan = _store(storage, uuid4(), [_int16([2] * 10)], [])
     job_id = UUID(orphan.relative_path.split("/")[1])
     unrecorded = uuid4()
 
@@ -301,7 +295,7 @@ def test_delete_job_removes_leftovers_idempotently_and_allows_a_rewrite(
 
     assert not (tmp_path / "data" / orphan.relative_path).parent.exists()
     assert (tmp_path / "data" / keep.relative_path).is_file()
-    assert storage.write(job_id, [_int16([3] * 10)], []).sha256 != orphan.sha256
+    assert _store(storage, job_id, [_int16([3] * 10)], []).sha256 != orphan.sha256
 
 
 def test_delete_job_unlinks_symlinks_without_touching_their_targets(
@@ -360,9 +354,9 @@ def test_read_and_write_refuse_symlinked_audio_and_job_directory(
             storage.open_for_reading(f"synthesis/{job_id}/audio.wav")
         assert read.value.code is Code.UNSAFE_STORAGE_PATH
     with pytest.raises(SynthesisStorageError) as written_dir:
-        storage.write(linked_dir_job, [_int16([1])], [])
+        _store(storage, linked_dir_job, [_int16([1])], [])
     with pytest.raises(SynthesisStorageError) as written_file:
-        storage.write(linked_file_job, [_int16([1])], [])
+        _store(storage, linked_file_job, [_int16([1])], [])
 
     assert written_dir.value.code is Code.UNSAFE_STORAGE_PATH
     assert written_file.value.code is Code.AUDIO_EXISTS
@@ -381,7 +375,7 @@ def test_failed_write_leaves_no_residue(
     monkeypatch.setattr(os, "fsync", explode)
 
     with pytest.raises(SynthesisStorageError) as caught:
-        storage.write(uuid4(), [_int16([1] * 10)], [])
+        _store(storage, uuid4(), [_int16([1] * 10)], [])
 
     assert caught.value.code is Code.IO_ERROR
     assert list((tmp_path / "data" / "synthesis").iterdir()) == []
@@ -394,30 +388,10 @@ def test_unsafe_storage_root_is_refused(tmp_path: Path) -> None:
     link.symlink_to(real, target_is_directory=True)
 
     with pytest.raises(SynthesisStorageError) as caught:
-        FileSystemSynthesisStorage(link).write(uuid4(), [_int16([1])], [])
+        _store(FileSystemSynthesisStorage(link), uuid4(), [_int16([1])])
 
     assert caught.value.code is Code.UNSAFE_STORAGE_PATH
     assert list(real.iterdir()) == []
-
-
-def test_incremental_writer_matches_write_byte_for_byte(
-    tmp_path: Path, storage: FileSystemSynthesisStorage
-) -> None:
-    chunks = [_int16([1, 2, 3] * 300), _float32([0.5, -0.25] * 400), _int16([9] * 50)]
-    whole = storage.write(uuid4(), chunks, [30, 0])
-
-    writer = storage.begin(uuid4())
-    writer.append(chunks[0], 30)
-    writer.append(chunks[1])
-    writer.append(chunks[2], 0)
-    streamed = writer.commit()
-
-    assert (streamed.sha256, streamed.size_bytes) == (whole.sha256, whole.size_bytes)
-    assert streamed.duration_ms == whole.duration_ms
-    assert streamed.chunk_count == whole.chunk_count == 3
-    assert (tmp_path / "data" / streamed.relative_path).read_bytes() == (
-        tmp_path / "data" / whole.relative_path
-    ).read_bytes()
 
 
 def test_incremental_writer_grows_the_temporary_before_commit(

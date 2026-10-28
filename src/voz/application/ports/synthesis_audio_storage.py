@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from enum import StrEnum
 from typing import BinaryIO, Protocol, runtime_checkable
 from uuid import UUID
@@ -57,20 +56,6 @@ class SynthesisAudioStorage(Protocol):
 
     def begin(self, job_id: UUID) -> SynthesisAudioWriter:
         """Start an incremental write; the caller commits or aborts it."""
-        ...
-
-    def write(
-        self,
-        job_id: UUID,
-        chunks: Sequence[PcmAudio],
-        gaps_ms: Sequence[int],
-    ) -> SynthesizedAudio:
-        """Join ``chunks`` into one WAV (PCM16 mono) and publish it atomically.
-
-        ``gaps_ms[i]`` is the silence between ``chunks[i]`` and ``chunks[i + 1]``,
-        so there is exactly one gap fewer than chunks. All chunks must share one
-        sample rate. An existing audio is never replaced.
-        """
         ...
 
     def open_for_reading(self, relative_path: str) -> BinaryIO:

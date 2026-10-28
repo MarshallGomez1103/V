@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
-import signal
 import subprocess
 import sys
 import tempfile
@@ -26,6 +24,7 @@ from voz.application.edge_lab import (
 )
 from voz.infrastructure.child_env import child_environment
 from voz.infrastructure.paths import resolve_voz_paths
+from voz.infrastructure.process_tree import stop_group
 
 WORKER_MODULE = "voz.infrastructure.edge_lab_worker"
 _POLL_SECONDS = 0.02
@@ -66,16 +65,7 @@ def _read_object(path: Path) -> dict[str, object]:
 
 def _stop_tree(child: subprocess.Popen[bytes]) -> None:
     # The worker owns its session; its descendants must not detach from it.
-    grace_deadline = time.monotonic() + _GRACE_SECONDS
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(child.pid, signal.SIGTERM)
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        child.wait(timeout=_GRACE_SECONDS)
-    # Kill remaining descendants even if the leader already exited.
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(child.pid, 0)
-        time.sleep(max(0, grace_deadline - time.monotonic()))
-        os.killpg(child.pid, signal.SIGKILL)
+    stop_group(child, _GRACE_SECONDS)
     try:
         child.wait(timeout=1.0)
     except subprocess.TimeoutExpired as error:

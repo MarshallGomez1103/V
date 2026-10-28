@@ -5,9 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Protocol
+from typing import BinaryIO, Final, Protocol
 
 from voz.application.ports.transcription import TranscriptionSegment
+
+REQUEST_DEADLINE_SECONDS: Final = 300.0
+"""Longest a compatible audio request may take, upload to answer."""
 
 
 @dataclass(frozen=True, slots=True)

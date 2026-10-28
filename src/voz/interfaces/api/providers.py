@@ -23,7 +23,7 @@ from voz.application.ports.compatible_endpoints import (
     EndpointConnectionTester,
     EndpointError,
     EndpointFailureCode,
-    is_loopback_url,
+    consent_to_record,
     origin,
 )
 from voz.application.ports.provider_secrets import (
@@ -180,8 +180,7 @@ def _add_endpoint_routes(
                 tts_models=tuple(item.strip() for item in body.tts_models),
                 tts_voices=tuple(item.strip() for item in body.tts_voices),
                 # Consent belongs to a non-loopback URL; a local one records none.
-                cloud_consent=body.cloud_consent
-                and not is_loopback_url(body.base_url.strip()),
+                cloud_consent=consent_to_record(body.cloud_consent, body.base_url),
             )
             # Key first: a rejected key leaves no half-saved endpoint behind.
             if body.key is not None and body.key.strip():

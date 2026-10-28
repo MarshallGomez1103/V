@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import BinaryIO
 from uuid import UUID
 
-from voz.application.ports.speech_synthesis import PcmAudio
 from voz.application.ports.synthesis_audio_storage import SynthesisAudioWriter
 from voz.application.ports.transcription_options import (
     InstallationStatus,
@@ -78,11 +77,6 @@ class MemoryStorage:
 
     def __init__(self) -> None:
         self.deleted: list[str] = []
-
-    def write(
-        self, job_id: UUID, chunks: Sequence[PcmAudio], gaps_ms: Sequence[int]
-    ) -> SynthesizedAudio:
-        raise NotImplementedError
 
     def begin(self, job_id: UUID) -> SynthesisAudioWriter:
         raise NotImplementedError

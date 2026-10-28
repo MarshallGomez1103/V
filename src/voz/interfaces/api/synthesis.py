@@ -23,7 +23,6 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from voz.application.ports.speech_synthesis import SynthesisError
 from voz.application.ports.synthesis_audio_storage import (
     SynthesisAudioStorage,
     SynthesisStorageError,
@@ -33,7 +32,6 @@ from voz.application.ports.synthesis_repositories import (
     SynthesisJobRepository,
     SynthesizedAudioRepository,
 )
-from voz.application.ports.transcription_options import InstallationStatus
 from voz.application.synthesis import (
     CreateSynthesisJob,
     DeleteSynthesisResult,
@@ -43,8 +41,8 @@ from voz.application.synthesis import (
     SynthesisModelCatalog,
 )
 from voz.application.synthesis.list_synthesis_history import DEFAULT_HISTORY_LIMIT
+from voz.application.synthesis.list_synthesis_options import list_synthesis_options
 from voz.application.synthesis_provider_registry import SynthesisProviderRegistry
-from voz.domain.entities.model_descriptor import ModelCapability
 from voz.domain.entities.synthesis_job import SynthesisJob, SynthesisJobState
 from voz.domain.entities.synthesis_request import (
     MAX_SYNTHESIS_SPEED,
@@ -235,45 +233,7 @@ def create_synthesis_router(
         return job
 
     def options() -> dict[str, object]:
-        registered = {
-            provider.describe().provider_id: provider
-            for provider in providers.list_all()
-        }
-        models: list[dict[str, object]] = []
-        for item in catalog.list_models():
-            model = item.descriptor
-            provider = registered.get(model.provider_id)
-            if (
-                provider is None
-                or not model.supports(ModelCapability.SYNTHESIS)
-                or item.installation_status is not InstallationStatus.REGISTERED
-                or not item.files_available
-            ):
-                continue
-            try:
-                ready = provider.requirements(model).runtime_ready
-                voices = provider.voices(model)
-                languages = provider.languages(model)
-            except SynthesisError:
-                continue  # broken install: the Model Manager shows why
-            models.append(
-                {
-                    "provider_id": model.provider_id,
-                    "model_id": model.model_id,
-                    "display_name": model.display_name,
-                    "runtime_ready": ready,
-                    "capabilities": sorted(cap.value for cap in model.capabilities),
-                    "languages": list(languages),
-                    "voices": [
-                        {
-                            "id": voice.id,
-                            "name": voice.name,
-                            "languages": list(voice.languages),
-                        }
-                        for voice in voices
-                    ],
-                }
-            )
+        available = list_synthesis_options(providers, catalog)
         return {
             "providers": [
                 {
@@ -281,9 +241,29 @@ def create_synthesis_router(
                     "display_name": info.display_name,
                     "locality": info.locality.value,
                 }
-                for info in (provider.describe() for provider in registered.values())
+                for info in available.providers
             ],
-            "models": models,
+            "models": [
+                {
+                    "provider_id": option.descriptor.provider_id,
+                    "model_id": option.descriptor.model_id,
+                    "display_name": option.descriptor.display_name,
+                    "runtime_ready": option.runtime_ready,
+                    "capabilities": sorted(
+                        cap.value for cap in option.descriptor.capabilities
+                    ),
+                    "languages": list(option.languages),
+                    "voices": [
+                        {
+                            "id": voice.id,
+                            "name": voice.name,
+                            "languages": list(voice.languages),
+                        }
+                        for voice in option.voices
+                    ],
+                }
+                for option in available.models
+            ],
             "max_chars": MAX_SYNTHESIS_TEXT_CHARS,
             "speed": {"min": MIN_SYNTHESIS_SPEED, "max": MAX_SYNTHESIS_SPEED},
         }

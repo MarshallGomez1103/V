@@ -22,6 +22,7 @@ import uvicorn
 
 from voz.bootstrap import create_app
 from voz.infrastructure.audio.ffmpeg_tools import ensure_ffmpeg
+from voz.infrastructure.instance_lock import InstanceLock, InstanceLockError
 from voz.infrastructure.paths import resolve_voz_paths
 from voz.infrastructure.server_token import (
     ServerTokenError,
@@ -216,6 +217,21 @@ def start_browser_opener(
     return opener
 
 
+def _refuse_if_data_in_use() -> None:
+    """Exit 1 with a short message when another server holds this data directory.
+
+    The server itself takes the lock for good at startup; this early look only
+    spares a second launch the traceback and the browser tab.
+    """
+    lock = InstanceLock(resolve_voz_paths().state / "instance.lock")
+    try:
+        lock.acquire()
+    except InstanceLockError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from None
+    lock.release()
+
+
 def run_server(
     *,
     host: str,
@@ -246,6 +262,7 @@ def run_server(
         if open_browser:
             webbrowser.open(base_url)
         return
+    _refuse_if_data_in_use()
     if not is_loopback_host(host):
         typer.echo(exposure_warning(host, port), err=True)
     if open_browser:

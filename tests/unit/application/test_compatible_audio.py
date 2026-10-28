@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable, Collection
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
@@ -19,6 +19,7 @@ from voz.application.get_transcription_options import GetTranscriptionOptions
 from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner, transcript_id_for
 from voz.application.ports.compatible_audio import (
+    REQUEST_DEADLINE_SECONDS,
     CompatibleAudioError,
     CompatibleAudioService,
     CompatibleSpeech,
@@ -513,6 +514,16 @@ def test_unexpected_failures_are_fixed_safe_errors_and_cancel_owned_job(
 def test_deadline_configuration_is_bounded(harness: Harness, timeout: float) -> None:
     with pytest.raises(ValueError):
         replace(harness.service, timeout_seconds=timeout)
+
+
+def test_the_default_deadline_is_the_shared_request_deadline(
+    harness: Harness,
+) -> None:
+    defaults = {item.name: item.default for item in fields(harness.service)}
+    assert defaults["timeout_seconds"] == REQUEST_DEADLINE_SECONDS
+    assert replace(harness.service, timeout_seconds=REQUEST_DEADLINE_SECONDS)
+    with pytest.raises(ValueError):
+        replace(harness.service, timeout_seconds=REQUEST_DEADLINE_SECONDS + 1)
 
 
 @pytest.mark.parametrize("synthesis", [False, True])
