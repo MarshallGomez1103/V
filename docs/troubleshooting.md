@@ -29,6 +29,21 @@ busy, V may already be running). If V is already serving on that address, runnin
 opens another browser tab. If something else uses the port, start V on another
 one: `voz --port 9000`.
 
+### "Another V server is already using this data directory."
+
+Only one V server can use a data directory at a time. A second `v` (or `voz`)
+on the same data prints this message and exits with code 1 without opening the
+browser, even if you gave it another port with `--port`. The other server is
+already serving your transcripts: use it, or close it (power button in the page,
+or Ctrl+C in the terminal where it runs) and start V again.
+
+If you believe none is running, look for a leftover process, for example
+`pgrep -a -x v` and `pgrep -a -x voz` on Linux and macOS, or the Task Manager on
+Windows, and stop it. There is no lock file to delete: the operating system
+releases the lock when the server stops, however it stops. To run two servers on
+purpose, give each its own data by pointing `XDG_DATA_HOME` and `XDG_STATE_HOME` to separate absolute directories. On
+Windows and macOS this check is experimental and has not been verified by hand.
+
 ### Windows: "Windows protected your PC"
 
 Click *More info -> Run anyway*.

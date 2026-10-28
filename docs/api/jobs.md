@@ -365,7 +365,7 @@ Errors:
   To know before creating the job whether they are installed, query
   `GET /api/models` and look at the `diarization:sherpa-default` entry
   (`kind: "diarization"`, `installed`, `runtime_available`); they are downloaded
-  with `POST /api/models/diarization:sherpa-default/install`
+  with `POST /api/models/{key}/install` (key `diarization:sherpa-default`)
   `{"method":"download","confirm":true}` (see [models.md](models.md)).
 - 409 `diarization_unavailable`: diarization was requested but the runtime is
   missing (the `diarization` extra; downloading models does not fix it) or is not

@@ -23,10 +23,17 @@ the former product name VOZ where they describe that moment (see
 | [0009](0009-rename-to-v.md) | Rename the product to V with compatibility (`v` + `voz` alias, internals unchanged) | Accepted | V1-01 |
 | [0010](0010-voice-engines-and-tts.md) | Voice engines and models, and the speech synthesis (TTS) architecture | Accepted | V2-01 |
 | [0011](0011-edge-lab.md) | Edge Lab experiment resource boundaries | Accepted | V8-01 |
+| [0012](0012-project-folders.md) | Nested folders inside a project | Proposed | not scheduled |
+| [0013](0013-model-catalog-filters.md) | Model catalog metadata, filters and the meaning of "best model" | Proposed | not scheduled |
+| [0014](0014-mcp-and-transcript-verification.md) | MCP server for coding assistants and policy-based transcript verification | Proposed | not scheduled |
 
 ## Format
 
 A header with status, date, owners, scope and (if applicable) last review; then
 Context, Decision, Positive consequences, Costs and limits, Alternatives
 considered, Current evidence (paths of real files and tests) and Verification.
-Anything that does not yet exist in the code is marked **planned**.
+Anything that does not yet exist in the code is marked **planned**. A
+**Proposed** ADR records a decision awaiting acceptance by the maintainers;
+nothing it describes may be presented as available until it is accepted and
+implemented. An amendment (as in ADR-0005 and ADR-0006) is appended without
+rewriting the original text.

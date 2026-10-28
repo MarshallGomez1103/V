@@ -85,3 +85,34 @@ limited local subset under `/v1`; its endpoint error envelope differs from `/api
 
 `GET /api/health` returns `{"status": "ok", "version": "<version>"}` and works as a
 readiness probe (`scripts/check-install.sh` uses it).
+
+## Route registration and availability
+
+The application factory registers every route listed in the pages above on each
+start. No optional extra, command-line option or installed model adds or
+removes a route: a capability that cannot run answers with a stable error code
+instead of a `404`. The user interface is the only conditional mount (below).
+The conditions that change an answer:
+
+| Route or area | Condition for success | Otherwise |
+| --- | --- | --- |
+| `POST /api/shutdown` | The server was started by the `voz` command | 501 `shutdown_unavailable` ([jobs.md](jobs.md)) |
+| `POST /api/desktop-shortcut` | V runs from its folder with the launchers or is installed with the `v` command | 409 `desktop_shortcut_unsupported` ([jobs.md](jobs.md)) |
+| `POST /api/jobs` with diarization, `POST /api/transcripts/{transcript_id}/rediarize` | The `diarization` extra (sherpa-onnx) is installed and the speaker models are downloaded | 409 `diarization_unavailable` or `diarization_models_missing` ([jobs.md](jobs.md), [models.md](models.md)) |
+| whisper.cpp options in `GET /api/transcription-options` and `GET /api/models` | `whisper-cli` is found | The entries are not listed ([transcription-options.md](transcription-options.md)) |
+| `/api/synthesis` and `POST /v1/audio/speech` with a local engine | `sherpa_onnx` is importable and a speech model is installed | `providers` or `models` are empty; creation answers `synthesis_provider_not_found` ([synthesis.md](synthesis.md)) |
+| `/api/models/custom/*` | The engine chosen for the imported model is installed | `custom_model_runtime_unavailable` ([models.md](models.md)) |
+| `/api/providers/*`, and cloud options in jobs and synthesis | A key is stored and, for a job, `cloud_consent` is `true` | The option is not startable or the job is refused ([providers.md](providers.md)) |
+| `/api/providers/compatible/*` | A non-loopback server is saved only with `cloud_consent: true` and `https://` | 422 `endpoint_cloud_consent_required`, or `endpoint_invalid` for plain `http://` ([providers.md](providers.md)) |
+| `/v1/*` | Requests name installed local models | `GET /v1/models` lists only those; errors use the `/v1` envelope ([openai-compat.md](openai-compat.md)) |
+
+The same table applies on every bind address. Binding outside loopback
+(`--host`) requires `--auth-token-file`; with a token configured, every path,
+the API and the user interface included, needs credentials
+([authentication](authentication.md)). The built user interface is served at `/`
+when the package contains its bundle; without it only the API and the generated
+schema (`/openapi.json`, `/docs`) answer.
+
+`tests/contract/test_api_docs_match_routes.py` compares the routes of the real
+application with the `METHOD /path` entries written in code spans on these
+pages: a route without an entry, or an entry without a route, fails the test.

@@ -212,6 +212,15 @@ v doctor           # check FFmpeg, port, data paths, disk, ASR runtime and GPU (
 installed, another `v` may come first in your `PATH`; use `voz`, which is
 unambiguous ([ADR-0009](docs/adr/0009-rename-to-v.md)).
 
+Only one V server can use a data directory at a time. If you start a second
+`v` on the same data, even on another port, it prints
+`Another V server is already using this data directory.`, exits with code 1 and
+does not open the browser. Close the first one (power button in the page, or
+Ctrl+C in its terminal). The operating system releases the lock when the
+server stops, however it stops, so nothing stale is left to clean up. This is
+tested on Linux; on Windows and macOS it is **experimental** and has not been
+checked by hand ([Supported platforms](#supported-platforms)).
+
 Other options:
 
 - `--port N` changes the port.

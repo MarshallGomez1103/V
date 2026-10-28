@@ -40,7 +40,8 @@ text: whatever the engine returns is stored literally.
 
 ## Quality profiles
 
-`GET /api/quality-profiles[?language=es]` (read-only) returns
+`GET /api/quality-profiles` (read-only; optional query `language`, for example
+`?language=es`) returns
 `{"default", "profiles": [{"name","label","description","parameters"}],
 "recommendation": {"language","profile","measured","evidence","synthetic",
 "unmeasured_profiles"}}`. `recommendation.profile` is `null` and `measured` is

@@ -99,7 +99,7 @@ The speaker models are the `diarization:sherpa-default` entry
 (`kind: "diarization"`). To know whether a job with diarization can be created:
 `installed` (models) and `runtime_available` (the `diarization` extra). If
 `installed` is false, offer the download
-(`POST /api/models/diarization:sherpa-default/install`); otherwise
+(`POST /api/models/{key}/install` with that key); otherwise
 `POST /api/jobs` answers 409 `diarization_models_missing`.
 
 ### Grouping and license in the UI (V6-03)

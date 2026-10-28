@@ -159,3 +159,81 @@ This decision is considered respected when:
 **Review criterion:** when integrating the second real provider, update or
 replace this ADR with what both share and remove the Faster Whisper-specific
 points listed in "Costs and limits".
+
+## Amendment (2026-10)
+
+The sections above are kept as written on 2026-09-30. This amendment records
+what changed since then and one new decision. Line references are to the tree
+at the time of writing.
+
+### 1. Provider review: more than one real provider now exists
+
+The review criterion of this ADR (revisit it when the second real provider
+arrives) is met. The batch `TranscriptionProvider` port
+(`src/voz/application/ports/transcription.py:257`) is implemented by these
+adapters, all selected by `provider_for` in `src/voz/bootstrap.py:499`:
+
+| `provider_id` | Adapter | Kind | Where it is built |
+| --- | --- | --- | --- |
+| `faster-whisper` | `FasterWhisperProvider`, `src/voz/infrastructure/asr/faster_whisper.py:265` | Local, in process | `create_local_asr_runtime`, `src/voz/bootstrap.py:305`, through `_local_provider`, `src/voz/bootstrap.py:538` |
+| `whisper-cpp` | `WhisperCppProvider`, `src/voz/infrastructure/asr/whisper_cpp.py:157` | Local, `whisper-cli` child process; only when the binary exists | `src/voz/bootstrap.py:520` |
+| `sherpa-onnx-asr` | `SherpaOnnxProvider`, `src/voz/infrastructure/asr/sherpa_onnx.py:66` | Local, isolated worker process | `src/voz/bootstrap.py:516` |
+| `openai` | `OpenAITranscriptionProvider`, `src/voz/infrastructure/cloud/openai_transcription.py:87` | Cloud, explicit consent per job | `src/voz/bootstrap.py:503` |
+| `elevenlabs` | `ElevenLabsScribeProvider`, `src/voz/infrastructure/cloud/elevenlabs_scribe.py:142` | Cloud, explicit consent per job | `src/voz/bootstrap.py:514` |
+| `openai-compatible`, `openai-compatible-cloud` | `CompatibleTranscriptionProvider`, `src/voz/infrastructure/cloud/openai_compatible.py:173` (ids at `:67-68`) | User-declared endpoint; loopback is local, any other host is cloud | `src/voz/bootstrap.py:507` |
+
+What the review found:
+
+- **The port held.** One structural contract suite runs against all of them
+  (`tests/contract/test_transcription_provider.py:256-265`: `structural`,
+  `faster-whisper`, `whisper-cpp`, `sherpa-onnx-asr`, `elevenlabs`, `openai`,
+  `openai-diarized`, `openai-compatible`). No adapter needed an extra method.
+- **The no-plugin-framework rule (decision 6) still holds.** There are no
+  entry points, manifests or dynamic loading. Selection is an explicit
+  `if`/`elif` chain in the composition root (`src/voz/bootstrap.py:499-536`)
+  with a cache of built adapters (`other_providers`, `src/voz/bootstrap.py:497`).
+- **Superseded statements.** "Today there is a single real provider" (Context)
+  and the Faster Whisper-specific items in "Costs and limits" describe the
+  state at the time. `TranscriptionProviderRegistry`
+  (`src/voz/application/transcription_provider_registry.py:34`) is still
+  populated only with Faster Whisper (`src/voz/bootstrap.py:333`); the other
+  adapters bypass it through the factory. Cloud adapters (decision 8) now exist;
+  they follow [ADR-0006](0006-local-first-privacy.md).
+- **Unchanged.** Decision 7 (diarization and alignment as separate ports) and
+  the port-has-no-`close()` rule keep their meaning.
+
+### 2. Incremental live inference uses a separate port
+
+Live, incremental recognition (partial and final results while audio is still
+arriving) will be a **second port**, `StreamingTranscriptionProvider`, defined
+in its own application module. The batch `TranscriptionProvider` stays exactly
+as it is.
+
+Reasons:
+
+- The batch contract takes a complete, seekable `BinaryIO` and returns one
+  `TranscriptionResult` (`src/voz/application/ports/transcription.py:265-271`).
+  A streaming contract has the opposite shape: frames pushed over time,
+  ordered events out, an explicit close. Forcing both into one method set is
+  the "optional methods on one port" shape that decision 7 already rejects for
+  diarization and alignment.
+- Every adapter above and the contract suite would otherwise have to grow
+  methods most of them cannot honour.
+- Live audio must not enter the durable job runner, which re-enqueues every
+  non-terminal job after a restart; that is a property of the batch path, not a
+  reason to widen its port.
+
+Consequences for this ADR: decisions 1 and 2 apply to the batch port only;
+decision 6 applies to the new port too (it is introduced with its first
+real adapter, not as a framework); the `realtime` value of `ModelCapability`
+(`src/voz/domain/entities/model_descriptor.py:35`) is vocabulary and is
+declared by an engine only when a streaming adapter exists.
+
+### 3. Left open
+
+The wire transport between browser and server, the first streaming engine, the
+admission policy against batch jobs, and what is stored about a live session
+are **not decided here**. They belong to the real-time ADR, which requires
+explicit maintainer approval before any dependency or engine is added. Until then
+the streaming port has no code, and nothing in the product or its
+documentation may describe live transcription as available.

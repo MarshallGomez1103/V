@@ -4,9 +4,7 @@ Local endpoint (`127.0.0.1`); it calls no providers and uses no network. Errors
 use `{"detail": {"code": "<snake_code>", "message": "<safe text>"}}`. Common
 rules: [README.md](README.md).
 
-```
-GET /api/transcripts/{transcript_id}/export?format=txt&timestamps=false&group_by_speaker=false
-```
+`GET /api/transcripts/{transcript_id}/export?format=txt&timestamps=false&group_by_speaker=false`
 
 | Parameter | Values | Default |
 | --- | --- | --- |

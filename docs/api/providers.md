@@ -77,9 +77,11 @@ queries fail no warning is shown; it is never inferred from a hard-coded id.
 Optional cloud provider, **experimental** (only tested with a fake transport).
 Privacy, data sent and key deletion: [privacy/elevenlabs.md](../privacy/elevenlabs.md).
 
-- **Key**: the same `PUT`/`DELETE /api/providers/elevenlabs/key` endpoints; it is
+- **Key**: the same `PUT /api/providers/{id}/key` and `DELETE /api/providers/{id}/key`
+  endpoints with `id` `elevenlabs`; it is
   read from `ELEVENLABS_API_KEY`, `VOZ_ELEVENLABS_API_KEY` or `secrets.toml`.
-- **Estimate**: `GET /api/providers/elevenlabs/estimate?media_asset_id=`. Default
+- **Estimate**: `GET /api/providers/{id}/estimate` with `id` `elevenlabs` and
+  `media_asset_id` as the query parameter. Default
   model `scribe_v1`, reference price of 0.40 USD per hour of audio (2026-09-30,
   **not verified live**). The composition root already wires
   `ELEVENLABS_PRICES`/`ELEVENLABS_DEFAULT_MODELS` (module

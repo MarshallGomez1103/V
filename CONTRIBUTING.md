@@ -119,6 +119,11 @@ them.
 - Every bug fix needs a regression test that fails before the fix.
 - Cover failure and cancellation paths when your change introduces them.
 - Tests must run offline and must not need real models or real recordings.
+- Every route the application serves must be documented in [docs/api/](docs/api/README.md)
+  with its method and path in a code span, such as `` `GET /api/health` ``. The
+  contract test `tests/contract/test_api_docs_match_routes.py` fails when a
+  served route is missing from those pages or a page names an endpoint that is
+  not served. Run it with `uv run pytest tests/contract/test_api_docs_match_routes.py -q`.
 
 ## 5. Privacy and excluded content
 

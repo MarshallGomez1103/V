@@ -17,6 +17,23 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Added
 
+- Single-instance protection: only one V server can use a data directory at a
+  time. A second `v` on the same data, even with another `--port`, prints
+  "Another V server is already using this data directory.", exits with code 1
+  and does not open the browser. The lock is an operating-system file lock
+  (`instance.lock` in the state directory) released automatically when the
+  server stops, so no stale lock remains. Tested on Linux; Windows and macOS
+  are experimental and not verified on real hardware.
+- A contract test (`tests/contract/test_api_docs_match_routes.py`) that fails
+  when a route served by the application is missing from `docs/api/` or a page
+  names an endpoint that is not served; `docs/api/README.md` gains a "Route
+  registration and availability" section.
+- Troubleshooting entry for the "Another V server is already using this data
+  directory." message, and a CONTRIBUTING rule to document every new route in
+  `docs/api/`.
+- Architecture decision records 0012 to 0014, all **Proposed** (not
+  implemented): project folders, model catalog filters, and an MCP server with
+  transcript verification.
 - `voz` CLI (Typer): starts the local server on `127.0.0.1:8765` and opens the
   browser unless `--no-browser` is given; `voz doctor` (`--json`, `--redact`)
   checks FFmpeg/ffprobe, port, XDG paths, disk, ASR runtime and GPU without
@@ -103,6 +120,15 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Changed
 
+- The web interface shows a visible alert with a retry action when opening a
+  transcript, cancelling a job or recomputing speakers fails, and clear
+  messages for the media normalization failure codes (`media_normalization_*`)
+  and `rediarize_unavailable`, in English and Spanish.
+- Process-group termination for local engines, the Edge Lab and custom model
+  workers goes through one shared routine.
+- The C4 architecture documents (`docs/architecture/`) and ADR-0005
+  (transcription providers, with an amendment) match the current composition
+  root.
 - Launchers: the deprecated `Iniciar-*` wrappers are removed; the macOS, Linux
   and Windows launchers explain a failed `uv` install, the Windows launcher
   exits with an error code and honours `VOZ_NO_PAUSE`, and a Launchers
@@ -129,6 +155,11 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Fixed
 
+- The transcript segment list could leave blank space or misplace rows when
+  filtering by speaker, because virtualized row heights were tracked by index
+  instead of by segment.
+- A server that fails during startup releases the instance lock and stops what
+  it had already started.
 - `wait_idle` on the transcription and synthesis job runners no longer reports
   the queue as idle while the worker has taken a job but not yet started it,
   so stopping a runner right after `wait_idle` no longer interrupts that job.
@@ -150,6 +181,9 @@ artifacts. What follows is everything that already exists in the repository.
 
 ### Security
 
+- Updated locked dependencies to close weekly audit findings: `filelock`
+  3.32.5 → 4.2.4 (transitive, Python), `undici` 7.30.0 → 7.30.1 and `zod`
+  4.5.4 → 4.6.7 (development tooling).
 - Cloud transcription options fail closed: the options selector no longer
   treats an unloaded or failed catalog as consent, and `POST /api/jobs` rejects
   a cloud option without an explicit `cloud_consent: true` (422
