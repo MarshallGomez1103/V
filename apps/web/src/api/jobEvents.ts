@@ -1,3 +1,4 @@
+import { translate } from '../i18n/i18n'
 import { isJobView, type JobView } from './jobs'
 
 export { isJobView, type JobView }
@@ -46,7 +47,7 @@ export function subscribeJobEvents(
     }
     const view = parseJobView(event)
     if (view === null) {
-      handlers.onError(new Error('El servidor envió un estado de trabajo inválido.'))
+      handlers.onError(new Error(translate('err.events.invalid')))
       return
     }
     handlers.onJob(view)
@@ -60,9 +61,7 @@ export function subscribeJobEvents(
   source.addEventListener('error', () => {
     if (active && source.readyState === EventSource.CLOSED) {
       active = false
-      handlers.onError(
-        new Error('Se perdió la conexión con los eventos del trabajo.'),
-      )
+      handlers.onError(new Error(translate('err.events.lost')))
     }
   })
 

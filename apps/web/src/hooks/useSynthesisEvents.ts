@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { getSynthesis, subscribeSynthesisEvents, type SynthesisView } from '../api/synthesis'
+import { isAbortError } from '../api/errors'
+import { getSynthesis, subscribeSynthesisEvents, SynthesisApiError, type SynthesisView } from '../api/synthesis'
+import { translate } from '../i18n/i18n'
 
 export interface SynthesisEventsState {
   job: SynthesisView | null
@@ -48,10 +50,22 @@ export function useSynthesisEvents(id: string | null): SynthesisEvents {
         setTracked((current) =>
           current?.key === key && current.job !== null
             ? current
-            : { ...(current?.key === key ? current : IDLE), job, key },
+            : { ...(current?.key === key ? current : IDLE), job, error: null, key },
         )
       })
-      .catch(() => undefined)
+      .catch((failure: unknown) => {
+        if (isAbortError(failure)) {
+          return
+        }
+        // Un fallo de la instantánea solo se muestra si el stream aún no trajo el trabajo.
+        const message =
+          failure instanceof SynthesisApiError ? failure.message : translate('err.network')
+        setTracked((current) =>
+          current?.key === key && current.job !== null
+            ? current
+            : { ...(current?.key === key ? current : IDLE), error: message, key },
+        )
+      })
     const stop = subscribeSynthesisEvents(id, {
       onJob: (job) => {
         patch({ job, error: null })

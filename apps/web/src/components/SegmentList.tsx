@@ -87,30 +87,36 @@ const ROW_ESTIMATE = 96
 const FALLBACK_VIEWPORT = 640
 const OVERSCAN = 6
 
-interface Measure {
-  heights: ReadonlyMap<number, number>
-  estimate: number
-}
+// Alturas medidas por id de segmento: un índice cambia al filtrar, el id no.
+type Heights = ReadonlyMap<string, number>
 
-const NO_MEASURES: Measure = { heights: new Map(), estimate: ROW_ESTIMATE }
+const NO_HEIGHTS: Heights = new Map()
 
-/** Incorpora alturas medidas; devuelve el mismo objeto si nada cambió (sin re-render). */
-function withMeasures(previous: Measure, seen: readonly (readonly [number, number])[]): Measure {
-  let next: Map<number, number> | null = null
-  for (const [index, height] of seen) {
-    if (Math.abs((previous.heights.get(index) ?? 0) - height) > 1) {
-      next ??= new Map(previous.heights)
-      next.set(index, height)
+/** Incorpora alturas medidas; devuelve el mismo mapa si nada cambió (sin re-render). */
+function withMeasures(previous: Heights, seen: readonly (readonly [string, number])[]): Heights {
+  let next: Map<string, number> | null = null
+  for (const [id, height] of seen) {
+    if (Math.abs((previous.get(id) ?? 0) - height) > 1) {
+      next ??= new Map(previous)
+      next.set(id, height)
     }
   }
-  if (next === null) {
-    return previous
-  }
+  return next ?? previous
+}
+
+/** Posiciones de las filas actuales; las no medidas usan la media de las medidas de esta lista. */
+function rowOffsets(segments: readonly TranscriptSegment[], heights: Heights): number[] {
   let sum = 0
-  next.forEach((value) => {
-    sum += value
-  })
-  return { heights: next, estimate: Math.round(sum / next.size) }
+  let count = 0
+  for (const segment of segments) {
+    const height = heights.get(segment.id)
+    if (height !== undefined) {
+      sum += height
+      count += 1
+    }
+  }
+  const estimate = count > 0 ? Math.round(sum / count) : ROW_ESTIMATE
+  return buildOffsets(segments.length, (i) => heights.get(segments[i]?.id ?? '') ?? estimate)
 }
 
 function highlight(
@@ -280,8 +286,8 @@ function TranscriptView({
   const [follow, setFollow] = useState(true)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(0)
-  // Alturas medidas por fila y la estimación (media) para las que aún no se midieron.
-  const [measure, setMeasure] = useState<Measure>(NO_MEASURES)
+  // Alturas medidas por segmento; las filas sin medir se estiman con la media.
+  const [heights, setHeights] = useState<Heights>(NO_HEIGHTS)
 
   const segments = useMemo(
     () =>
@@ -304,10 +310,7 @@ function TranscriptView({
     [speakers],
   )
 
-  const offsets = useMemo(
-    () => buildOffsets(segments.length, (i) => measure.heights.get(i) ?? measure.estimate),
-    [segments.length, measure],
-  )
+  const offsets = useMemo(() => rowOffsets(segments, heights), [segments, heights])
   const view = viewport > 0 ? viewport : FALLBACK_VIEWPORT
   const range = visibleRange(offsets, scrollTop, view, OVERSCAN)
   const total = offsets[segments.length] ?? 0
@@ -322,13 +325,14 @@ function TranscriptView({
     const refresh = () => {
       frame = 0
       setViewport(container.clientHeight)
-      const seen: [number, number][] = []
+      const seen: [string, number][] = []
       container.querySelectorAll<HTMLElement>('[data-segment-index]').forEach((row) => {
-        if (row.offsetHeight > 0) {
-          seen.push([Number(row.dataset.segmentIndex), row.offsetHeight])
+        const id = segments[Number(row.dataset.segmentIndex)]?.id
+        if (id !== undefined && row.offsetHeight > 0) {
+          seen.push([id, row.offsetHeight])
         }
       })
-      setMeasure((previous) => withMeasures(previous, seen))
+      setHeights((previous) => withMeasures(previous, seen))
     }
     const schedule = () => {
       if (frame === 0) {
@@ -347,7 +351,8 @@ function TranscriptView({
         cancelAnimationFrame(frame)
       }
     }
-  }, [range.start, range.end])
+    // Filtrar o recargar cambia qué segmento ocupa cada índice: hay que observar las filas nuevas.
+  }, [range.start, range.end, segments])
 
   function scrollToIndex(index: number) {
     const container = containerRef.current

@@ -33,6 +33,13 @@ describe('catálogo de mensajes', () => {
     }
   })
 
+  it('cada clave trae exactamente una versión en español y una en inglés', () => {
+    for (const [key, pair] of entries) {
+      expect(pair, key).toHaveLength(2)
+      expect(pair.every((text) => typeof text === 'string'), key).toBe(true)
+    }
+  })
+
   it('ambas versiones usan las mismas variables', () => {
     for (const [key, [es, en]] of entries) {
       expect(placeholders(en), key).toEqual(placeholders(es))

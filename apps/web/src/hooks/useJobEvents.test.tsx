@@ -1,7 +1,8 @@
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { JobView } from '../api/jobEvents'
+import { setLang } from '../i18n/i18n'
 import { useJobEvents } from './useJobEvents'
 
 class FakeEventSource extends EventTarget {
@@ -56,14 +57,20 @@ function emit(source: FakeEventSource, type: string, data: unknown) {
   })
 }
 
+let fetchMock: ReturnType<typeof vi.fn>
+
 beforeEach(() => {
   FakeEventSource.instances = []
   vi.stubGlobal('EventSource', FakeEventSource)
+  // Por defecto la instantánea HTTP queda pendiente: solo habla el stream.
+  fetchMock = vi.fn(() => new Promise<Response>(() => undefined))
+  vi.stubGlobal('fetch', fetchMock)
 })
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  setLang('es')
 })
 
 describe('useJobEvents', () => {
@@ -153,5 +160,128 @@ describe('useJobEvents', () => {
     const { unmount } = renderHook(() => useJobEvents(JOB_ID))
     unmount()
     expect(latest().close).toHaveBeenCalledTimes(1)
+  })
+
+  it('si la instantánea HTTP falla y el stream sigue abierto, el error se ve', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    const { result } = renderHook(() => useJobEvents(JOB_ID))
+
+    await waitFor(() => {
+      expect(result.current.error).toMatch(/No se pudo conectar/)
+    })
+    expect(result.current.job).toBeNull()
+  })
+
+  it('un trabajo inexistente en la instantánea se explica con su mensaje', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: { code: 'job_not_found', message: 'x' } }), {
+        status: 404,
+      }),
+    )
+    const { result } = renderHook(() => useJobEvents(JOB_ID))
+
+    await waitFor(() => {
+      expect(result.current.error).toBe('La transcripción ya no existe.')
+    })
+  })
+
+  it('el siguiente snapshot del stream limpia el error de la instantánea', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    const { result } = renderHook(() => useJobEvents(JOB_ID))
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull()
+    })
+
+    emit(latest(), 'job', view())
+    expect(result.current.error).toBeNull()
+    expect(result.current.job?.id).toBe(JOB_ID)
+  })
+
+  it('una instantánea fallida no tapa un trabajo que el stream ya entregó', async () => {
+    let fail: (reason: unknown) => void = () => undefined
+    fetchMock.mockReturnValue(
+      new Promise<Response>((_resolve, reject) => {
+        fail = reject
+      }),
+    )
+    const { result } = renderHook(() => useJobEvents(JOB_ID))
+    emit(latest(), 'job', view({ state: 'TRANSCRIBING' }))
+
+    await act(async () => {
+      fail(new TypeError('Failed to fetch'))
+      await Promise.resolve()
+    })
+    expect(result.current.error).toBeNull()
+    expect(result.current.job?.state).toBe('TRANSCRIBING')
+  })
+
+  it('cambiar el intento vuelve a pedir la instantánea y reabre el stream', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const { result, rerender } = renderHook(
+      ({ attempt }: { attempt: number }) => useJobEvents(JOB_ID, attempt),
+      { initialProps: { attempt: 0 } },
+    )
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull()
+    })
+    const first = latest()
+
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(view({ state: 'COMPLETED' }))))
+    rerender({ attempt: 1 })
+
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(FakeEventSource.instances).toHaveLength(2)
+    await waitFor(() => {
+      expect(result.current.job?.state).toBe('COMPLETED')
+    })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('los errores del stream salen en el idioma activo', () => {
+    setLang('en')
+    const { result } = renderHook(() => useJobEvents(JOB_ID))
+
+    emit(latest(), 'job', '{not json')
+    expect(result.current.error).toBe('The server sent an invalid job state.')
+
+    latest().readyState = FakeEventSource.CLOSED
+    act(() => {
+      latest().dispatchEvent(new Event('error'))
+    })
+    expect(result.current.error).toBe('The connection to the job events was lost.')
+  })
+
+  it('al reintentar limpia el error enseguida, para que se vea que está cargando', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const { result, rerender } = renderHook(
+      ({ attempt }: { attempt: number }) => useJobEvents(JOB_ID, attempt),
+      { initialProps: { attempt: 0 } },
+    )
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull()
+    })
+
+    fetchMock.mockReturnValue(new Promise<Response>(() => undefined))
+    rerender({ attempt: 1 })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('si la instantánea dice que no existe, la pérdida del stream no tapa ese mensaje', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: { code: 'job_not_found', message: 'x' } }), {
+        status: 404,
+      }),
+    )
+    const { result } = renderHook(() => useJobEvents(JOB_ID))
+    await waitFor(() => {
+      expect(result.current.error).toBe('La transcripción ya no existe.')
+    })
+
+    latest().readyState = FakeEventSource.CLOSED
+    act(() => {
+      latest().dispatchEvent(new Event('error'))
+    })
+    expect(result.current.error).toBe('La transcripción ya no existe.')
+    expect(result.current.notFound).toBe(true)
   })
 })

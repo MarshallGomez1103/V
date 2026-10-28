@@ -77,7 +77,7 @@ export function SegmentEditor({ segment, drafts, query = '' }: SegmentEditorProp
         />
       </div>
       {status !== 'idle' && (
-        <p className="segment-editor-state">
+        <p className="segment-editor-state" role={status === 'error' ? 'alert' : 'status'}>
           <span>{STATUS_LABELS[status] ? t(STATUS_LABELS[status]) : ''}</span>
           {status === 'error' && (
             <>

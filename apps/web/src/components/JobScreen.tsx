@@ -12,6 +12,7 @@ import { useNow } from '../hooks/useNow'
 import { useI18n, type Translate } from '../i18n/i18n'
 import type { MessageKey } from '../i18n/messages'
 import { formatSeconds } from '../lib/formatTime'
+import { failureMessage } from '../lib/jobFailure'
 import { parseIso } from '../lib/time'
 import { Busy } from './Busy'
 import { CloudBadge } from './CloudBadge'
@@ -184,23 +185,6 @@ function Figure({
   )
 }
 
-function failureMessage(code: string | null, t: Translate): string {
-  if (code === null) {
-    return t('job.fail.generic')
-  }
-  const known: Record<string, Parameters<Translate>[0]> = {
-    media_unreadable: 'job.fail.media_unreadable',
-    provider_unavailable: 'job.fail.provider_unavailable',
-    model_missing: 'job.fail.model_missing',
-    out_of_memory: 'job.fail.out_of_memory',
-    timeout: 'job.fail.timeout',
-    cloud_consent_expired: 'job.fail.cloud_consent_expired',
-  }
-  return Object.hasOwn(known, code)
-    ? t(known[code] ?? 'job.fail.generic')
-    : t('job.fail.code', { code })
-}
-
 /** Qué está pasando ahora, en una frase. */
 function sentence(job: JobView, t: Translate): string | null {
   switch (job.state) {
@@ -324,7 +308,7 @@ export function JobScreen({ job, loading, error, onCancel, onAdjust }: JobScreen
         </p>
       ) : null}
 
-      {failed ? <Notice kind="error" title={failureMessage(job.error_code, t)} /> : null}
+      {failed ? <Notice kind="error" title={failureMessage(job.error_code)} /> : null}
       {cancelled ? <Notice kind="info" title={t('job.cancelled.note')} /> : null}
       {error ? <Notice kind="error" title={error} /> : null}
 

@@ -133,6 +133,23 @@ describe('JobScreen', () => {
     )
   })
 
+  it.each([
+    'media_normalization_tool_unavailable',
+    'media_normalization_invalid_source',
+    'media_normalization_unsafe_destination',
+    'media_normalization_destination_exists',
+    'media_normalization_process_failed',
+    'media_normalization_corrupted_media',
+    'media_normalization_cancelled',
+    'media_normalization_io_error',
+  ])('FAILED con %s da un mensaje propio y no el genérico con el código', (code) => {
+    render(<JobScreen job={makeJob('FAILED', { error_code: code })} />)
+
+    const text = screen.getByRole('alert').textContent
+    expect(text).not.toContain(code)
+    expect(text).not.toMatch(/código/)
+  })
+
   it('CANCELLING deshabilita el botón de cancelar', () => {
     const onCancel = vi.fn()
     render(<JobScreen job={makeJob('CANCELLING')} onCancel={onCancel} />)

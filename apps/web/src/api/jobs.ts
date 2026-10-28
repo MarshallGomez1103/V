@@ -128,6 +128,11 @@ export class JobApiError extends Error {
   }
 }
 
+/** Mensaje seguro de un fallo de petición: el de la API si lo trae, o el de red. */
+export function messageForFailure(failure: unknown): string {
+  return failure instanceof JobApiError ? failure.message : translate('err.network')
+}
+
 export function messageForCode(code: string): string {
   return translateCode('err.job.', code, 'err.job.generic')
 }

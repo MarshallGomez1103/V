@@ -151,6 +151,38 @@ export const job = {
     'La transcripción tardó demasiado y se detuvo.',
     'The transcription took too long and was stopped.',
   ],
+  'job.fail.media_normalization_tool_unavailable': [
+    'FFmpeg no está disponible en este equipo, así que no se pudo preparar el audio.',
+    'FFmpeg is not available on this computer, so the audio could not be prepared.',
+  ],
+  'job.fail.media_normalization_invalid_source': [
+    'La grabación original no es válida o ya no está disponible.',
+    'The original recording is not valid or is no longer available.',
+  ],
+  'job.fail.media_normalization_unsafe_destination': [
+    'El audio preparado no se pudo guardar en una ubicación segura.',
+    'The prepared audio could not be saved in a safe location.',
+  ],
+  'job.fail.media_normalization_destination_exists': [
+    'Ya existe un audio preparado en ese destino. Vuelve a intentarlo.',
+    'A prepared audio already exists at that destination. Try again.',
+  ],
+  'job.fail.media_normalization_process_failed': [
+    'FFmpeg falló al preparar el audio.',
+    'FFmpeg failed while preparing the audio.',
+  ],
+  'job.fail.media_normalization_corrupted_media': [
+    'La grabación parece dañada o incompleta y no se pudo preparar el audio.',
+    'The recording looks damaged or incomplete, so the audio could not be prepared.',
+  ],
+  'job.fail.media_normalization_cancelled': [
+    'La preparación del audio fue cancelada.',
+    'The audio preparation was cancelled.',
+  ],
+  'job.fail.media_normalization_io_error': [
+    'No se pudo escribir el audio preparado. Revisa el espacio y los permisos del disco.',
+    'Could not write the prepared audio. Check disk space and permissions.',
+  ],
   'job.fail.cloud_consent_expired': [
     'La transcripción se detuvo porque V se reinició: el permiso para enviar a la nube vale solo para una ejecución. Vuelve a lanzarla y confirma de nuevo.',
     'The transcription stopped because V restarted: the permission to send data to the cloud only lasts for one run. Launch it again and confirm again.',

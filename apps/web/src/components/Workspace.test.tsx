@@ -91,6 +91,10 @@ const json = (body: unknown, status = 200) =>
 
 let calls: { method: string; path: string; body: unknown }[]
 let rediarizeStatus: number
+let rediarizeCode: string
+let snapshotFails: boolean
+let jobMissing: boolean
+let cancelFails: boolean
 let speakersNow: typeof SPEAKERS
 let play: ReturnType<typeof vi.spyOn>
 let pause: ReturnType<typeof vi.spyOn>
@@ -98,6 +102,10 @@ let pause: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   calls = []
   rediarizeStatus = 202
+  rediarizeCode = 'diarization_models_missing'
+  snapshotFails = false
+  jobMissing = false
+  cancelFails = false
   speakersNow = SPEAKERS
   FakeEventSource.instances = []
   vi.stubGlobal('EventSource', FakeEventSource)
@@ -114,7 +122,16 @@ beforeEach(() => {
       const route = method + ' ' + url.pathname
       switch (route) {
         case 'GET /api/jobs/job-1':
-          return Promise.resolve(json(job('job-1', 'COMPLETED')))
+          if (jobMissing) {
+            return Promise.resolve(json({ detail: { code: 'job_not_found', message: 'x' } }, 404))
+          }
+          return snapshotFails
+            ? Promise.reject(new TypeError('Failed to fetch'))
+            : Promise.resolve(json(job('job-1', 'COMPLETED')))
+        case 'POST /api/jobs/job-1/cancel':
+          return cancelFails
+            ? Promise.resolve(json({ detail: { code: 'job_terminal', message: 'x' } }, 409))
+            : Promise.resolve(json(job('job-1', 'CANCELLING', { transcript_id: null })))
         case 'GET /api/transcripts/t1/segments':
           return Promise.resolve(json({ segments: SEGMENTS }))
         case 'GET /api/transcripts/t1/speakers':
@@ -125,7 +142,7 @@ beforeEach(() => {
           return Promise.resolve(
             rediarizeStatus === 202
               ? json(job('job-2', 'DIARIZING', { progress: 0.1 }), 202)
-              : json({ detail: { code: 'diarization_models_missing', message: 'x' } }, rediarizeStatus),
+              : json({ detail: { code: rediarizeCode, message: 'x' } }, rediarizeStatus),
           )
         default:
           return Promise.reject(new Error('petición sin simular: ' + route))
@@ -247,6 +264,20 @@ describe('Workspace', () => {
     expect(screen.queryByText(/Recalculando hablantes/)).toBeNull()
   })
 
+  it('Escape cierra el diálogo de recalcular sin lanzar el trabajo', async () => {
+    renderWorkspace()
+    await screen.findByRole('region', { name: 'Lista de segmentos' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalcular hablantes' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Recalcular hablantes' })
+
+    fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Recalcular hablantes' })).toBeNull()
+    })
+    expect(calls.some((call) => call.path === '/api/transcripts/t1/rediarize')).toBe(false)
+  })
+
   it('si falta el modelo de hablantes lo dice y lleva a Modelos', async () => {
     rediarizeStatus = 409
     const onOpenModels = vi.fn()
@@ -259,5 +290,156 @@ describe('Workspace', () => {
     expect(await within(dialog).findByText(/Falta el modelo de hablantes/)).toBeDefined()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ir a Modelos' }))
     expect(onOpenModels).toHaveBeenCalledTimes(1)
+  })
+
+  it('si no se puede abrir el trabajo, muestra el error y Reintentar vuelve a cargarlo', async () => {
+    snapshotFails = true
+    render(
+      <Workspace
+        jobId="job-1"
+        seed={SEED}
+        library={{ phase: 'ready', items: [] }}
+        onAdjust={vi.fn()}
+        onGoHome={vi.fn()}
+        onOpenModels={vi.fn()}
+      />,
+    )
+
+    const title = await screen.findByText('No se pudo abrir la transcripción')
+    const alert = title.closest<HTMLElement>('[role="alert"]')
+    expect(alert).not.toBeNull()
+    if (alert === null) {
+      return
+    }
+    expect(alert.textContent).toContain('No se pudo conectar con el servidor.')
+    expect(screen.queryByText('Abriendo la transcripción…')).toBeNull()
+
+    snapshotFails = false
+    fireEvent.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByRole('region', { name: 'Lista de segmentos' })).toBeDefined()
+    expect(screen.queryByText('No se pudo abrir la transcripción')).toBeNull()
+  })
+
+  it('si cancelar falla, lo dice con un aviso', async () => {
+    cancelFails = true
+    render(
+      <Workspace
+        jobId="job-1"
+        seed={SEED}
+        library={{ phase: 'ready', items: [] }}
+        onAdjust={vi.fn()}
+        onGoHome={vi.fn()}
+        onOpenModels={vi.fn()}
+      />,
+    )
+    const stream = FakeEventSource.instances[0] as FakeEventSource
+    stream.emit('job', job('job-1', 'TRANSCRIBING', { progress: 0.3, transcript_id: null }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }))
+
+    const title = await screen.findByText('No se pudo cancelar la transcripción')
+    const alert = title.closest('[role="alert"]')
+    expect(alert?.textContent).toContain('La transcripción ya terminó y no se puede cancelar.')
+  })
+
+  it('la alerta de cancelación desaparece cuando el trabajo cambia de estado', async () => {
+    cancelFails = true
+    render(
+      <Workspace
+        jobId="job-1"
+        seed={SEED}
+        library={{ phase: 'ready', items: [] }}
+        onAdjust={vi.fn()}
+        onGoHome={vi.fn()}
+        onOpenModels={vi.fn()}
+      />,
+    )
+    const stream = FakeEventSource.instances[0] as FakeEventSource
+    stream.emit('job', job('job-1', 'TRANSCRIBING', { progress: 0.3, transcript_id: null }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }))
+    await screen.findByText('No se pudo cancelar la transcripción')
+
+    stream.emit('job', job('job-1', 'FAILED', { transcript_id: null, error_code: 'timeout' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('No se pudo cancelar la transcripción')).toBeNull()
+    })
+  })
+
+  it('un trabajo que no existe conserva el título de «no se encontró» y no ofrece reintentar', async () => {
+    jobMissing = true
+    render(
+      <Workspace
+        jobId="job-1"
+        seed={SEED}
+        library={{ phase: 'ready', items: [] }}
+        onAdjust={vi.fn()}
+        onGoHome={vi.fn()}
+        onOpenModels={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText('No se encontró esta transcripción')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ir al inicio' })).toBeDefined()
+  })
+
+  it('si falla el recálculo, traduce el código del trabajo en vez de mostrarlo crudo', async () => {
+    renderWorkspace()
+    await screen.findByRole('region', { name: 'Lista de segmentos' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalcular hablantes' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Recalcular hablantes' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Recalcular' }))
+    await waitFor(() => {
+      expect(FakeEventSource.instances).toHaveLength(2)
+    })
+
+    const stream = FakeEventSource.instances[1] as FakeEventSource
+    stream.emit(
+      'job',
+      job('job-2', 'FAILED', { error_code: 'media_normalization_corrupted_media' }),
+    )
+
+    const failed = await screen.findByText('No se pudieron recalcular los hablantes')
+    const notice = failed.closest('[role="alert"]')
+    expect(notice?.textContent).toContain('dañada o incompleta')
+    expect(notice?.textContent).not.toContain('media_normalization_corrupted_media')
+  })
+
+  it('si se pierde el seguimiento del recálculo, no se queda en silencio', async () => {
+    renderWorkspace()
+    await screen.findByRole('region', { name: 'Lista de segmentos' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalcular hablantes' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Recalcular hablantes' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Recalcular' }))
+    await waitFor(() => {
+      expect(FakeEventSource.instances).toHaveLength(2)
+    })
+
+    const stream = FakeEventSource.instances[1] as FakeEventSource
+    stream.readyState = 2
+    act(() => {
+      ;(stream as unknown as { listeners: Map<string, ((event: Event) => void)[]> }).listeners
+        .get('error')
+        ?.forEach((listener) => {
+          listener(new Event('error'))
+        })
+    })
+
+    const failed = await screen.findByText('No se pudieron recalcular los hablantes')
+    expect(failed.closest('[role="alert"]')?.textContent).toContain('Se perdió la conexión')
+  })
+
+  it('si el recálculo no está disponible para esa transcripción, lo explica', async () => {
+    rediarizeStatus = 409
+    rediarizeCode = 'rediarize_unavailable'
+    renderWorkspace()
+    await screen.findByRole('region', { name: 'Lista de segmentos' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalcular hablantes' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Recalcular hablantes' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Recalcular' }))
+
+    expect(await within(dialog).findByText(/solo una transcripción completada/)).toBeDefined()
+    expect(within(dialog).queryByText(/rediarize_unavailable/)).toBeNull()
   })
 })

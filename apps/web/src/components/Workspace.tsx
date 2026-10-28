@@ -2,13 +2,14 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import {
   Breadcrumb,
   BreadcrumbItem,
+  Button,
   Column,
   ContentSwitcher,
   Grid,
   Switch,
 } from '@carbon/react'
 
-import { cancelJob, PROCESSABLE_STATES } from '../api/jobs'
+import { cancelJob, messageForFailure, PROCESSABLE_STATES } from '../api/jobs'
 import type { JobView, TranscriptSegment } from '../api/jobs'
 import type { LibraryItem } from '../api/library'
 import type { LibraryState } from '../hooks/useLibrary'
@@ -18,6 +19,7 @@ import { useJobPreview } from '../hooks/useJobPreview'
 import { useSegmentDrafts } from '../hooks/useSegmentDrafts'
 import { useSeek } from '../hooks/useSeek'
 import { useI18n } from '../i18n/i18n'
+import { failureMessage } from '../lib/jobFailure'
 import { createPlayhead } from '../lib/playhead'
 import type { Sample, Turn } from '../lib/speakerTurns'
 import { AutosaveStatus } from './AutosaveStatus'
@@ -86,7 +88,14 @@ export function Workspace({
   onOpenModels,
 }: WorkspaceProps) {
   const { t } = useI18n()
-  const events = useJobEvents(jobId)
+  const [openAttempt, setOpenAttempt] = useState(0)
+  const events = useJobEvents(jobId, openAttempt)
+  // La alerta vale solo para el trabajo y el estado en que falló la cancelación.
+  const [cancelFailure, setCancelFailure] = useState<{
+    jobId: string
+    state: string | undefined
+    message: string
+  } | null>(null)
   const job = events.job
   const transcriptId = job?.transcript_id ?? null
   const processing = job !== null && PROCESSABLE_STATES.has(job.state)
@@ -130,7 +139,11 @@ export function Workspace({
   const recalcRunning =
     recalcJobId !== null &&
     (recalc.job === null ? recalc.error === null : PROCESSABLE_STATES.has(recalc.job.state))
-  const recalcFailed = recalcState === 'FAILED' || recalcState === 'CANCELLED'
+  // Sin trabajo y con error: el seguimiento se perdió y el recálculo no puede darse por bueno.
+  const recalcFailed =
+    recalcState === 'FAILED' ||
+    recalcState === 'CANCELLED' ||
+    (recalcJobId !== null && recalc.job === null && recalc.error !== null)
   const recalcDone = recalcState === 'COMPLETED'
   const recalcPct =
     recalc.job === null
@@ -236,12 +249,26 @@ export function Workspace({
       <Grid narrow className="voz-grid">
         <Column sm={4} md={8} lg={16}>
           {events.error !== null ? (
-            <Notice
-              kind="error"
-              title={t('work.notfound.title')}
-              subtitle={t('work.notfound.body')}
-              action={{ label: t('work.notfound.back'), onClick: onGoHome }}
-            />
+            <>
+              <Notice
+                kind="error"
+                title={events.notFound ? t('work.notfound.title') : t('work.loadFailed.title')}
+                subtitle={events.notFound ? t('work.notfound.body') : events.error}
+                {...(events.notFound
+                  ? {}
+                  : {
+                      action: {
+                        label: t('common.retry'),
+                        onClick: () => {
+                          setOpenAttempt((current) => current + 1)
+                        },
+                      },
+                    })}
+              />
+              <Button kind="ghost" size="md" onClick={onGoHome}>
+                {t('work.notfound.back')}
+              </Button>
+            </>
           ) : (
             <div role="status">
               <Busy description={t('work.loading')} />
@@ -305,12 +332,24 @@ export function Workspace({
           job={job}
           error={events.error}
           onCancel={() => {
-            void cancelJob(jobId).catch(() => undefined)
+            setCancelFailure(null)
+            cancelJob(jobId).catch((failure: unknown) => {
+              setCancelFailure({ jobId, state: job.state, message: messageForFailure(failure) })
+            })
           }}
           onAdjust={() => {
             onAdjust(imported)
           }}
         />
+        {cancelFailure?.jobId === jobId && cancelFailure.state === job.state ? (
+          <div className="voz-after">
+            <Notice
+              kind="error"
+              title={t('work.cancelFailed.title')}
+              subtitle={cancelFailure.message}
+            />
+          </div>
+        ) : null}
         {transcriptId && job.diarization_error_code ? (
           <div className="voz-after">
             <Notice
@@ -411,7 +450,12 @@ export function Workspace({
               recalc={{
                 phase: recalcRunning ? 'running' : recalcFailed ? 'failed' : 'idle',
                 pct: recalcPct,
-                error: recalc.job?.error_code ?? null,
+                error:
+                  recalc.job === null
+                    ? recalc.error
+                    : recalcState === 'FAILED'
+                      ? failureMessage(recalc.job.error_code)
+                      : null,
               }}
               {...(completed ? { onRecalculate: startRecalc } : {})}
               onOpenModels={onOpenModels}

@@ -57,6 +57,16 @@ export const errors = {
   ],
   'err.network': ['No se pudo conectar con el servidor.', 'Could not connect to the server.'],
 
+  // Eventos de un trabajo
+  'err.events.invalid': [
+    'El servidor envió un estado de trabajo inválido.',
+    'The server sent an invalid job state.',
+  ],
+  'err.events.lost': [
+    'Se perdió la conexión con los eventos del trabajo.',
+    'The connection to the job events was lost.',
+  ],
+
   // Trabajos
   'err.job.project_not_found': ['El proyecto ya no existe.', 'The project no longer exists.'],
   'err.job.media_asset_not_found': [
@@ -102,6 +112,10 @@ export const errors = {
   'err.job.invalid_response': [
     'La API devolvió una respuesta inesperada.',
     'The API returned an unexpected response.',
+  ],
+  'err.job.job_not_found': [
+    'La transcripción ya no existe.',
+    'The transcription no longer exists.',
   ],
   'err.job.generic': [
     'No se pudo completar la operación (código {code}).',
@@ -195,6 +209,14 @@ export const errors = {
   'err.speaker.job_already_active': [
     'Ya hay un trabajo en curso en este proyecto. Espera a que termine.',
     'A job is already running in this project. Wait for it to finish.',
+  ],
+  'err.speaker.rediarize_unavailable': [
+    'Esta transcripción no se puede recalcular: solo una transcripción completada puede volver a identificar a sus hablantes.',
+    'This transcript cannot be recomputed: only a completed transcription can identify its speakers again.',
+  ],
+  'err.speaker.diarization_unavailable': [
+    'La identificación de hablantes no está disponible. Instala su componente en Modelos.',
+    'Speaker identification is not available. Install its component in Models.',
   ],
   'err.speaker.action': ['No se pudo completar la acción.', 'Could not complete the action.'],
   'err.speaker.reassign': ['No se pudo reasignar el hablante.', 'Could not reassign the speaker.'],

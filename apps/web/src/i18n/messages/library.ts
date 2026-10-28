@@ -71,6 +71,8 @@ export const library = {
 
   // Trabajo abierto por URL
   'work.loading': ['Abriendo la transcripción…', 'Opening the transcript…'],
+  'work.loadFailed.title': ['No se pudo abrir la transcripción', 'Could not open the transcript'],
+  'work.cancelFailed.title': ['No se pudo cancelar la transcripción', 'Could not cancel the transcription'],
   'work.notfound.title': ['No se encontró esta transcripción', 'This transcript was not found'],
   'work.notfound.body': [
     'Puede que se haya eliminado o que el enlace esté incompleto. Vuelve al inicio para ver las que hay.',

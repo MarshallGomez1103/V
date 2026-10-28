@@ -110,6 +110,40 @@ describe('useSynthesisEvents', () => {
     expect(result.current.job?.progress).toBe(0.75)
   })
 
+  it('si la instantánea HTTP falla y el stream sigue abierto, el error se ve', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
+    const { result } = renderHook(() => useSynthesisEvents(ID))
+
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull()
+    })
+    expect(result.current.job).toBeNull()
+
+    emit(latest(), 'job', view())
+    expect(result.current.error).toBeNull()
+  })
+
+  it('un fallo inesperado de la instantánea nunca llega crudo a la interfaz', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => {
+            throw new TypeError('Failed to fetch')
+          },
+        } as unknown as Response),
+      ),
+    )
+    const { result } = renderHook(() => useSynthesisEvents(ID))
+
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull()
+    })
+    expect(result.current.error).not.toContain('Failed to fetch')
+  })
+
   it('sin id no abre nada', () => {
     const { result } = renderHook(() => useSynthesisEvents(null))
     expect(FakeEventSource.instances).toHaveLength(0)

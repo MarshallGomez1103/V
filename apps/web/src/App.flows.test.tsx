@@ -575,7 +575,7 @@ describe('abrir lo guardado', () => {
       stream.dispatch('error')
     })
 
-    expect(await screen.findByText('No se encontró esta transcripción')).toBeDefined()
+    expect(await screen.findByText('No se pudo abrir la transcripción')).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Ir al inicio' }))
     expect(window.location.hash).toBe('#/')
   })

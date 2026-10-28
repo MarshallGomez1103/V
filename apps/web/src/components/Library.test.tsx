@@ -132,6 +132,24 @@ describe('Library', () => {
     expect(await within(dialog).findByText('El nombre del proyecto no es válido.')).toBeDefined()
   })
 
+  it.each([
+    ['Renombrar Entrevista', 'Renombrar transcripción'],
+    ['Eliminar Entrevista', 'Eliminar «Entrevista»'],
+  ])('Escape cierra el modal de «%s» sin enviar nada', async (opener, heading) => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+    renderLibrary({ phase: 'ready', items: ITEMS })
+
+    fireEvent.click(screen.getByRole('button', { name: opener }))
+    const dialog = await screen.findByRole('dialog', { name: heading })
+    fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: heading })).toBeNull()
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('eliminar explica qué se borra y envía DELETE con su cabecera', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
     vi.stubGlobal('fetch', fetchMock)

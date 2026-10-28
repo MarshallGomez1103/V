@@ -113,6 +113,22 @@ describe('SegmentEditor', () => {
     expect(screen.getByText('Guardado')).toBeTruthy()
   })
 
+  it('anuncia el estado de guardado y el error de cada segmento a los lectores de pantalla', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(respond(200, { id: 's1', text: 'hola', revision: 2 }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<SegmentEditor segment={SEG} drafts={new SegmentDraftStore()} />)
+
+    fireEvent.change(editor(), { target: { value: 'hola' } })
+    expect(screen.getByText('Sin guardar').closest('[role="status"]')).not.toBeNull()
+
+    fireEvent.blur(editor())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.getByText('Error al guardar').closest('[role="alert"]')).not.toBeNull()
+  })
+
   it('conflicto: muestra la versión del servidor y permite elegir', async () => {
     const fetchMock = vi
       .fn()
