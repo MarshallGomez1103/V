@@ -1,0 +1,115 @@
+### INFORME — application
+
+**Metadatos:** fecha 2026-10-21 · HEAD 96284c5 · rutas revisadas: 87 archivos de `src/voz/application/` (incluye `ports/`, `export/`, `synthesis/`). Dependencias leídas solo para trazar flujos: `job_runner.py`, `admission.py`, `compute_slot.py`, `progress_throttle.py`, `synthesis/runner.py` (de informe_persistence_jobs), `bootstrap.py`, `infrastructure/asr/faster_whisper.py`, `infrastructure/asr/runtime_cache.py`, `interfaces/api/jobs.py`, `interfaces/api/openai_compat.py`, `interfaces/api/providers.py`, `infrastructure/cloud/openai_compatible.py`, `docs/adr/0006`, `docs/adr/0010`, `ROADMAP.md` (líneas 107, 158, 608-616). Alcance: inspección estática (grep, lectura). Límites: ningún test, linter ni build ejecutado; `infrastructure/` no auditada a fondo.
+
+**Cobertura:** asignados 87 · superficial 68 · profunda 19 · omitidos 0 · ~líneas 9 820 (profundas ~3 794) · dependencias principales: `voz.domain.entities.*`, `ports/transcription.py`, `ports/speech_synthesis.py`, `asr_device_selection.py`. "Profunda" = cuerpo completo o bloque de decisión leído (parcial en `projects.py` y `ports/model_installation.py`). Detalle por archivo en `coverage_application.tsv`.
+
+#### 1. Responsabilidades y dependencias
+- La aplicación importa solo stdlib, `voz.domain.*` y `voz.application.*`. Grep de `voz.infrastructure`, `voz.interfaces`, `fastapi`, `starlette`, `sqlalchemy`, `sqlite3`, `httpx`, `requests`, `numpy`, `onnx`, `sherpa`, `faster_whisper`, `ctranslate2`, `subprocess`, `shutil`: 0 imports. Los usos de `pathlib`, `threading`, `time`, `logging`, `hashlib` y `urllib.parse` son stdlib.
+- Casos de uso con demasiadas responsabilidades (comprobado):
+  - `CreateTranscriptionJob._create` (`src/voz/application/create_transcription_job.py:134-222`) valida proyecto, medio, prompt, perfil, consentimiento cloud, regla de proveedor, job activo, memoria y diarización, y además construye y persiste job y snapshot. Tiene 11 dependencias inyectadas (`:89-102`).
+  - `LocalCompatibleAudioService` (`compatible_audio.py:65-364`) reúne catálogo de modelos (`:89-132`), flujo STT (`:196-257`), flujo TTS (`:289-362`), espera con sondeo (`:158-177`) y traducción a códigos HTTP.
+  - `ModelTaskRunner` (`model_tasks.py:147-416`) reúne cola, hilo, progreso, cancelación, poda de historial e instalación desde origen externo o personalizado.
+
+#### 2. Arquitectura hexagonal
+Violación comprobada:
+- **A-1** Regla de proveedor concreto en el caso de uso: `create_transcription_job.py:178-185` compara `model.provider_id == "sherpa-onnx-asr"` y aplica restricciones de ese motor (sin perfiles, prompt ni glosario). El mismo literal es constante en `infrastructure/asr/sherpa_onnx_options.py:26`.
+- **A-2** Estados HTTP en la aplicación: `ports/compatible_audio.py:47-53` define `CompatibleAudioError(..., status: int)`, y `compatible_audio.py` asigna 503, 499, 504, 500, 409, 404 y 400 (p. ej. `:149, 154, 156, 170, 175, 252, 360`).
+- **A-3** Puerto con URL de proveedor: `ports/model_installation.py:136` fija `base_url = "https://huggingface.co"` en `ModelDownloadPort` (sin consumidores, ver §3).
+- **A-4** Puertos que dependen de un módulo de caso de uso: `ports/transcription_options.py:7` y `ports/transcription_job_selection.py:10` importan `HardwareCapabilities` y `ExecutionDecision` desde `asr_device_selection.py`, que es de aplicación y no de puertos.
+- **A-5** El puerto de TTS depende de un módulo de STT: `synthesis/create_synthesis_job.py:23-26` importa `ModelRegistration` e `InstallationStatus` de `ports/transcription_options.py`. La cabecera de `:42-45` lo admite como atajo estructural.
+
+Sospecha (sin verificar):
+- **S-1** `model_tasks.py:177-180` crea `threading.Thread` directamente, y `model_tasks.py:157` recibe `ImportCustomModel` concreto en lugar de un puerto. No hay puerto de ejecución (hipótesis: dificulta pruebas y un worker externo).
+- **S-2** Rutas de host en el modelo: `edge_lab.py:53-54` (`input_path: Path`, `model_directory: Path`) y `ports/compatible_audio.py:22` (`CompatibleTranscription.source: Path`, que recibe un temporal desde `interfaces/api/openai_compat.py:367`). Son rutas internas; falta confirmar que no salen en respuestas.
+
+#### 3. Diseño y mantenibilidad
+- **Quién decide el modelo y con qué política** (repartido en siete puntos): el cliente elige un `option_id` opaco (`get_transcription_options.py:87-97`) o `provider:model` en la API compatible (`compatible_audio.py:100`). `GetTranscriptionOptions` marca `can_start` por instalación, runtime, ejecución y revisión fijada (`get_transcription_options.py:118-141`). `CreateTranscriptionJob` revalida contra el catálogo vivo, pide consentimiento cloud (`create_transcription_job.py:170-175`) y comprueba memoria (`:194`). `select_execution` decide CUDA o CPU (`asr_device_selection.py:55-81`). `bootstrap.py:295-312` vuelve a llamar `select_execution` al componer el runtime con un solo descriptor, y `faster_whisper.py:322-325` rechaza otro modelo. El snapshot conserva `execution` (`create_transcription_job.py:205-209`), pero `TranscriptionOptions` (`ports/transcription.py:213-229`) no lo transporta. Ver APPLICATION-01.
+- **Política TTS distinta:** el cliente elige `(provider_id, model_id)` (`create_synthesis_job.py:168-191`) y reutiliza un job idéntico por hash (`:145-157`). STT rechaza un segundo job activo por medio (`create_transcription_job.py:186-193`).
+- **Duplicación STT/TTS** (comprobado):
+  - `TranscriptionError` (`ports/transcription.py:31-44`) y `SynthesisError` (`ports/speech_synthesis.py:28-41`) tienen la misma forma (code, user_message, retryable).
+  - Token de cancelación idéntico: `ports/transcription.py:47-53` y `ports/speech_synthesis.py:44-50`. Código de cancelación con nombre distinto: `"transcription_cancelled"` (`transcription.py:28`) frente a `"cancelled"` (`speech_synthesis.py:24`).
+  - Dos registros casi iguales de 103 líneas (`transcription_provider_registry.py`, `synthesis_provider_registry.py`) con la misma validación de id (`transcription_provider_registry.py:89-95`; `speech_synthesis.py:14`).
+  - Repositorios de job repetidos: `ports/repositories.py:223-256` y `ports/synthesis_repositories.py:14-47`.
+  - Progreso con unidades distintas: milisegundos (`transcription.py:227-229`) frente a fracción (`speech_synthesis.py:53-54`).
+  - `compatible_audio.py` repite en `transcribe` (`:196-257`) y `speech` (`:289-362`) plazo, `_guard`, creación, `_wait`, cancelación propia y traducción de errores.
+- **Pipeline de prueba en producción:** `ChunkedTranscription` (`chunked_transcription.py:191-226`) reimplementa el bucle de `RecoverableTranscription` sin checkpoints, cancelación ni progreso. Lo usan solo pruebas (`tests/unit/application/test_chunked_transcription.py`, `tests/unit/application/test_word_timestamps.py`, `tests/integration/application/test_local_asr_pipeline.py:112`).
+- **Abstracciones sin consumidor o con uno solo:**
+  - `ports/alignment.py:24` `AlignmentProvider`: solo lo importa `tests/unit/application/test_word_timestamps.py:18`. `infrastructure/model_registry.py:50` declara que la implementación "does not exist".
+  - `ports/model_installation.py:109-125` `ModelInstallationPort` y `:127-161` `ModelDownloadPort`: sin consumidores en `src/` ni `tests/`.
+  - `TranscriptionError.retryable` (`ports/transcription.py:31-44`): nunca se lee en la aplicación; solo lo asignan adaptadores.
+  - `bootstrap.py:323` `TranscriptionProviderRegistry((provider,))` registra un solo proveedor; `_ResidentProvider` (`bootstrap.py:271-292`) añade otra capa indirecta.
+  - `whisper_cpp_fallback.py:28` `suggest_whisper_cpp` solo lo consume `tests/unit/application/test_whisper_cpp_fallback.py`. Grep por `suggest_whisper_cpp`, `ProviderSuggestion` y `faster_whisper_no_cuda` no encuentra cableado en `src/voz/interfaces` ni en `apps/web`, aunque `ROADMAP.md:158` (WCPP-003) figura como "verified".
+  - Justificadas: `TranscriptionProvider` tiene cinco adaptadores (`infrastructure/asr/faster_whisper.py:268`, `asr/sherpa_onnx.py:67`, `asr/whisper_cpp.py:157`, `cloud/openai_transcription.py:134`, `cloud/elevenlabs_scribe.py:145`). `SpeechSynthesisProvider` tiene dos (`tts/subprocess_provider.py:209`, `cloud/openai_compatible.py:366`) y un `tts/fake.py`.
+- **Repositorios:** `ports/repositories.py` concentra 8 protocolos y 43 métodos. `model_manager.py:61-76` usa protocolos estrechos (`RecoverableJobs`, `SelectionLookup`), pero `CreateTranscriptionJob` recibe el repositorio completo (`create_transcription_job.py:89-93`).
+- **ISP en la selección:** `ports/transcription_job_selection.py:57-74` mezcla un snapshot inmutable (`add`, `get`) con mutadores de diarización (`record_diarization_error` `:68`, `replace_diarization` `:72`).
+- **Reglas de "en uso" al borrar modelos inconsistentes:** ASR compara identidad y `provenance` (`model_manager.py:297-301`); TTS solo compara `identity` (`:273-274`).
+- **Códigos como cadenas:** `model_tasks.py:405` compara `== "model_installation_cancelled"`; `import_custom_model.py:71, 92` usan literales. `ModelTaskFailureCode` (`model_tasks.py:79`) y `ModelManagementFailureCode` (`model_manager.py:79`) son clases de constantes, no `StrEnum` como en `ports/`.
+- **Nombre engañoso:** `create_synthesis_job.py:193` `_check_voice` también comprueba `runtime_ready` (`:197`).
+- **Pérdida de información al mapear errores:** `compatible_audio.py:250-252` y `:358-360` traducen cualquier `CreateJobError` (VRAM, RAM, consentimiento, diarización, perfil) y casi cualquier `SynthesisJobError` a `model_not_found` 409. `test_compatible_audio.py:332` solo cubre modelo desconocido.
+- **Dobles lecturas del catálogo:** `create_transcription_job.py:277` recalcula todas las opciones y `:299` recorre el catálogo otra vez; `compatible_audio.py:101` hace lo mismo en cada petición.
+- **Código vacío:** `get_transcription_options.py:145-146` (`if not local: pass`).
+- **Recomendación:** un módulo neutral para errores, cancelación y registro de proveedores, sin fusionar contratos STT y TTS; retirar `ChunkedTranscription` de producción o moverlo a pruebas.
+
+#### 4. Concurrencia, errores y recursos
+- **Admisión:** `AdmissionGate` (`admission.py:20-30`) es un `Lock` por proceso, usado en creación de jobs (`create_transcription_job.py:122`), síntesis (`create_synthesis_job.py:132`), borrado de modelos (`model_manager.py:262`) y borrado de proyectos (`projects.py:110-111`). La cabecera de `admission.py` declara que solo protege un proceso.
+- **TOCTOU comprobado en `ModelTaskRunner.enqueue`:** `model_tasks.py:222-232` busca tarea activa y libera el lock; `:233-237` consulta instalación fuera del lock; `:262-268` inserta con un segundo lock sin repetir la comprobación. Dos llamadas concurrentes para el mismo modelo pueden encolar dos tareas. `test_model_tasks.py:263` es secuencial.
+- **Cancelación:** el token se sondea (`ports/transcription.py:47-53`). `recoverable_transcription.py:128-134` combina cancelación de usuario y apagado. Los adaptadores lanzan `CANCELLED` (`faster_whisper.py:556-560`, `sherpa_onnx.py:60-62`) y `RecoverableTranscription` lo convierte en outcome (`recoverable_transcription.py:187-199`). Granularidad: por segmento (`faster_whisper.py:437-444`); no hay cancelación dentro de un segmento (hipótesis).
+- **Riesgo de contrato:** tras cada chunk solo se revisa la cancelación de usuario (`recoverable_transcription.py:201-208`). Si un adaptador devuelve normalmente con apagado activo, el chunk parcial se confirma como checkpoint (`:220-238`). Los adaptadores revisados no lo hacen, pero el contrato no lo impide (hipótesis).
+- **Progreso:** `on_position` → `publish` con `ProgressThrottle` (`recoverable_transcription.py:151-162`) → `jobs.save`. `recoverable_transcription.py:180-184` sobrescribe en silencio el `on_position` del llamador.
+- **Idioma:** `merge_transcription_language` (`chunked_transcription.py:175-187`) falla el job completo si dos chunks detectan idiomas distintos (`PROVIDER_FAILED`). Impacto en audio multilingüe o con detección automática (hipótesis).
+- **Recursos:** `model_tasks.py:195` hace `thread.join()` sin timeout en `stop()` (hipótesis: el apagado espera a que la descarga atienda el cancel).
+- **Espera síncrona:** `compatible_audio.py:158-177` sondea cada 50 ms (`:55`) con `time.sleep` por defecto (`:76-77`). Si la petición HTTP es síncrona, cada espera ocupa un hilo hasta 300 s (hipótesis de coste).
+- **Importación:** `import_custom_model.py:87` llama a `stage` fuera del `try` de `:88`; si `stage` falla tras crear el directorio, `discard` (`:105`) no se ejecuta (depende del backend).
+- **Bien tratado:** `import_media.py:118-140` separa "persistencia fallida" de "resultado incierto"; `model_tasks.py:409-411` registra solo el tipo de excepción.
+
+#### 5. Seguridad y privacidad
+- **APPLICATION-02 (consentimiento asimétrico):** STT exige `cloud_consent` por job para opciones cloud (`create_transcription_job.py:170-175`). TTS no comprueba `cloud` ni consentimiento (`create_synthesis_job.py:168-191`; grep de `cloud|consent` sin resultados en `application/synthesis` ni en `interfaces/api/synthesis.py`). Los endpoints compatibles cloud se registran como modelos de síntesis con `files_available=True` y `cloud=endpoint.cloud` (`infrastructure/cloud/openai_compatible.py:137-144`), y `bootstrap.py:623-632` añade el motor. El consentimiento existe al guardar el endpoint (`interfaces/api/providers.py:97-105, 245`). Decisión pendiente para seguridad: consentimiento por endpoint o por job, igual en STT y TTS.
+- **APPLICATION-03 (retención):** `compatible_audio.py:224` crea un proyecto "Compatible audio" por petición con su medio importado, y el archivo no contiene ninguna llamada de borrado. Conservación del audio del cliente de la API sin política visible (hipótesis; revisar `docs/adr/0006`).
+- **Logs:** `projects.py:126` y los `_LOG.exception` de `job_runner.py` y `synthesis/runner.py` registran trazas completas. Si un `OSError` lleva rutas, llegan a los logs (sospecha, no verificado).
+- **Bien:** mensajes de error fijos en la API compatible (`compatible_audio.py:56-60`; `ports/compatible_audio.py:44-53`). Sin secretos en la capa (`ports/provider_secrets.py` declara el puerto sin valores).
+
+#### 6. Pruebas y evidencias
+- Presentes (no ejecutadas): 41 archivos en `tests/unit/application/` más `synthesis/`. Cubren `test_create_transcription_job.py`, `test_get_transcription_options.py`, `test_model_tasks.py` (duplicado secuencial en `:263`), `test_compatible_audio.py` (unos 25 casos, `:291-646`), `test_chunked_transcription.py`, los registros de proveedor y `synthesis/test_create_synthesis_job.py:227` (concurrencia con barrera). Integración: `tests/integration/application/test_recoverable_transcription.py`.
+- Huecos (por grep, sin ejecutar): enqueue concurrente en `ModelTaskRunner`; `CreateJobError` → `model_not_found` en `compatible_audio.py`; apagado con un adaptador que devuelve normal; divergencia entre `JobSelection.execution` y el runtime real; TTS a cloud sin consentimiento por job; retención de proyectos de la API compatible; `retryable` sin consumidor.
+
+#### 7. Preparación para STT en tiempo real
+**Viabilidad:** sí a nivel de tipos, si `StreamingTranscriptionProvider` es un Protocol propio y no se añade nada a `TranscriptionProvider` (`ports/transcription.py:256-273`). No es viable a nivel de cableado sin tocar el composition root y el registro.
+
+**Puntos reutilizables:** `TranscriptionCancellationToken` (`ports/transcription.py:47-53`); `TranscriptionError` y sus códigos; `TranscriptionSegment` y `TranscriptionWord` con sus invariantes (`:65-165`); `owned_chunk_segments` y `globalize_chunk_result` (`chunked_transcription.py:114-172`, útiles para ventanas solapadas); `option_identity` y `GetTranscriptionOptions`; `AdmissionGate`; `ProgressThrottle` (ya inyecta `monotonic`).
+
+**Impedimentos:**
+1. Entrada finita: `RecoverableTranscription.execute` exige `duration_ms` y planifica todos los chunks antes de empezar (`recoverable_transcription.py:85-86, 109-113`). `InferenceAudioSource.open(clip)` abre un clip cerrado (`ports/inference_audio.py:36-41`).
+2. Vida del runtime: `_ResidentProvider.transcribe` pide el runtime por llamada (`bootstrap.py:290`) y el caché libera memoria tras `ASR_IDLE_SECONDS = 60` (`bootstrap.py:267`). Una sesión necesita mantener el uso durante toda su duración, y el puerto no tiene apertura ni cierre de sesión (`bootstrap.py:243` cierra el runtime solo al salir). `runtime_cache.py` desaloja al pedir otra clave: la sesión debe bloquear el cambio de modelo.
+3. Modelo fijo: `faster_whisper.py:322-325` rechaza un modelo distinto del configurado; la sesión necesitará la misma garantía.
+4. Persistencia: `JobSelection`, `TranscriptionCheckpoint` y la validación por plan (`recoverable_transcription.py:287-299`) asumen un job con chunks. Hay que decidir si la sesión es efímera o si produce un `Transcript` al cerrar.
+5. Capacidad: `ModelCapability` solo declara `TRANSCRIPTION` (`src/voz/domain/entities/model_descriptor.py:27`). Su docstring permite añadir valores, nunca renombrar. `TranscriptionOptions` exige `TRANSCRIPTION` (`ports/transcription.py:235-236`).
+6. Registro: `TranscriptionProviderRegistry.register` usa `isinstance` sobre un Protocol (`transcription_provider_registry.py:51`), que solo verifica atributos. Un proveedor que implemente ambos contratos entraría en el registro batch. Conviene registros o capacidades separadas.
+7. Progreso: `on_position` (`ports/transcription.py:227-229`) informa avance en ms, no texto parcial ni revisiones.
+
+**Contrato mínimo propuesto como pregunta abierta para el ADR de S17.01** (ROADMAP §17, `ROADMAP.md:608-616`). Se mantienen protocolos separados para archivo y streaming:
+- Evento: `sequence` (entero creciente, sin huecos por sesión); `kind` (`partial` | `final`); `segment_id` estable y `revision`; `start_ms`/`end_ms` enteros sobre el reloj de audio de la sesión; `text`; `words` y `language` opcionales.
+- Invariantes: un `final` no se revisa; un `partial` solo se sustituye por un evento con el mismo `segment_id`; los finales van ordenados y sin solapes, como en `TranscriptionResult` (`ports/transcription.py:175-189`).
+- Entrada: frames PCM con formato declarado (mono, tasa y muestra fijas), sin `BinaryIO` ni rutas; límites de tamaño; error con código estable cuando el búfer se llena.
+- Operaciones: abrir (opciones y cancelación), enviar frames, leer eventos desde un `sequence` (reanudable, como el SSE de jobs, `ROADMAP.md:107`), finalizar (devuelve `TranscriptionResult`) y cerrar o cancelar. Códigos nuevos solo por adición.
+
+**Casos de uso que necesitaría una sesión:** (1) iniciar: revalidar la opción con capacidad de streaming, pedir consentimiento cloud como en `create_transcription_job.py:170-175`, admisión y slot de cómputo; (2) enviar audio con validación de formato, límites e idempotencia por número de paquete; (3) leer eventos; (4) finalizar y, si se decide, persistir un `Transcript` con la identidad de `transcript_id_for` (`job_runner.py:128`, dependencia); (5) cancelar, apagar o detectar inactividad con el patrón de `_AnyEventToken` (`job_runner.py:146`, dependencia); (6) recuperación: descartar o cerrar con el parcial final (abierto); (7) latencia con reloj monótono.
+
+#### 8. Top 5 hallazgos
+| ID | Severidad | Hallazgo | Evidencia | Impacto | Recomendación |
+|---|---|---|---|---|---|
+| APPLICATION-01 | alta | La ejecución registrada en el snapshot del job no es la que recibe el proveedor | `create_transcription_job.py:205-209`; `ports/transcription.py:213-229`; `bootstrap.py:295-312`; `infrastructure/asr/faster_whisper.py:281, 473-474`; `interfaces/api/jobs.py:146` | El job puede mostrar un dispositivo distinto del que ejecutó (hipótesis: cambio de hardware o recomposición del runtime tras 60 s, `bootstrap.py:267`). Contradice la "reproducibilidad" declarada en `create_transcription_job.py:1` | Decidir si el snapshot es informativo o vinculante. Si es vinculante, la ejecución debe viajar en la petición o validarse en el runtime |
+| APPLICATION-02 | media | TTS a endpoint cloud no exige consentimiento por job, a diferencia de STT | `create_transcription_job.py:170-175` frente a `create_synthesis_job.py:168-191`; `infrastructure/cloud/openai_compatible.py:137-144`; `bootstrap.py:623-632`; `interfaces/api/providers.py:97-105, 245` | Texto enviado a un proveedor externo sin confirmación en la petición; el consentimiento depende solo del alta del endpoint | Decisión para seguridad y el responsable: consentimiento por endpoint o por job, aplicado igual en STT y TTS |
+| APPLICATION-03 | media | Cada petición de la API compatible crea un proyecto con su audio y no lo borra | `compatible_audio.py:224`; sin llamadas de borrado en el archivo | Crecimiento de disco y conservación del audio del cliente sin política visible (hipótesis; revisar `docs/adr/0006`) | Definir retención (borrado al terminar o TTL) antes de ampliar el uso de la API |
+| APPLICATION-04 | media | La aplicación traduce errores de dominio a códigos HTTP y a "modelo no encontrado", y lleva reglas de un motor concreto | `ports/compatible_audio.py:47-53`; `compatible_audio.py:149-176, 250-252, 358-360`; `create_transcription_job.py:178-185` | VRAM, RAM, consentimiento o diarización se presentan como modelo ausente. Cambiar la API HTTP o añadir un motor exige tocar el caso de uso | Mapear códigos estables en `interfaces/`; mover el estado HTTP fuera de la aplicación; sacar la regla de sherpa a una capacidad del proveedor |
+| APPLICATION-05 | media | Carrera al encolar descargas del mismo modelo | `model_tasks.py:222-232` frente a `:262-268` | Dos tareas para un mismo modelo (hipótesis de ejecución; no reproducido) | Repetir la comprobación de tarea activa bajo el lock de inserción y añadir una prueba concurrente (pendiente de ejecución) |
+
+#### 9. No verificado
+- Nada ejecutado: ni tests, linters, typecheck ni arneses. Los conteos de tests y de archivos son de grep.
+- Protocolos estructurales: el grep por nombre no detecta implementaciones que no nombran el protocolo. Solo afirmo "sin consumidores" en `AlignmentProvider`, `ModelInstallationPort` y `ModelDownloadPort`.
+- APPLICATION-01: no reproducido en hardware real. No leí `faster_whisper.py` completo ni `runtime_cache.py` completo.
+- APPLICATION-02: no comprobé si la UI oculta endpoints cloud en síntesis; `interfaces/api/synthesis.py` no se leyó completo.
+- APPLICATION-03: no leí `docs/adr/0006` completo; solo las filas de privacidad.
+- `suggest_whisper_cpp`: un cableado con otro nombre no está descartado con certeza. `apps/web` solo se revisó por grep.
+- Dependencias de `job_runner.py`, `admission.py`, `compute_slot.py`, `progress_throttle.py` y `synthesis/runner.py`: leídas solo en los fragmentos citados.
+- Los 68 archivos superficiales se revisaron por cabecera, imports y definiciones. No se auditó la lógica de `export/`, `edge_lab.py`, `lab_comparison.py`, `quality_*`, `speakers*`, `diarization_*` ni `hardware_recommendation.py`.
