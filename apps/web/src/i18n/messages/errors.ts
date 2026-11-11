@@ -109,6 +109,18 @@ export const errors = {
     'Falta el modelo de hablantes. Descárgalo desde la sección Hablantes y vuelve a intentarlo.',
     'The speaker model is missing. Download it from the Speakers section and try again.',
   ],
+  'err.job.job_clip_invalid': [
+    'El tramo elegido no es válido: debe durar al menos 1 segundo y el fin debe ir después del inicio.',
+    'The chosen range is not valid: it must be at least 1 second long and end after it starts.',
+  ],
+  'err.job.job_clip_out_of_range': [
+    'El tramo elegido termina después del final de la grabación.',
+    'The chosen range ends after the end of the recording.',
+  ],
+  'err.job.job_clip_duration_unknown': [
+    'No se conoce la duración de la grabación, así que no se puede recortar.',
+    'The recording duration is unknown, so it cannot be trimmed.',
+  ],
   'err.job.invalid_response': [
     'La API devolvió una respuesta inesperada.',
     'The API returned an unexpected response.',

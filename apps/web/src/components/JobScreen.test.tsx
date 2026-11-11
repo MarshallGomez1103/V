@@ -376,3 +376,28 @@ describe('JobScreen', () => {
     })
   })
 })
+
+describe('JobScreen: tramo transcrito', () => {
+  const clipped = makeJob('COMPLETED', {
+    selection: { option_id: 'o', provider_id: 'p', model_id: 'm', clip: { start_ms: 10_000, end_ms: 310_000 } },
+  })
+
+  it('muestra el tramo y lo que quedó sin transcribir', () => {
+    stubProviders()
+    render(<JobScreen job={clipped} mediaDurationMs={720_000} />)
+    expect(screen.getByText('Tramo transcrito')).toBeTruthy()
+    expect(screen.getByText('00:10–05:10 de 12:00 (07:00 sin transcribir)')).toBeTruthy()
+  })
+
+  it('sin la duración de la grabación muestra solo el tramo', () => {
+    stubProviders()
+    render(<JobScreen job={clipped} />)
+    expect(screen.getByText('00:10–05:10')).toBeTruthy()
+  })
+
+  it('un trabajo sin tramo no muestra la cifra', () => {
+    stubProviders()
+    render(<JobScreen job={makeJob('COMPLETED')} mediaDurationMs={720_000} />)
+    expect(screen.queryByText('Tramo transcrito')).toBeNull()
+  })
+})

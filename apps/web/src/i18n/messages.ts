@@ -8,6 +8,7 @@ import { shell } from './messages/shell'
 import { speak } from './messages/speak'
 import { speakHistory } from './messages/speakHistory'
 import { transcribe } from './messages/transcribe'
+import { trim } from './messages/trim'
 import { workspace } from './messages/workspace'
 
 /** Cada mensaje es [español, inglés]; `{nombre}` marca una variable. */
@@ -17,6 +18,7 @@ export type Catalog = Readonly<Record<string, Pair>>
 export const MESSAGES = {
   ...shell,
   ...transcribe,
+  ...trim,
   ...job,
   ...workspace,
   ...library,

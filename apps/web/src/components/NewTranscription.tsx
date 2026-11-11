@@ -6,6 +6,7 @@ import type { TranscriptionOption } from '../api/transcriptionOptions'
 import { useDiarizationModel } from '../hooks/useDiarizationModel'
 import { useSeek } from '../hooks/useSeek'
 import { translate, useI18n } from '../i18n/i18n'
+import { clipOf, validateTrim, type TrimRange } from '../lib/trimRange'
 import { DiarizationOptions, type DiarizationRequest } from './DiarizationOptions'
 import { GlossaryEditor } from './GlossaryEditor'
 import { MediaPanel } from './MediaPanel'
@@ -15,6 +16,7 @@ import { Panel } from './Panel'
 import { ProfileSelector } from './ProfileSelector'
 import { StyleInstructions } from './StyleInstructions'
 import { TranscriptionOptionsSelector } from './TranscriptionOptionsSelector'
+import { TrimControls } from './TrimControls'
 
 interface NewTranscriptionProps {
   /** Cabecera de la página (título, estado de la API). */
@@ -57,7 +59,15 @@ export function NewTranscription({
     enabled: false,
     speakers: {},
   })
-  const { seekToMs, seekNonce, seek } = useSeek()
+  const { seekToMs, seekNonce, stopAtMs, seek } = useSeek()
+  // Tramo a transcribir; null = grabación completa. La duración es la que midió
+  // el servidor al importar: sin ella el servidor rechaza cualquier recorte.
+  const [trim, setTrim] = useState<TrimRange | null>(null)
+  const serverDurationMs = imported?.media.duration_ms ?? null
+  const trimInvalid =
+    trim !== null &&
+    serverDurationMs !== null &&
+    validateTrim(trim.startMs, trim.endMs, serverDurationMs) !== null
   const [currentMs, setCurrentMs] = useState(0)
   // La duración de una grabación abierta sin medir la mide la forma de onda.
   const [measured, setMeasured] = useState<{ id: string; ms: number } | null>(null)
@@ -81,6 +91,7 @@ export function NewTranscription({
     if (!imported || !optionId || !cloudConsent) {
       return
     }
+    const clip = serverDurationMs === null ? null : clipOf(trim, serverDurationMs)
     setCreating(true)
     setJobError(null)
     try {
@@ -90,6 +101,7 @@ export function NewTranscription({
         option_id: optionId,
         language: null, // ponytail: idioma autodetectado; selector de idioma en un corte posterior
         diarization,
+        ...(clip !== null ? { clip } : {}),
         ...(selectedOption?.cloud === true ? { cloud_consent: true } : {}),
         ...(supportsCustomOptions && profile ? { profile } : {}),
         ...(supportsCustomOptions && prompt.trim() !== '' ? { prompt: prompt.trim() } : {}),
@@ -100,10 +112,10 @@ export function NewTranscription({
     } finally {
       setCreating(false)
     }
-  }, [cloudConsent, diarization, imported, onCreated, optionId, profile, prompt, selectedOption, supportsCustomOptions])
+  }, [cloudConsent, diarization, imported, onCreated, optionId, profile, prompt, selectedOption, serverDurationMs, supportsCustomOptions, trim])
 
   const diarBlocked = diarization.enabled && diarModel.status !== 'ready'
-  const canStart = optionId !== null && cloudConsent && !creating && !diarBlocked
+  const canStart = optionId !== null && cloudConsent && !creating && !diarBlocked && !trimInvalid
   const whyNot = creating
     ? null
     : optionId === null
@@ -112,7 +124,9 @@ export function NewTranscription({
         ? t('cfg.why.consent')
         : diarBlocked
           ? t('diar.blocked')
-          : null
+          : trimInvalid
+            ? t('trim.blocked')
+            : null
 
   return (
     <Grid narrow className="voz-grid">
@@ -154,10 +168,23 @@ export function NewTranscription({
               onTimeUpdate={setCurrentMs}
               onSeek={seek}
               onDuration={handleDuration}
+              stopAtMs={stopAtMs}
+              range={trim}
               onChangeFile={() => {
                 setImported(null)
                 setOptionId(null)
+                setTrim(null)
               }}
+            />
+          </Column>
+          <Column sm={4} md={8} lg={16}>
+            <TrimControls
+              durationMs={serverDurationMs}
+              value={trim}
+              currentMs={currentMs}
+              onChange={setTrim}
+              onSeek={seek}
+              disabled={creating}
             />
           </Column>
           <Column sm={4} md={8} lg={8}>

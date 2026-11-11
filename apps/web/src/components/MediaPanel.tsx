@@ -9,6 +9,7 @@ import type { ImportResult } from './NewProjectCard'
 import { AudioPlayer } from './AudioPlayer'
 import { Term } from './Hint'
 import { Panel } from './Panel'
+import type { TrimRange } from '../lib/trimRange'
 import { Waveform } from './Waveform'
 import './MediaPanel.scss'
 
@@ -21,6 +22,8 @@ interface MediaPanelProps {
   onTimeUpdate: (ms: number) => void
   onSeek: (ms: number) => void
   onDuration?: ((ms: number) => void) | undefined
+  /** Tramo elegido para transcribir; la onda sombrea lo que queda fuera. */
+  range?: TrimRange | null | undefined
   /** Ficha del archivo (duración, tipo, huella) encima del reproductor. */
   showMeta?: boolean
   /** Botón para volver a importar otra grabación. */
@@ -41,6 +44,7 @@ export function MediaPanel({
   onTimeUpdate,
   onSeek,
   onDuration,
+  range,
   showMeta = false,
   onChangeFile,
   children,
@@ -97,6 +101,7 @@ export function MediaPanel({
         currentMs={currentMs}
         onSeek={onSeek}
         onDuration={onDuration}
+        range={range}
       />
       {children}
     </Panel>

@@ -52,4 +52,19 @@ describe('códigos del backend con mensaje propio', () => {
     setLang('en')
     expect(translateCode('err.job.', 'job_not_found', 'err.job.generic')).not.toMatch(/code/)
   })
+
+  it.each(['job_clip_invalid', 'job_clip_out_of_range', 'job_clip_duration_unknown'])(
+    'el recorte rechazado con %s tiene mensaje propio en es y en',
+    (code) => {
+      const messages = (['es', 'en'] as const).map((lang) => {
+        setLang(lang)
+        return translateCode('err.job.', code, 'err.job.generic')
+      })
+      for (const message of messages) {
+        expect(message).not.toContain(code)
+        expect(message).not.toMatch(/\(código|\(code/)
+      }
+      expect(messages[1]).not.toBe(messages[0])
+    },
+  )
 })

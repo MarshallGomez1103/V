@@ -348,3 +348,30 @@ it('no lanza si el desmontaje llega antes de la respuesta', () => {
     })
   }).not.toThrow()
 })
+
+describe('Waveform: tramo elegido', () => {
+  function shades(container: HTMLElement): HTMLElement[] {
+    return Array.from(container.querySelectorAll<HTMLElement>('.waveform__shade'))
+  }
+
+  it('sin tramo no sombrea nada', async () => {
+    const { container } = await renderReady()
+    expect(shades(container)).toHaveLength(0)
+  })
+
+  it('sombrea, oculto a los lectores, lo que queda fuera del tramo', async () => {
+    stubFetch(payload())
+    const { container } = render(
+      <Waveform mediaAssetId="a1" currentMs={0} onSeek={vi.fn()} range={{ startMs: 2000, endMs: 8000 }} />,
+    )
+    await screen.findByRole('slider', { name: /Posición en la grabación/ })
+    const [before, after] = shades(container)
+    // 10 s sobre 640 px de reserva: 2 s = 128 px y 8 s = 512 px.
+    expect(before?.style.width).toBe('128px')
+    expect(after?.style.left).toBe('512px')
+    expect(after?.style.width).toBe('128px')
+    for (const shade of [before, after]) {
+      expect(shade?.getAttribute('aria-hidden')).toBe('true')
+    }
+  })
+})

@@ -1,0 +1,41 @@
+@use '../styles/carbon' as *;
+
+.voz-trim {
+  display: grid;
+  gap: $spacing-04;
+}
+
+.voz-trim__field {
+  display: grid;
+  grid-template-columns: 4rem 1fr 5rem;
+  align-items: center;
+  gap: $spacing-04;
+
+  label {
+    @include type-style('label-02');
+
+    color: $text-secondary;
+  }
+}
+
+.voz-trim__slider {
+  inline-size: 100%;
+  accent-color: $interactive;
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: 2px;
+  }
+}
+
+.voz-trim__time {
+  @include type-style('code-01');
+
+  text-align: end;
+}
+
+.voz-trim__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+}

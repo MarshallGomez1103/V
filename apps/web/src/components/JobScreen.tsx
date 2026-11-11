@@ -13,6 +13,7 @@ import { useI18n, type Translate } from '../i18n/i18n'
 import type { MessageKey } from '../i18n/messages'
 import { formatSeconds } from '../lib/formatTime'
 import { failureMessage } from '../lib/jobFailure'
+import { formatTrimTime, trimSummary } from '../lib/trimRange'
 import { parseIso } from '../lib/time'
 import { Busy } from './Busy'
 import { CloudBadge } from './CloudBadge'
@@ -29,6 +30,8 @@ interface JobScreenProps {
   onCancel?: () => void
   /** Vuelve a la configuración con la misma grabación (fallo, cancelación o repetir). */
   onAdjust?: () => void
+  /** Duración de la grabación, para decir cuánto quedó sin transcribir. */
+  mediaDurationMs?: number | null
 }
 
 type Stage = 'prepare' | 'transcribe' | 'speakers' | 'finish'
@@ -50,6 +53,14 @@ const STAGE_OF: Record<JobState, Stage | 'done'> = {
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
+}
+
+function readClip(value: unknown): { start: number; end: number } | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const { start_ms: start, end_ms: end } = value as Record<string, unknown>
+  return typeof start === 'number' && typeof end === 'number' && end > start ? { start, end } : null
 }
 
 function clamp01(value: number): number {
@@ -204,7 +215,7 @@ function sentence(job: JobView, t: Translate): string | null {
   }
 }
 
-export function JobScreen({ job, loading, error, onCancel, onAdjust }: JobScreenProps) {
+export function JobScreen({ job, loading, error, onCancel, onAdjust, mediaDurationMs = null }: JobScreenProps) {
   const { t } = useI18n()
   const providerId = readString(job?.selection?.provider_id)
   const providers = useCloudProviders(providerId !== null, readString(job?.selection?.model_id))
@@ -236,6 +247,7 @@ export function JobScreen({ job, loading, error, onCancel, onAdjust }: JobScreen
   const modelId = readString(selection?.model_id)
   const profileName = readString(selection?.profile?.name)
   const device = readString(selection?.execution?.device)
+  const clip = readClip(selection?.clip)
   const cloudProvider = providers.find((item) => item.id === providerId) ?? null
   const failed = job.state === 'FAILED'
   const completed = job.state === 'COMPLETED'
@@ -335,6 +347,13 @@ export function JobScreen({ job, loading, error, onCancel, onAdjust }: JobScreen
         {processing && stageSeconds !== null ? (
           <Figure label={t('job.fig.stage')}>
             <span className="voz-figure__clock">{formatSeconds(stageSeconds)}</span>
+          </Figure>
+        ) : null}
+        {clip !== null ? (
+          <Figure label={t('trim.job.label')}>
+            {mediaDurationMs !== null && clip.end <= mediaDurationMs
+              ? t('trim.summary', trimSummary(clip.start, clip.end, mediaDurationMs))
+              : formatTrimTime(clip.start) + '–' + formatTrimTime(clip.end)}
           </Figure>
         ) : null}
         {modelId ? <Figure label={t('job.fig.model')}>{modelId}</Figure> : null}

@@ -340,6 +340,7 @@ export function Workspace({
           onAdjust={() => {
             onAdjust(imported)
           }}
+          mediaDurationMs={imported.media.duration_ms}
         />
         {cancelFailure?.jobId === jobId && cancelFailure.state === job.state ? (
           <div className="voz-after">

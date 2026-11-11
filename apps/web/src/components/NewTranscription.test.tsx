@@ -102,3 +102,63 @@ describe('NewTranscription cloud consent', () => {
     expect(vi.mocked(createJob).mock.calls[0]?.[0]).not.toHaveProperty('cloud_consent')
   })
 })
+
+describe('NewTranscription tramo', () => {
+  const LONG: ImportResult = {
+    ...IMPORTED,
+    media: { ...IMPORTED.media, duration_ms: 60_000 },
+  }
+
+  function start() {
+    render(<NewTranscription header={null} modelsVersion={0} initialImported={LONG} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Choose FW' }))
+  }
+
+  it('con recorte envía clip al crear el trabajo', async () => {
+    start()
+    fireEvent.change(screen.getByRole('slider', { name: 'Inicio' }), { target: { value: '5000' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Fin' }), { target: { value: '20000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribir' }))
+    await waitFor(() => { expect(createJob).toHaveBeenCalledOnce() })
+    expect(vi.mocked(createJob).mock.calls[0]?.[0]).toMatchObject({
+      media_asset_id: 'media',
+      clip: { start_ms: 5000, end_ms: 20_000 },
+    })
+  })
+
+  it('sin recorte no envía clip', async () => {
+    start()
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribir' }))
+    await waitFor(() => { expect(createJob).toHaveBeenCalledOnce() })
+    expect(vi.mocked(createJob).mock.calls[0]?.[0]).not.toHaveProperty('clip')
+  })
+
+  it('quitar el recorte vuelve a no enviar clip', async () => {
+    start()
+    fireEvent.change(screen.getByRole('slider', { name: 'Inicio' }), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar recorte' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribir' }))
+    await waitFor(() => { expect(createJob).toHaveBeenCalledOnce() })
+    expect(vi.mocked(createJob).mock.calls[0]?.[0]).not.toHaveProperty('clip')
+  })
+
+  it('con Fin antes de Inicio avisa y no deja iniciar', () => {
+    start()
+    fireEvent.change(screen.getByRole('slider', { name: 'Inicio' }), { target: { value: '30000' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Fin' }), { target: { value: '10000' } })
+    expect(screen.getByText('El fin debe ser posterior al inicio.')).toBeTruthy()
+    expect(screen.getByText('Corrige el tramo para empezar.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Transcribir' }).hasAttribute('disabled')).toBe(true)
+    expect(createJob).not.toHaveBeenCalled()
+  })
+
+  it('sin duración del servidor no se puede recortar y se transcribe completa', async () => {
+    const unknown: ImportResult = { ...IMPORTED, media: { ...IMPORTED.media, duration_ms: null } }
+    render(<NewTranscription header={null} modelsVersion={0} initialImported={unknown} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Choose FW' }))
+    expect(screen.getByRole('slider', { name: 'Inicio' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribir' }))
+    await waitFor(() => { expect(createJob).toHaveBeenCalledOnce() })
+    expect(vi.mocked(createJob).mock.calls[0]?.[0]).not.toHaveProperty('clip')
+  })
+})

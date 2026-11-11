@@ -32,6 +32,7 @@ import {
 } from '../lib/waveformGeometry'
 import { isAbortError } from '../api/errors'
 import { formatSeconds } from '../lib/formatTime'
+import type { TrimRange } from '../lib/trimRange'
 import { useI18n } from '../i18n/i18n'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
@@ -43,6 +44,8 @@ export interface WaveformProps {
   onSeek: (ms: number) => void
   /** Duración total medida por el backend (sirve para grabaciones abiertas desde «guardadas»). */
   onDuration?: ((ms: number) => void) | undefined
+  /** Tramo elegido para transcribir: lo que queda fuera se sombrea. */
+  range?: TrimRange | null | undefined
 }
 
 // Más buckets que el valor por defecto del backend (2000) para que el zoom alto
@@ -95,7 +98,7 @@ function drawColumns(
 // S5.09: canvas con peaks precalculados; S5.14: zoom 1x-32x con scroll
 // horizontal. El canvas mide solo la vista (sticky) y dibuja la porción
 // visible: así el zoom alto no choca con el límite de tamaño de los canvas.
-export function Waveform({ mediaAssetId, currentMs, onSeek, onDuration }: WaveformProps) {
+export function Waveform({ mediaAssetId, currentMs, onSeek, onDuration, range }: WaveformProps) {
   const durationRef = useRef(onDuration)
   useEffect(() => {
     durationRef.current = onDuration
@@ -208,6 +211,8 @@ export function Waveform({ mediaAssetId, currentMs, onSeek, onDuration }: Wavefo
   }
 
   const playheadX = msToX(currentMs, durationMs, totalWidth)
+  const shadeBeforeWidth = range ? msToX(range.startMs, durationMs, totalWidth) : 0
+  const shadeAfterX = range ? msToX(range.endMs, durationMs, totalWidth) : totalWidth
 
   const changeZoom = (next: number) => {
     const target = clampZoom(next)
@@ -320,6 +325,20 @@ export function Waveform({ mediaAssetId, currentMs, onSeek, onDuration }: Wavefo
             height={CANVAS_HEIGHT}
             style={{ width, height: CANVAS_HEIGHT }}
           />
+          {range ? (
+            <>
+              <div
+                className="waveform__shade"
+                aria-hidden="true"
+                style={{ left: 0, width: shadeBeforeWidth }}
+              />
+              <div
+                className="waveform__shade"
+                aria-hidden="true"
+                style={{ left: shadeAfterX, width: totalWidth - shadeAfterX }}
+              />
+            </>
+          ) : null}
           <div
             className="waveform__playhead"
             aria-hidden="true"

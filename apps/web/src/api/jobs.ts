@@ -46,6 +46,8 @@ export interface JobSelection {
   prompt?: string | null
   // Hablantes pedidos al crear el job (ausente en jobs anteriores).
   diarization?: { enabled?: boolean; [key: string]: unknown } | null
+  // Tramo transcrito en ms de la grabación original (null/ausente = completa).
+  clip?: { start_ms: number; end_ms: number } | null
 }
 
 export interface JobView {
@@ -86,6 +88,8 @@ export interface CreateJobInput {
     enabled: boolean
     speakers: { exact?: number; minimum?: number; maximum?: number }
   }
+  // Tramo a transcribir en ms de la grabación original; ausente = completa.
+  clip?: { start_ms: number; end_ms: number }
 }
 
 export interface TranscriptWord {

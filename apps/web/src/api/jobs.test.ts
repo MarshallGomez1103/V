@@ -57,6 +57,17 @@ describe('api/jobs', () => {
     )
   })
 
+  it('createJob envía el tramo y el JobView conserva selection.clip', async () => {
+    const clip = { start_ms: 10_000, end_ms: 20_000 }
+    const fetchMock = stubFetch({ ...jobBody, selection: { option_id: 'o1', provider_id: 'p', model_id: 'm', clip } }, true, 201)
+    const input = { project_id: 'p1', media_asset_id: 'a1', option_id: 'o1', language: null, clip }
+
+    const job = await createJob(input)
+
+    expect(job.selection?.clip).toEqual(clip)
+    expect(fetchMock).toHaveBeenCalledWith('/api/jobs', expect.objectContaining({ body: JSON.stringify(input) }))
+  })
+
   it('createJob 409 expone code y blocking_reasons con mensaje seguro', async () => {
     stubFetch(
       {

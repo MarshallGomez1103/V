@@ -74,3 +74,11 @@
   background: $text-primary;
   pointer-events: none;
 }
+
+// Fuera del tramo a transcribir: velo sobre la onda, sin capturar clics.
+.waveform__shade {
+  position: absolute;
+  inset-block: 0;
+  background: color-mix(in srgb, #{$background} 70%, transparent);
+  pointer-events: none;
+}
