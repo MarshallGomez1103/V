@@ -88,6 +88,11 @@ from voz.application.synthesis_provider_registry import SynthesisProviderRegistr
 from voz.application.transcription_provider_registry import (
     TranscriptionProviderRegistry,
 )
+from voz.application.transcription_queue import (
+    CancelTranscriptionQueue,
+    CreateTranscriptionQueue,
+    GetTranscriptionQueue,
+)
 from voz.application.waveform_peaks import GetWaveformPeaks
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
@@ -202,6 +207,9 @@ from voz.infrastructure.persistence.transcription_checkpoints import (
 from voz.infrastructure.persistence.transcription_job_selections import (
     SqliteTranscriptionJobSelectionRepository,
 )
+from voz.infrastructure.persistence.transcription_queues import (
+    SqliteTranscriptionQueueRepository,
+)
 from voz.infrastructure.secrets import ProviderSecrets
 from voz.infrastructure.synthesis_storage import FileSystemSynthesisStorage
 from voz.infrastructure.tts.installed_models import InstalledTtsModels
@@ -232,6 +240,7 @@ from voz.interfaces.api.shutdown import create_shutdown_router
 from voz.interfaces.api.speakers import create_speakers_router
 from voz.interfaces.api.synthesis import create_synthesis_router
 from voz.interfaces.api.transcription_options import create_transcription_options_router
+from voz.interfaces.api.transcription_queue import create_transcription_queue_router
 from voz.interfaces.api.waveform import create_waveform_router
 
 _LOG = logging.getLogger(__name__)
@@ -379,6 +388,7 @@ def create_app(
     jobs = SqliteTranscriptionJobRepository(resolved_engine)
     selections = SqliteTranscriptionJobSelectionRepository(resolved_engine)
     transcripts = SqliteTranscriptRepository(resolved_engine)
+    queues = SqliteTranscriptionQueueRepository(resolved_engine)
     segments = SqliteSegmentRepository(resolved_engine)
     speakers = SqliteSpeakerRepository(resolved_engine)
     media_storage = FileSystemMediaStorage(resolved_paths.data)
@@ -827,6 +837,19 @@ def create_app(
                 diarization_availability,
                 admission=admission,
             ),
+        )
+    )
+    application.include_router(
+        create_transcription_queue_router(
+            CreateTranscriptionQueue(
+                create_job=create_transcription_usecase,
+                media_assets=media_assets,
+                jobs=jobs,
+                queues=queues,
+            ),
+            GetTranscriptionQueue(projects, queues, jobs, media_assets, transcripts),
+            CancelTranscriptionQueue(queues, jobs, canceller=runner),
+            runner,
         )
     )
     application.include_router(create_job_events_router(jobs, view=view))

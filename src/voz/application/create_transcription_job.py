@@ -34,6 +34,7 @@ from voz.application.quality_profiles import DEFAULT_PROFILE_NAME, get_profile
 from voz.application.resource_requirements import find_shortfall
 from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.entities.model_descriptor import ModelDescriptor
+from voz.domain.entities.quality_profile import QualityProfile
 from voz.domain.entities.transcription_job import TranscriptionJob
 
 
@@ -86,6 +87,17 @@ class CreateJobError(RuntimeError):
 class CreatedJob:
     job: TranscriptionJob
     selection: JobSelection
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedJob:
+    """What every job created from one request shares, already validated."""
+
+    option: TranscriptionOption
+    model: ModelDescriptor
+    quality_profile: QualityProfile | None
+    glossary: tuple[str, ...]
+    prompt: str | None
 
 
 @dataclass(slots=True)
@@ -153,11 +165,7 @@ class CreateTranscriptionJob:
         cloud_consent: bool,
         clip: TranscriptionClip | None,
     ) -> CreatedJob:
-        if self.projects.get(project_id) is None:
-            raise CreateJobError(
-                CreateJobFailureCode.PROJECT_NOT_FOUND,
-                "The project does not exist.",
-            )
+        self.require_project(project_id)
         media_asset = self.media_assets.get(media_asset_id)
         if media_asset is None or media_asset.project_id != project_id:
             raise CreateJobError(
@@ -165,6 +173,56 @@ class CreateTranscriptionJob:
                 "The media asset does not exist in this project.",
             )
         _check_clip(clip, media_asset)
+        prepared = self.prepare(
+            project_id=project_id,
+            option_id=option_id,
+            profile=profile,
+            prompt=prompt,
+            cloud_consent=cloud_consent,
+        )
+        # CANCELLING is unfinished: the worker may still hold the engine and files.
+        if any(
+            not job.state.is_terminal
+            for job in self.jobs.list_by_media_asset(media_asset_id)
+        ):
+            raise CreateJobError(
+                CreateJobFailureCode.JOB_ALREADY_ACTIVE,
+                "A transcription job is already active for this media asset.",
+            )
+        self.check_resources(prepared.option, prepared.model, diarization)
+        created = self.new_job(
+            prepared,
+            project_id=project_id,
+            media_asset_id=media_asset_id,
+            language=language,
+            diarization=diarization,
+            clip=clip,
+            now=self.clock(),
+        )
+        if self.job_writer is None:
+            self.jobs.add(created.job)
+            self.selections.add(created.selection)
+        else:
+            self.job_writer.add_with_selection(created.job, created.selection)
+        return created
+
+    def require_project(self, project_id: UUID) -> None:
+        if self.projects.get(project_id) is None:
+            raise CreateJobError(
+                CreateJobFailureCode.PROJECT_NOT_FOUND,
+                "The project does not exist.",
+            )
+
+    def prepare(
+        self,
+        *,
+        project_id: UUID,
+        option_id: str,
+        profile: str | None,
+        prompt: str | None,
+        cloud_consent: bool,
+    ) -> PreparedJob:
+        """Validate the options a request shares; nothing is persisted."""
         prompt = (prompt or "").strip() or None
         if prompt is not None and len(prompt) > MAX_PROMPT_CHARS:
             raise CreateJobError(
@@ -177,7 +235,7 @@ class CreateTranscriptionJob:
                 CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN,
                 "The quality profile is not known.",
             )
-        option = self._current_option(option_id)
+        option = self.current_option(option_id)
         if option.cloud and cloud_consent is not True:
             raise CreateJobError(
                 CreateJobFailureCode.CLOUD_CONSENT_REQUIRED,
@@ -194,20 +252,31 @@ class CreateTranscriptionJob:
                     "or project glossaries.",
                 )
             quality_profile = None
-        # CANCELLING is unfinished: the worker may still hold the engine and files.
-        if any(
-            not job.state.is_terminal
-            for job in self.jobs.list_by_media_asset(media_asset_id)
-        ):
-            raise CreateJobError(
-                CreateJobFailureCode.JOB_ALREADY_ACTIVE,
-                "A transcription job is already active for this media asset.",
-            )
+        return PreparedJob(option, model, quality_profile, tuple(glossary), prompt)
+
+    def check_resources(
+        self,
+        option: TranscriptionOption,
+        model: ModelDescriptor,
+        diarization: DiarizationOptions | None,
+    ) -> None:
+        """Refuse a load the machine cannot hold, or speakers it cannot run."""
         self._check_memory(option, model)
         if diarization is not None:
             self._check_diarization()
 
-        now = self.clock()
+    def new_job(
+        self,
+        prepared: PreparedJob,
+        *,
+        project_id: UUID,
+        media_asset_id: UUID,
+        language: str | None,
+        diarization: DiarizationOptions | None,
+        clip: TranscriptionClip | None,
+        now: datetime,
+    ) -> CreatedJob:
+        """Build a QUEUED job and its snapshot without persisting either."""
         job = TranscriptionJob.create(
             job_id=self.id_factory(),
             project_id=project_id,
@@ -216,22 +285,17 @@ class CreateTranscriptionJob:
         )
         selection = JobSelection(
             job_id=job.id,
-            option_id=option.option_id,
-            model=model,
-            execution=option.execution,
+            option_id=prepared.option.option_id,
+            model=prepared.model,
+            execution=prepared.option.execution,
             language=language,
             created_at=now,
             diarization=diarization,
-            quality_profile=quality_profile,
-            glossary=glossary,
-            prompt=prompt,
+            quality_profile=prepared.quality_profile,
+            glossary=prepared.glossary,
+            prompt=prepared.prompt,
             clip=clip,
         )
-        if self.job_writer is None:
-            self.jobs.add(job)
-            self.selections.add(selection)
-        else:
-            self.job_writer.add_with_selection(job, selection)
         return CreatedJob(job, selection)
 
     def _check_diarization(self) -> None:
@@ -284,7 +348,7 @@ class CreateTranscriptionJob:
             available_mib=shortfall.available_mib,
         )
 
-    def _current_option(self, option_id: str) -> TranscriptionOption:
+    def current_option(self, option_id: str) -> TranscriptionOption:
         option = next(
             (
                 item
@@ -346,4 +410,5 @@ __all__ = [
     "CreateJobFailureCode",
     "CreateTranscriptionJob",
     "CreatedJob",
+    "PreparedJob",
 ]

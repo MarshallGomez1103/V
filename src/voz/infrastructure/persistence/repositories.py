@@ -49,6 +49,7 @@ from voz.infrastructure.persistence.schema import (
     speakers,
     transcription_job_selections,
     transcription_jobs,
+    transcription_queue_items,
     transcripts,
     words,
 )
@@ -298,7 +299,7 @@ def _speaker_turn_from_row(row: RowMapping) -> SpeakerTurn:
     )
 
 
-def _job_values(job: TranscriptionJob) -> dict[str, object]:
+def job_values(job: TranscriptionJob) -> dict[str, object]:
     return {
         "id": str(job.id),
         "project_id": str(job.project_id),
@@ -818,14 +819,14 @@ class SqliteTranscriptionJobRepository:
 
     def add(self, job: TranscriptionJob) -> None:
         with self._engine.begin() as connection:
-            connection.execute(insert(transcription_jobs).values(_job_values(job)))
+            connection.execute(insert(transcription_jobs).values(job_values(job)))
 
     def add_with_selection(
         self, job: TranscriptionJob, selection: JobSelection
     ) -> None:
         """Insert the job and its selection snapshot in one transaction."""
         with self._engine.begin() as connection:
-            connection.execute(insert(transcription_jobs).values(_job_values(job)))
+            connection.execute(insert(transcription_jobs).values(job_values(job)))
             connection.execute(
                 insert(transcription_job_selections).values(selection_values(selection))
             )
@@ -835,7 +836,7 @@ class SqliteTranscriptionJobRepository:
             self._engine,
             transcription_jobs,
             job.id,
-            _job_values(job),
+            job_values(job),
         )
 
     def get(self, job_id: UUID) -> TranscriptionJob | None:
@@ -852,14 +853,27 @@ class SqliteTranscriptionJobRepository:
         return self._list_for(transcription_jobs.c.media_asset_id, media_asset_id)
 
     def list_recoverable(self) -> Sequence[TranscriptionJob]:
+        """Unfinished jobs in the order the worker must resume them.
+
+        A queue creates all its jobs at one instant, so ties on ``created_at`` break
+        by queue position (jobs outside any queue have none and come first), then id.
+        """
         terminal_values = tuple(state.value for state in TERMINAL_STATES)
         with self._engine.connect() as connection:
             rows = (
                 connection.execute(
                     select(transcription_jobs)
+                    .select_from(
+                        transcription_jobs.outerjoin(
+                            transcription_queue_items,
+                            transcription_queue_items.c.job_id
+                            == transcription_jobs.c.id,
+                        )
+                    )
                     .where(transcription_jobs.c.state.not_in(terminal_values))
                     .order_by(
                         transcription_jobs.c.created_at,
+                        transcription_queue_items.c.position.asc().nulls_first(),
                         transcription_jobs.c.id,
                     )
                 )
@@ -898,4 +912,5 @@ __all__ = [
     "SqliteTranscriptRepository",
     "SqliteTranscriptionJobRepository",
     "SqliteWordRepository",
+    "job_values",
 ]

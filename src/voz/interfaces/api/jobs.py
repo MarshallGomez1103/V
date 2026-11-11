@@ -51,7 +51,7 @@ from voz.interfaces.api.errors import api_error
 from voz.interfaces.api.job_views import timing_view
 from voz.interfaces.api.segments import segment_view
 
-_CREATE_STATUS: dict[CreateJobFailureCode, int] = {
+CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.PROJECT_NOT_FOUND: 404,
     CreateJobFailureCode.MEDIA_ASSET_NOT_FOUND: 404,
     CreateJobFailureCode.OPTION_UNKNOWN: 404,
@@ -167,6 +167,19 @@ def parse_clip(raw: object) -> TranscriptionClip | None:
         raise _invalid_clip(
             "clip must start at 0 or later and end after its start."
         ) from None
+
+
+def create_job_http_error(error: CreateJobError) -> HTTPException:
+    """The HTTP form of a job-creation failure, shared by routes that create jobs."""
+    extra: dict[str, object] = {}
+    if error.code is CreateJobFailureCode.OPTION_NOT_STARTABLE:
+        extra["blocking_reasons"] = [reason.value for reason in error.blocking_reasons]
+    if error.required_mib is not None:
+        extra["required_mib"] = error.required_mib
+        extra["available_mib"] = error.available_mib
+    return api_error(
+        CREATE_STATUS[error.code], error.code.value, error.user_message, **extra
+    )
 
 
 def selection_view(selection: JobSelection) -> dict[str, object]:
@@ -298,20 +311,7 @@ def create_jobs_router(
                 clip=clip,
             )
         except CreateJobError as error:
-            extra: dict[str, object] = {}
-            if error.code is CreateJobFailureCode.OPTION_NOT_STARTABLE:
-                extra["blocking_reasons"] = [
-                    reason.value for reason in error.blocking_reasons
-                ]
-            if error.required_mib is not None:
-                extra["required_mib"] = error.required_mib
-                extra["available_mib"] = error.available_mib
-            raise api_error(
-                _CREATE_STATUS[error.code],
-                error.code.value,
-                error.user_message,
-                **extra,
-            ) from None
+            raise create_job_http_error(error) from None
         runner.enqueue(created.job.id)
         return job_view(created.job, created.selection, has_transcript=False)
 
@@ -404,7 +404,9 @@ def create_jobs_router(
 
 
 __all__ = [
+    "CREATE_STATUS",
     "CreateJobRequest",
+    "create_job_http_error",
     "create_jobs_router",
     "job_has_transcript",
     "job_view",

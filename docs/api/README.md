@@ -73,6 +73,7 @@ limited local subset under `/v1`; its endpoint error envelope differs from `/api
 | --- | --- |
 | Projects, media import, jobs, SSE events, diarization, shutdown, desktop shortcut | [jobs.md](jobs.md) |
 | Project glossary, quality profile catalog | [projects.md](projects.md) |
+| Transcribe a whole project (queue of jobs) | [transcription-queue.md](transcription-queue.md) |
 | Library, media info and playback, rename and delete projects | [library.md](library.md) |
 | Transcription options (what can run on this machine) | [transcription-options.md](transcription-options.md) |
 | Segment text editing, segment quality flags | [segments.md](segments.md) |
