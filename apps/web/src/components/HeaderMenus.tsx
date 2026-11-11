@@ -15,6 +15,7 @@ import {
   type DesignSystem,
   type ThemePreference,
 } from '../theme/appearance'
+import { AppVersion } from './AppVersion'
 import { DesktopShortcut } from './DesktopShortcut'
 import './HeaderMenus.scss'
 
@@ -188,6 +189,7 @@ export function SettingsMenu() {
         </div>
       </fieldset>
       <DesktopShortcut active={open} />
+      <AppVersion active={open} />
       </>
       )}
     </HeaderMenu>

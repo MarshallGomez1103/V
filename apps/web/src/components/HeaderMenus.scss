@@ -189,3 +189,12 @@
 .voz-shortcut__broken {
   color: $text-error;
 }
+
+.voz-version {
+  @include type-style('helper-text-01');
+
+  margin: $spacing-03 0 0;
+  padding: $spacing-03 $spacing-05 0;
+  border-block-start: 1px solid $border-subtle-01;
+  color: $text-secondary;
+}

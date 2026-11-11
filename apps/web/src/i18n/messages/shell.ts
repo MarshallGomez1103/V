@@ -42,6 +42,7 @@ export const shell = {
 
   // Apariencia
   'settings.label': ['Ajustes', 'Settings'],
+  'settings.version': ['Versión {version}', 'Version {version}'],
   'appearance.design': ['Sistema de diseño', 'Design system'],
   'design.carbon': ['Carbon', 'Carbon'],
   'design.carbon.hint': [
