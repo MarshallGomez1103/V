@@ -1,4 +1,4 @@
-# 12 · Resumen ejecutivo para AEVA
+# 12 · Resumen ejecutivo
 
 **Proyecto:** V · `https://github.com/<propietario>/V` · rama `main` · HEAD `96284c53bc628dac330b222c4fde78ff3db9e2c9` · auditoría estática del 2026-10-21.
 
@@ -102,6 +102,6 @@ Cada punto remite al informe detallado (`01`–`08`, `09` matriz, `10` STT, `11`
 ## 10. Limitaciones
 - Auditoría estática: nada ejecutado. Los comportamientos en tiempo de ejecución son hipótesis.
 - 552 de 904 archivos se revisaron solo superficialmente y 79 se omitieron (estilos, catálogos, binarios); ver `11` §E.
-- Subagentes en Haiku. La revisión central validó automáticamente la existencia de las 1056 citas de los informes investigación y comprobó a mano 15 evidencias clave.
+- La revisión central validó automáticamente la existencia de las 1056 citas de los informes investigación y comprobó a mano 15 evidencias clave.
 - Única excepción de red: lectura del estado de CI en GitHub. Algunas evidencias de `06` provienen de código de terceros instalado localmente.
 - Los IDs `S17.01`–`S17.05` no se modificaron. No se redactó ningún ADR ni plan de implementación.

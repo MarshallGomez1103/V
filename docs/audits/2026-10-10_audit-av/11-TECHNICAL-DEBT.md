@@ -41,7 +41,7 @@ Rutas relativas a la raíz del repositorio. Líneas según `git` en `1186908`.
 
 ### AV-P1-04 · Documentación de estado desfasada respecto al código
 - **Severidad**: P1. **Estado**: verificado.
-- **Archivos**: `.ai/HANDOFF.md` (gitignored), `ROADMAP.md`, `CHANGELOG.md`.
+- **Archivos**: `HANDOFF.md` (notas internas, fuera de Git), `ROADMAP.md`, `CHANGELOG.md`.
 - **Evidencia**:
   - `HANDOFF.md` dice "871d303", "1424 backend + 3 opt-in", "297 frontend" y "`main` va 10 commits por delante de `origin/main` (SIN push)". Realidad: `1186908`, 1612 + 3 opt-in, 543 frontend, sincronizado con origin.
   - `ROADMAP.md` tiene su última edición en `fb5b0cc` (2026-09-30). Sin filas ni IDs para biblioteca, renombrar/eliminar, `rediarize` ni Material 3: `grep -c -i 'rediarize\|/api/library' ROADMAP.md` → 0.
@@ -54,7 +54,7 @@ Rutas relativas a la raíz del repositorio. Líneas según `git` en `1186908`.
 ### AV-P1-05 · Filas de segmento en blanco tras seek y autoscroll (pendiente de verificación)
 - **Severidad**: P1 si se confirma. **Estado**: no verificado.
 - **Archivo**: `apps/web/src/components/SegmentList.tsx` (`SegmentRow` memo en la línea 163; `content-visibility` según ROADMAP TRANSCRIPT-VIEW-001).
-- **Evidencia**: `.ai/HANDOFF.md`: "Verificar a mano en navegador real: filas de segmento en blanco tras seek+autoscroll (visto solo en Chrome headless; content-visibility)". No reproducido en esta auditoría porque no se cargó una transcripción.
+- **Evidencia**: `HANDOFF.md`: "Verificar a mano en navegador real: filas de segmento en blanco tras seek+autoscroll (visto solo en Chrome headless; content-visibility)". No reproducido en esta auditoría porque no se cargó una transcripción.
 - **Impacto**: el flujo de revisión (saltar a un segmento y leerlo) puede mostrar filas vacías.
 - **Recomendación**: reproducir con una transcripción de prueba sintética (no la del propietario) en Chrome real; si se confirma, revisar `content-visibility` en el contenedor virtualizado.
 - **Prueba de aceptación**: test de navegador (Playwright) que hace seek a 50 % de una lista de 2000 segmentos y comprueba que el texto del segmento activo es visible y no vacío.

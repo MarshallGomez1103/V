@@ -1,11 +1,11 @@
-# 13 · Handoff para el arquitecto
+# 13 · Resumen técnico
 
-Este documento permite entender VOZ sin conocer la conversación ni el histórico de sesiones. Las cifras son verificadas salvo que se indique. Los informes citados están en esta misma carpeta.
+Este documento permite entender VOZ de forma autónoma. Las cifras son verificadas salvo que se indique. Los informes citados están en esta misma carpeta.
 
 ## 1. Estado real del proyecto
 
 - **Qué es**: transcripción local de audio y video largos (clases, entrevistas, reuniones). Monolito modular FastAPI + SQLite + React. Datos en XDG, nada sale del equipo salvo que el usuario active un proveedor cloud.
-- **Versión**: 0.1.0, sin release pública. Repositorio privado en GitHub.
+- **Versión**: 0.1.0, sin release pública. Repositorio en GitHub.
 - **Git**: `main` = `origin/main` = `1186908` (2026-10-03). 42 commits. Árbol limpio. 84 commits de un solo autor con correo `noreply`.
 - **Calidad**: ruff, format, pyright estricto, eslint, tsc, vitest y build reproducible pasan. Pytest: 1612 pasados, 3 opt-in omitidos. Vitest: 543 pasados. CI de `main` verde en Linux, Windows y macOS.
 - **Arquitectura**: 160 módulos, 0 violaciones de capa, 0 ciclos (`evidencia/import_graph.py`).
@@ -38,7 +38,7 @@ Ningún P0. Los P1 están en `11-TECHNICAL-DEBT.md`:
 | AV-P1-01 | Acceso directo de escritorio con rutas absolutas al checkout; no portable | `infrastructure/desktop_shortcut.py:126-137` |
 | AV-P1-02 | API local sin validación de `Host` (riesgo de DNS rebinding); parcial | `bootstrap.py:238`; ADR-0006:81 |
 | AV-P1-03 | Worker de jobs descarta excepciones sin log | `application/job_runner.py:312-324` |
-| AV-P1-04 | HANDOFF, ROADMAP y CHANGELOG desfasados respecto al v3 | `.ai/HANDOFF.md`, `ROADMAP.md`, `CHANGELOG.md` |
+| AV-P1-04 | HANDOFF, ROADMAP y CHANGELOG desfasados respecto al v3 | `HANDOFF.md` (notas internas, fuera de Git), `ROADMAP.md`, `CHANGELOG.md` |
 | AV-P1-05 | Filas de segmento en blanco tras seek (según HANDOFF; no verificado aquí) | `components/SegmentList.tsx` |
 
 ## 4. Qué no se verificó
@@ -178,4 +178,4 @@ Detalle en `09-RENAME-MIGRATION.md`.
 
 - Todo lo marcado como "verificado" se reprodujo con un comando o se leyó en el código con número de línea.
 - Las fuentes externas (KittenTTS, whisper.cpp, microWakeWord, vibe) se consultaron el 2026-10-10. Las cifras que no vienen de fuente primaria están marcadas como secundarias.
-- No se modificó ningún archivo del repositorio. Los informes están en `.ai/audit-av/`, ignorado por Git.
+- No se modificó ningún archivo del repositorio. Los informes son los documentos de esta carpeta.

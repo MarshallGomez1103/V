@@ -61,8 +61,8 @@ Validar no es comprobar el contenido. La revisión central abrió a mano 15 evid
 ## E. Limitaciones del proceso
 
 - **L1 · Nada se ejecutó.** Ni pruebas, ni builds, ni servidores, ni migraciones. Todo comportamiento en tiempo de ejecución (carreras, bloqueos de apagado, consumo de memoria, latencia) es **hipótesis** mientras no se reproduzca.
-- **L2 · Modelo de los subagentes.** Las nueve instancias de investigación corrieron en Haiku. Las ocho de la primera pasada se lanzaron **en paralelo**, y la segunda lectura (`informe_adr_docs`) después.
-- **L2b · Entrega de los informes.** Cuatro instancias (`04`, `05`, `07` y `08`) indicaron que su configuración les impedía escribir archivos `.md`. La revisión central guardó esos cuatro informes copiando literalmente el último mensaje de cada investigación, sin editarlo. `01`, `02`, `03` y `06` los escribió su autora.
+- **L2 · Ejecución.** Las ocho revisiones de la primera pasada se hicieron **en paralelo**, y la segunda lectura (`informe_adr_docs`) después.
+- **L2b · Entrega de los informes.** Cuatro informes (`04`, `05`, `07` y `08`) se guardaron copiando literalmente el texto final de cada revisión, sin editarlo. `01`, `02`, `03` y `06` se redactaron directamente.
 - **L3 · Excepción a la regla de no usar la red.** La revisión central consultó la API de GitHub (lectura, dos llamadas) para el estado de CI de `96284c5`. Ninguna investigación accedió a la red.
 - **L4 · Fuera del repositorio.** `informe_interfaces` leyó el código de uvicorn instalado en el entorno virtual local para explicar el rechazo de WebSocket. Es evidencia de terceros, y la versión coincide con `uv.lock` (0.52.4).
 - **L5 · Cobertura.** De 904 archivos:

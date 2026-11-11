@@ -6,7 +6,7 @@ Orden: estabilización primero, luego rename, luego TTS. Ninguna fase de TTS emp
 
 ## 1. Estabilización
 
-- [ ] **AV-S-01** Actualizar `.ai/HANDOFF.md` con HEAD actual, conteos reales y estado del push (AV-P1-04).
+- [ ] **AV-S-01** Actualizar `HANDOFF.md` (notas internas, fuera de Git) con HEAD actual, conteos reales y estado del push (AV-P1-04).
 - [ ] **AV-S-02** Añadir filas v3 a `ROADMAP.md` con IDs nuevos: biblioteca, renombrar/eliminar, recalcular hablantes, exportar con vista previa, volumen 300 %, Material 3, PWA. Sin tocar IDs existentes.
 - [ ] **AV-S-03** Entrada `[Unreleased]` en `CHANGELOG.md` con el trabajo v3 (AV-P1-04).
 - [ ] **AV-S-04** Corregir los cuatro enlaces de imagen del README (AV-P2-06).

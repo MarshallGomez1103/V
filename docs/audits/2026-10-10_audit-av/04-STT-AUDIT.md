@@ -83,7 +83,7 @@ Medidas de benchmark: en el repositorio, `docs/benchmarks.md` y ROADMAP BENCH-00
 |---|---|---|---|
 | STT-01 | Fallo silencioso en `JobRunner._loop` | P1 | Verificado por lectura (AV-P1-03) |
 | STT-02 | Cancelación no interrumpe a mitad de un `transcribe` por chunk | P3 | Verificado por lectura; límite de la librería |
-| STT-03 | Umbral de diarización 0.4 medido en un único audio privado | P2 | Consta en PLAN-v3; no reproducible públicamente |
+| STT-03 | Umbral de diarización 0.4 medido en un único audio privado | P2 | Consta en el plan de la versión 3; no reproducible públicamente |
 | STT-04 | `large-v3` con WER 8 % en clip largo "sin investigar" | P2 | Consta en HANDOFF |
 | STT-05 | Perfil `academic` sin medición de calidad | P3 | Consta en HANDOFF |
 | STT-06 | Cloud nunca probado contra servicio real | P2 | Consta en ROADMAP y HANDOFF |

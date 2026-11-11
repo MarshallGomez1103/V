@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-10 · Repositorio: `<repo-V>` · Rama `main`, HEAD `1186908` (2026-10-03), igual a `origin/main`, árbol limpio antes y después de la auditoría.
 
-Alcance: auditoría de solo lectura. No se modificó código, no hubo commits, push, descargas de modelos, llamadas a proveedores cloud ni benchmarks GPU. Los únicos comandos que escriben son caches de herramientas (ruff, pyright, vite) y los informes en `.ai/audit-av/` (ignorado por Git, comprobado).
+Alcance: auditoría de solo lectura. No se modificó código, no hubo commits, push, descargas de modelos, llamadas a proveedores cloud ni benchmarks GPU. Los únicos comandos que escriben son caches de herramientas (ruff, pyright, vite) y los informes de esta auditoría.
 
 ## Estado general
 
@@ -46,7 +46,7 @@ P2 — mejora planificada: exposición LAN sin autenticación (documentada), `cu
 1. Documentación al día (AV-P1-04): es barata, desbloquea al arquitecto y evita decisiones sobre datos falsos.
 2. Acceso directo portable y validación de `Host` (AV-P1-01, AV-P1-02): son las dos brechas que el usuario final notaría.
 3. Log y fallo explícito en el worker (AV-P1-03).
-4. Decisiones de producto pendientes antes de TTS: licencia de los pesos KittenTTS 2 y estrategia de rename VOZ → AV (ver `13-HANDOFF-FOR-ARCHITECT.md`).
+4. Decisiones de producto pendientes antes de TTS: licencia de los pesos KittenTTS 2 y estrategia de rename VOZ → AV (ver `13-TECHNICAL-SUMMARY.md`).
 
 ## Lo que no se pudo verificar
 
@@ -58,4 +58,4 @@ P2 — mejora planificada: exposición LAN sin autenticación (documentada), `cu
 
 ## Archivos de este paquete
 
-Ver el índice en `13-HANDOFF-FOR-ARCHITECT.md`, sección "Referencias". Evidencia en bruto en `evidencia/`.
+Ver el índice en `13-TECHNICAL-SUMMARY.md`, sección "Referencias". Evidencia en bruto en `evidencia/`.

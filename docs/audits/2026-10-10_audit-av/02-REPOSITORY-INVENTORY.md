@@ -6,12 +6,12 @@
 |---|---|---|
 | Rama | `main` | `git status --short --branch` |
 | HEAD | `1186908` 2026-10-03 "feat(ui): Material 3 como sistema de diseño alternativo en Ajustes" | `git log -1` |
-| Remoto | `origin` (repositorio de GitHub, privado en el momento de la auditoría) | `git remote -v` |
+| Remoto | `origin` (repositorio de GitHub) | `git remote -v` |
 | Sincronía | `main...origin/main` sin ahead/behind | `git status` |
 | Commits | 42 | `git rev-list --count HEAD` |
 | Árbol | limpio (0 cambios) antes y después | `git status --porcelain \| wc -l` → 0 |
 | Autores | 84 entradas con el correo `noreply` de GitHub; ninguna con correo institucional | `scripts/audit-secrets.sh` (sección INFO) |
-| `.ai/` | ignorado (`.gitignore:1`), sin archivos trackeados | `git ls-files .ai \| wc -l` → 0 |
+| Directorio de notas internas | ignorado (`.gitignore:1`), sin archivos trackeados | `git ls-files <directorio> \| wc -l` → 0 |
 
 Historial reciente relevante: `1186908`, `3f4b03f`, `c0c0160`, `d0399e0` (2026-10-03, v3); `3b24eac` (PWA, fase 0 de Tauri); `d34123e` y `c8511ca` (UI v2 y progreso por etapa); `57c52de` (Carbon). Dos runs de CI en `main` fallaron (commits `3b24eac` y `050642a`); el arreglo posterior es `9efd236` (health con 30 s en runners Windows lentos).
 
@@ -28,7 +28,7 @@ Historial reciente relevante: `1186908`, `3f4b03f`, `c0c0160`, `d0399e0` (2026-1
 | `scripts/` | auditoría de secretos, checksums, reproducible build, install check, capturas | — |
 | `.github/workflows/` | `ci.yml` (backend, backend portable Windows/macOS, frontend, package), `release-dry-run.yml` | — |
 | Raíz | `Iniciar-Windows.bat`, `Iniciar-Mac.command`, `Iniciar-Linux.sh`, `pyproject.toml`, `uv.lock`, `ROADMAP.md`, `AGENTS.md`, `VOZ_PLAN_MAESTRO.md` | — |
-| `.ai/` (ignorado) | Notas privadas de sesión: HANDOFF, CHECKLIST, PLAN-v3, assignments | — |
+| Directorio de notas internas (ignorado) | Estado (HANDOFF), lista de control, plan de la versión 3 y asignaciones | — |
 
 Archivos mayores (verificado): `test_media_storage.py` 1006 líneas; `persistence/repositories.py` 923; `model_storage.py` 893; `job_runner.py` 731; `cli/bench.py` 679; `bootstrap.py` 601; `ffmpeg.py` 587. Frontend: `App.flows.test.tsx` 864; `SegmentList.tsx` 703; `ModelManager.tsx` 702; `SpeakersPanel.tsx` 509; `Library.tsx` 462; `Workspace.tsx` 420.
 
@@ -84,7 +84,7 @@ Leyenda — **Implementada**: hay código. **Probada**: hay tests y pasaron en e
 | Palabras con timestamps nativos | Sí | Sí | R (WORDS-001/002) | `infrastructure/asr/faster_whisper.py:529` | WhisperX no evaluado (ADR-0008) |
 | Editar segmentos (autosave, 409) | Sí | Sí | R (SEGMENT-EDITOR-001, E2E-001) | `api/segments.py`, `useSegmentDrafts.ts` | HANDOFF: filas en blanco tras seek+autoscroll (no verificado aquí) |
 | Hablantes: renombrar, fusionar, asignar | Sí | Sí | R (SPEAKERS-001/002) | `api/speakers.py`, `SpeakersPanel.tsx` | — |
-| Hablantes: recalcular (rediarize) | Sí | Sí (`test_rediarize.py`, 457 líneas) | No en navegador | `application/rediarize.py` | Pendiente prueba real según PLAN-v3 |
+| Hablantes: recalcular (rediarize) | Sí | Sí (`test_rediarize.py`, 457 líneas) | No en navegador | `application/rediarize.py` | Pendiente prueba real según el plan de la versión 3 |
 | Biblioteca Home y renombrar/eliminar proyecto | Sí | Sí (`test_library_projects_api.py`, `Library.test.tsx`) | A (Home vacía renderiza) · flujo de borrado solo por tests | `components/Library.tsx`, `application/library.py` | Sin entradas reales en la auditoría |
 | Exportar TXT/MD/SRT/VTT/JSON + vista previa | Sí | Sí (goldens) | Tests | `application/export/*`, `ExportDialog.tsx` | — |
 | Forma de onda con zoom y reproductor | Sí | Sí (`Waveform.test`, `AudioPlayer.test`) | R (WAVEFORM-001) | `Waveform.tsx`, `AudioPlayer.tsx` | Volumen 300 % no verificado en navegador |

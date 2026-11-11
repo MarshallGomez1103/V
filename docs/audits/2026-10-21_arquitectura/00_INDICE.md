@@ -11,7 +11,7 @@
 | Estado Git final | `## main...origin/main`, árbol limpio, HEAD sin cambios (comprobado al cerrar) |
 | Archivos inventariados | 904 (`git ls-files`), cada uno con un área propietaria |
 | Tipo de auditoría | Estática, de solo lectura. No se ejecutaron pruebas, builds ni servidores |
-| Equipo | Revisión central + 8 instancias **de investigación** (Haiku) en paralelo, más 1 de segunda lectura |
+| Equipo | Revisión central + 8 revisiones por área en paralelo, más 1 de segunda lectura |
 
 ## Cobertura
 
@@ -43,7 +43,7 @@ No se auditó el 100 % del código. Los criterios de cada nivel y los motivos de
 - [09 · Matriz de trazabilidad](09_MATRIZ_TRAZABILIDAD.md)
 - [10 · Preparación para STT en tiempo real](10_STT_REALTIME_READINESS.md)
 - [11 · Contradicciones y limitaciones (+ segunda lectura de ADR)](11_CONTRADICCIONES_Y_LIMITACIONES.md)
-- [12 · Resumen para AEVA](12_RESUMEN_PARA_AEVA.md)
+- [12 · Resumen ejecutivo](12_RESUMEN_EJECUTIVO.md)
 - [13 · Inventario de archivos](13_INVENTARIO_ARCHIVOS.md)
 
 **Para empezar:** leer `12`, luego `09` y `10`, y consultar los informes 01–08 como evidencia.
@@ -51,9 +51,9 @@ No se auditó el 100 % del código. Los criterios de cada nivel y los motivos de
 ## Limitaciones
 
 - Sin ejecución: todo comportamiento en tiempo de ejecución es hipótesis.
-- Subagentes en Haiku. Las citas se validaron por existencia (1056) y 15 evidencias clave se comprobaron a mano.
+- Las citas se validaron por existencia (1056) y 15 evidencias clave se comprobaron a mano.
 - Una consulta de solo lectura a la API de GitHub para el estado de CI. Evidencia de terceros (uvicorn instalado) en `06`.
-- Cuatro informes los guardó la revisión central a partir del mensaje literal de su investigación.
+- Cuatro informes (04, 05, 07 y 08) se guardaron a partir del texto literal de su revisión, sin editarlo.
 - Este paquete describe debilidades de seguridad de un repositorio público: compartirlo de forma privada.
 
 Detalle completo en `11_CONTRADICCIONES_Y_LIMITACIONES.md`.
