@@ -24,6 +24,9 @@ import './App.scss'
 const Workspace = lazy(() =>
   import('./components/Workspace').then((m) => ({ default: m.Workspace })),
 )
+const ProjectScreen = lazy(() =>
+  import('./components/ProjectScreen').then((m) => ({ default: m.ProjectScreen })),
+)
 const SpeakWorkspace = lazy(() =>
   import('./components/SpeakWorkspace').then((m) => ({ default: m.SpeakWorkspace })),
 )
@@ -175,6 +178,9 @@ export function App() {
                 state={library}
                 onReload={library.reload}
                 onOpen={openItem}
+                onOpenProject={(item) => {
+                  goTo({ name: 'proyecto', projectId: item.project_id })
+                }}
                 onNew={() => {
                   goTo({ name: 'nueva' })
                 }}
@@ -211,6 +217,18 @@ export function App() {
               }}
               onOpenModels={() => {
                 goTo({ name: 'modelos' })
+              }}
+            />
+          </Suspense>
+        ) : null}
+
+        {route.name === 'proyecto' ? (
+          <Suspense fallback={<Busy description={t('common.loading')} />}>
+            <ProjectScreen
+              key={route.projectId}
+              projectId={route.projectId}
+              onOpenJob={(jobId) => {
+                goTo({ name: 'trabajo', jobId })
               }}
             />
           </Suspense>

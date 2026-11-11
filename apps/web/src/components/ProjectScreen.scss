@@ -1,0 +1,23 @@
+@use '../styles/carbon' as *;
+
+.voz-project__uploads {
+  display: grid;
+  gap: $spacing-05;
+  margin: $spacing-05 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voz-project__recordings {
+  margin-block-start: $spacing-05;
+}
+
+.voz-project__link {
+  color: $link-primary;
+  text-decoration: none;
+
+  &:hover {
+    color: $link-primary-hover;
+    text-decoration: underline;
+  }
+}

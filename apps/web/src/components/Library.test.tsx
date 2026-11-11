@@ -50,6 +50,17 @@ describe('Library', () => {
     expect(screen.getByText('3 transcripciones')).toBeDefined()
   })
 
+  it('Abrir proyecto avisa con el elemento y solo se ofrece si hay manejador', () => {
+    const onOpenProject = vi.fn()
+    renderLibrary({ phase: 'ready', items: ITEMS }, { onOpenProject })
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir proyecto Sin trabajo' }))
+    expect(onOpenProject).toHaveBeenCalledWith(ITEMS[2])
+    cleanup()
+
+    renderLibrary({ phase: 'ready', items: ITEMS })
+    expect(screen.queryByRole('button', { name: /abrir proyecto/i })).toBeNull()
+  })
+
   it('el nombre es un enlace a #/t/<job> y Abrir avisa; sin trabajo no se puede abrir', () => {
     const { onOpen } = renderLibrary({ phase: 'ready', items: ITEMS })
     const link = screen.getByRole('link', { name: 'Clase de cálculo' })

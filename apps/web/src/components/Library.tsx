@@ -17,7 +17,7 @@ import {
   Tag,
   TextInput,
 } from '@carbon/react'
-import { Add, Edit, FolderOpen, TrashCan } from '@carbon/icons-react'
+import { Add, Edit, Folder, FolderOpen, TrashCan } from '@carbon/icons-react'
 
 import { PROCESSABLE_STATES, type JobState } from '../api/jobs'
 import { deleteProject, renameProject, type LibraryItem } from '../api/library'
@@ -37,6 +37,8 @@ interface LibraryProps {
   state: LibraryState
   onReload: () => void
   onOpen: (item: LibraryItem) => void
+  /** Abre la pantalla del proyecto (varias grabaciones); sin ella no se ofrece la acción. */
+  onOpenProject?: (item: LibraryItem) => void
   onNew: () => void
 }
 
@@ -193,7 +195,7 @@ function compareCells(a: unknown, b: unknown): number {
 }
 
 /** Home: biblioteca de transcripciones con buscar, abrir, renombrar y eliminar. */
-export function Library({ state, onReload, onOpen, onNew }: LibraryProps) {
+export function Library({ state, onReload, onOpen, onOpenProject, onNew }: LibraryProps) {
   const { t, tn, lang } = useI18n()
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState<LibraryItem | null>(null)
@@ -397,6 +399,18 @@ export function Library({ state, onReload, onOpen, onNew }: LibraryProps) {
                             >
                               {t('lib.open')}
                             </Button>
+                            {onOpenProject ? (
+                              <IconButton
+                                kind="ghost"
+                                size="sm"
+                                label={t('lib.project.named', { name: item.name })}
+                                onClick={() => {
+                                  onOpenProject(item)
+                                }}
+                              >
+                                <Folder />
+                              </IconButton>
+                            ) : null}
                             <IconButton
                               kind="ghost"
                               size="sm"

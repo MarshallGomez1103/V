@@ -2,13 +2,14 @@ import type { MessageKey } from '../i18n/messages'
 
 /**
  * Rutas por hash, sin librería: `#/` Home, `#/nueva`, `#/t/<jobId>` (espacio de trabajo),
- * `#/speak` (texto a voz), `#/modelos`, `#/proveedores`. El hash entra en el historial del navegador, así que
+ * `#/p/<projectId>` (proyecto con varias grabaciones), `#/speak` (texto a voz), `#/modelos`, `#/proveedores`. El hash entra en el historial del navegador, así que
  * Atrás/Adelante y recargar funcionan sin código extra.
  */
 export type Route =
   | { name: 'home' }
   | { name: 'nueva' }
   | { name: 'trabajo'; jobId: string }
+  | { name: 'proyecto'; projectId: string }
   | { name: 'speak' }
   | { name: 'modelos' }
   | { name: 'proveedores' }
@@ -25,6 +26,8 @@ export function routeToHash(route: Route): string {
       return '#/nueva'
     case 'trabajo':
       return '#/t/' + encodeURIComponent(route.jobId)
+    case 'proyecto':
+      return '#/p/' + encodeURIComponent(route.projectId)
     case 'speak':
       return '#/speak'
     case 'modelos':
@@ -41,11 +44,13 @@ export function parseRoute(hash: string): Route {
     return HOME
   }
   const [head = '', ...rest] = path.split('/')
-  if (head === 't') {
-    const raw = rest.join('/')
+  if (head === 't' || head === 'p') {
     try {
-      const jobId = decodeURIComponent(raw)
-      return jobId === '' ? HOME : { name: 'trabajo', jobId }
+      const id = decodeURIComponent(rest.join('/'))
+      if (id === '') {
+        return HOME
+      }
+      return head === 't' ? { name: 'trabajo', jobId: id } : { name: 'proyecto', projectId: id }
     } catch {
       return HOME
     }
@@ -83,5 +88,6 @@ export const NAV_ITEMS: readonly { route: Route; label: MessageKey }[] = [
 
 /** ¿Esta entrada del menú es la sección actual? */
 export function isCurrent(item: Route, current: Route): boolean {
-  return item.name === current.name || (item.name === 'home' && current.name === 'trabajo')
+  const underHome = current.name === 'trabajo' || current.name === 'proyecto'
+  return item.name === current.name || (item.name === 'home' && underHome)
 }

@@ -4,7 +4,7 @@ import { isCurrent, NAV_ITEMS, parseRoute, routeToHash, type Route } from './nav
 
 describe('rutas por hash', () => {
   it('el hash vacío y desconocido llevan a Home', () => {
-    for (const hash of ['', '#', '#/', '#/nada', '#/modelos/x', '#/t/', '#/t']) {
+    for (const hash of ['', '#', '#/', '#/nada', '#/modelos/x', '#/t/', '#/t', '#/p/', '#/p']) {
       expect(parseRoute(hash)).toEqual({ name: 'home' })
     }
   })
@@ -26,11 +26,18 @@ describe('rutas por hash', () => {
     expect(parseRoute('#/t/%E0%A4%A')).toEqual({ name: 'home' })
   })
 
+  it('#/p/<id> abre un proyecto y decodifica el id', () => {
+    expect(parseRoute('#/p/abc')).toEqual({ name: 'proyecto', projectId: 'abc' })
+    expect(parseRoute('#/p/a%20b')).toEqual({ name: 'proyecto', projectId: 'a b' })
+    expect(parseRoute('#/p/%E0%A4%A')).toEqual({ name: 'home' })
+  })
+
   it('ida y vuelta hash ↔ ruta', () => {
     const routes: Route[] = [
       { name: 'home' },
       { name: 'nueva' },
       { name: 'trabajo', jobId: 'x/y z' },
+      { name: 'proyecto', projectId: 'x/y z' },
       { name: 'speak' },
       { name: 'modelos' },
       { name: 'proveedores' },
@@ -50,6 +57,11 @@ describe('rutas por hash', () => {
     ])
     expect(routeToHash({ name: 'speak' })).toBe('#/speak')
     expect(isCurrent({ name: 'speak' }, { name: 'speak' })).toBe(true)
+  })
+
+  it('un proyecto cuenta como la sección Inicio', () => {
+    const inicio = NAV_ITEMS[0]?.route as Route
+    expect(isCurrent(inicio, { name: 'proyecto', projectId: 'p' })).toBe(true)
   })
 
   it('un trabajo cuenta como la sección Inicio', () => {
