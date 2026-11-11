@@ -15,6 +15,7 @@ from voz.application.asr_device_selection import (
     FallbackReason,
 )
 from voz.application.ports.diarization import DiarizationOptions, SpeakerCountHint
+from voz.application.ports.transcription import TranscriptionClip
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.domain.entities.model_descriptor import ModelCapability, ModelDescriptor
 from voz.domain.entities.processing_profile import (
@@ -204,6 +205,16 @@ def _glossary_from_json(value: object) -> tuple[str, ...]:
     return tuple(_strings(json.loads(value), field="glossary_json"))
 
 
+def _clip_from_row(row: RowMapping) -> TranscriptionClip | None:
+    start = _optional_int(row["clip_start_ms"], field="clip_start_ms")
+    end = _optional_int(row["clip_end_ms"], field="clip_end_ms")
+    if start is None and end is None:
+        return None
+    if start is None or end is None:
+        raise ValueError("persisted clip must have both bounds or none")
+    return TranscriptionClip(start, end)
+
+
 def selection_values(selection: JobSelection) -> dict[str, object]:
     return {
         "job_id": str(selection.job_id),
@@ -221,6 +232,8 @@ def selection_values(selection: JobSelection) -> dict[str, object]:
         "profile_json": _profile_json(selection.quality_profile),
         "glossary_json": _glossary_json(selection.glossary),
         "prompt": selection.prompt,
+        "clip_start_ms": None if selection.clip is None else selection.clip.start_ms,
+        "clip_end_ms": None if selection.clip is None else selection.clip.end_ms,
     }
 
 
@@ -239,6 +252,7 @@ def _selection_from_row(row: RowMapping) -> JobSelection:
         quality_profile=_profile_from_json(row["profile_json"]),
         glossary=_glossary_from_json(row["glossary_json"]),
         prompt=_optional_text(row["prompt"], field="prompt"),
+        clip=_clip_from_row(row),
     )
 
 

@@ -78,7 +78,7 @@ def test_upgrade_keeps_legacy_data_and_backs_up_the_0008_database(
 
     upgrade_to_head(engine, backups)
 
-    assert current_revision(engine) == head_revision() == "0010_synthesis_request_hash"
+    assert current_revision(engine) == head_revision()
     assert set(inspect(engine).get_table_names()) >= SYNTHESIS_TABLES
     with engine.connect() as connection:
         assert connection.exec_driver_sql("SELECT id FROM projects").all() == [("p1",)]

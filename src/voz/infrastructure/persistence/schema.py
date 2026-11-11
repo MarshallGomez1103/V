@@ -275,6 +275,47 @@ transcription_job_selections = Table(
     Column("glossary_json", Text, nullable=True),
     # Optional style instruction for the ASR engine (migration 0008).
     Column("prompt", Text, nullable=True),
+    # Range of the original this job transcribes, in ms (migration 0011); both
+    # NULL means the whole recording.
+    Column("clip_start_ms", BigInteger, nullable=True),
+    Column("clip_end_ms", BigInteger, nullable=True),
+)
+
+# One queue per "transcribe project" request; its items are ordinary jobs
+# (migration 0011, ADR-0015). ``skipped_json`` lists ``{media_asset_id, reason}``.
+transcription_queues = Table(
+    "transcription_queues",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "project_id",
+        String(36),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
+    Column("created_at", String(40), nullable=False),
+    Column("skipped_json", Text, nullable=False),
+)
+
+transcription_queue_items = Table(
+    "transcription_queue_items",
+    metadata,
+    Column(
+        "queue_id",
+        String(36),
+        ForeignKey("transcription_queues.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("position", Integer, primary_key=True, autoincrement=False),
+    Column(
+        "job_id",
+        String(36),
+        ForeignKey("transcription_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    UniqueConstraint("job_id"),
+    CheckConstraint("position >= 0", name="position_non_negative"),
 )
 
 project_glossaries = Table(
@@ -360,6 +401,8 @@ __all__ = [
     "transcription_checkpoints",
     "transcription_job_selections",
     "transcription_jobs",
+    "transcription_queue_items",
+    "transcription_queues",
     "transcripts",
     "words",
 ]

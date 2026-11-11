@@ -70,7 +70,7 @@ def test_upgrade_backfills_valid_rows_and_leaves_invalid_ones_null(
 
     _migrate(engine, "upgrade", "head")
 
-    assert current_revision(engine) == head_revision() == "0010_synthesis_request_hash"
+    assert current_revision(engine) == head_revision()
     hashes = _hashes(engine)
     assert hashes["a"] == request_hash(
         SynthesisRequest("Hola ñ", "p", "m", "v", model_revision="rev", language="es")

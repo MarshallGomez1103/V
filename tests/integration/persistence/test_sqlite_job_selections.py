@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete, inspect
+from sqlalchemy import Engine, delete, inspect, update
 from sqlalchemy.exc import IntegrityError
 
 from voz.application.asr_device_selection import (
@@ -17,6 +17,7 @@ from voz.application.asr_device_selection import (
     ExecutionDecision,
     FallbackReason,
 )
+from voz.application.ports.transcription import TranscriptionClip
 from voz.application.ports.transcription_job_selection import (
     JobSelection,
     TranscriptionJobSelectionRepository,
@@ -37,7 +38,10 @@ from voz.infrastructure.persistence.repositories import (
     SqliteProjectRepository,
     SqliteTranscriptionJobRepository,
 )
-from voz.infrastructure.persistence.schema import transcription_jobs
+from voz.infrastructure.persistence.schema import (
+    transcription_job_selections,
+    transcription_jobs,
+)
 from voz.infrastructure.persistence.transcription_job_selections import (
     SqliteTranscriptionJobSelectionRepository,
 )
@@ -153,4 +157,95 @@ def test_snapshot_round_trips_and_cascades_with_job(tmp_path: Path) -> None:
             delete(transcription_jobs).where(transcription_jobs.c.id == str(job.id))
         )
     assert repository.get(job.id) is None
+    engine.dispose()
+
+
+def _engine_with_job(tmp_path: Path) -> tuple[Engine, TranscriptionJob]:
+    engine = create_sqlite_engine((tmp_path / "c.db").absolute())
+    config = _config(str(engine.url))
+    with engine.connect() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+    project = Project("Demo", created_at=NOW)
+    SqliteProjectRepository(engine).add(project)
+    asset = MediaAsset(project.id, "a" * 64, "tone.wav", 10, duration_ms=60_000)
+    SqliteMediaAssetRepository(engine).add(asset)
+    job = TranscriptionJob.create(
+        job_id=uuid4(), project_id=project.id, media_asset_id=asset.id, now=NOW
+    )
+    SqliteTranscriptionJobRepository(engine).add(job)
+    return engine, job
+
+
+def test_clip_round_trips(tmp_path: Path) -> None:
+    engine, job = _engine_with_job(tmp_path)
+    repository = SqliteTranscriptionJobSelectionRepository(engine)
+    clip = TranscriptionClip(10_000, 20_000)
+    selection = JobSelection(
+        job_id=job.id,
+        option_id="option-v1-abc",
+        model=MODEL,
+        execution=None,
+        language=None,
+        created_at=NOW,
+        clip=clip,
+    )
+
+    repository.add(selection)
+
+    stored = repository.get(job.id)
+    assert stored == selection
+    assert stored is not None
+    assert stored.clip == clip
+    engine.dispose()
+
+
+def test_selection_without_clip_reads_back_without_clip(tmp_path: Path) -> None:
+    engine, job = _engine_with_job(tmp_path)
+    repository = SqliteTranscriptionJobSelectionRepository(engine)
+    repository.add(
+        JobSelection(
+            job_id=job.id,
+            option_id="option-v1-abc",
+            model=MODEL,
+            execution=None,
+            language=None,
+            created_at=NOW,
+        )
+    )
+
+    stored = repository.get(job.id)
+
+    assert stored is not None
+    assert stored.clip is None
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "bounds", [(1_000, None), (None, 2_000)], ids=["only-start", "only-end"]
+)
+def test_selection_with_one_clip_bound_is_rejected(
+    tmp_path: Path, bounds: tuple[int | None, int | None]
+) -> None:
+    engine, job = _engine_with_job(tmp_path)
+    repository = SqliteTranscriptionJobSelectionRepository(engine)
+    repository.add(
+        JobSelection(
+            job_id=job.id,
+            option_id="option-v1-abc",
+            model=MODEL,
+            execution=None,
+            language=None,
+            created_at=NOW,
+        )
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            update(transcription_job_selections)
+            .where(transcription_job_selections.c.job_id == str(job.id))
+            .values(clip_start_ms=bounds[0], clip_end_ms=bounds[1])
+        )
+
+    with pytest.raises(ValueError, match="both bounds"):
+        repository.get(job.id)
     engine.dispose()

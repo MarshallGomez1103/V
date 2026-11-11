@@ -9,6 +9,7 @@ from uuid import UUID
 
 from voz.application.asr_device_selection import ExecutionDecision
 from voz.application.ports.diarization import DiarizationOptions
+from voz.application.ports.transcription import TranscriptionClip
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.domain.entities.quality_profile import QualityProfile
 from voz.domain.entities.transcription_job import TranscriptionJob
@@ -39,6 +40,8 @@ class JobSelection:
     """Project glossary at creation time, frozen so the job can be repeated."""
     prompt: str | None = None
     """Style instruction for the ASR engine (initial prompt); ``None`` means none."""
+    clip: TranscriptionClip | None = None
+    """Range of the original to transcribe; ``None`` means the whole recording."""
 
     def __post_init__(self) -> None:
         if not isinstance(cast(object, self.job_id), UUID):
