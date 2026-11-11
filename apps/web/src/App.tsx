@@ -227,6 +227,7 @@ export function App() {
             <ProjectScreen
               key={route.projectId}
               projectId={route.projectId}
+              modelsVersion={modelsVersion}
               onOpenJob={(jobId) => {
                 goTo({ name: 'trabajo', jobId })
               }}

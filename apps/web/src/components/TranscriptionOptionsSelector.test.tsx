@@ -352,6 +352,16 @@ describe('TranscriptionOptionsSelector', () => {
       return { ...option({ option_id: 'x' }), ...CLOUD, ...overrides }
     }
 
+    it('con localOnly no ofrece las opciones remotas', async () => {
+      stubFetch(jsonResponse(200, { options: [option({ option_id: 'o-local' }), cloudOption()] }))
+
+      render(<TranscriptionOptionsSelector value={null} onChange={vi.fn()} localOnly />)
+
+      await screen.findByRole('radio', { name: /faster whisper turbo/i })
+      expect(screen.queryByRole('radio', { name: /openai whisper/i })).toBeNull()
+      expect(screen.queryByText('CLOUD')).toBeNull()
+    })
+
     it('muestra el badge CLOUD y el texto de envío en la opción, sin recomendarla', async () => {
       stubFetch(jsonResponse(200, { options: [cloudOption()] }))
 

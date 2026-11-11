@@ -66,11 +66,26 @@ const recording = (name: string, n: number, latest_job: unknown = null) => ({
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-function stubRecordings(responses: Response[]) {
-  const fetchMock = vi.fn(() => Promise.resolve(responses.shift() ?? json({ recordings: [] })))
+/** Las respuestas de `recordings` salen por orden; la cola, las opciones y las tareas, vacías. */
+function stubRecordings(responses: Response[], queue: () => Response = () => json({ queue: null })) {
+  const fetchMock = vi.fn((url: string) => {
+    if (url.endsWith('/transcription-queue')) {
+      return Promise.resolve(queue())
+    }
+    if (url === '/api/transcription-options') {
+      return Promise.resolve(json({ options: [] }))
+    }
+    if (url.endsWith('/recordings')) {
+      return Promise.resolve(responses.shift() ?? json({ recordings: [] }))
+    }
+    return Promise.resolve(json({ tasks: [] }))
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
+
+const recordingCalls = (fetchMock: ReturnType<typeof stubRecordings>) =>
+  fetchMock.mock.calls.filter(([url]) => url.endsWith('/recordings')).length
 
 const file = (name: string) => new File(['x'], name, { type: 'audio/wav' })
 
@@ -101,6 +116,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   setLang('es')
 })
@@ -141,7 +157,7 @@ describe('ProjectScreen', () => {
     // Al terminar la cola la tabla se recarga con las tres grabaciones.
     const table = await screen.findByRole('table', { name: 'Grabaciones del proyecto' })
     expect(within(table).getAllByRole('row')).toHaveLength(4)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(recordingCalls(fetchMock)).toBe(2)
     expect(screen.queryByRole('progressbar')).toBeNull()
   })
 
@@ -198,7 +214,7 @@ describe('ProjectScreen', () => {
 
     expect(abort).toHaveBeenCalledTimes(1)
     expect(FakeXMLHttpRequest.instances).toHaveLength(1)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(recordingCalls(fetchMock)).toBe(1)
   })
 
   it('lista nombre, duración y estado del último trabajo, y abre el trabajo', async () => {
@@ -246,7 +262,53 @@ describe('ProjectScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /reintentar/i }))
     expect(await screen.findByRole('table', { name: 'Grabaciones del proyecto' })).toBeDefined()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(recordingCalls(fetchMock)).toBe(2)
+  })
+
+  it('no ofrece la cola en un proyecto sin grabaciones', async () => {
+    const fetchMock = stubRecordings([json({ recordings: [] })])
+    render(<ProjectScreen projectId="p1" onOpenJob={vi.fn()} />)
+    await screen.findByText(/todavía no hay grabaciones/i)
+
+    expect(screen.queryByText('Transcribir el proyecto')).toBeNull()
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/transcription-queue'))).toBe(false)
+  })
+
+  it('con grabaciones sigue la cola y recarga la tabla cuando termina', async () => {
+    vi.useFakeTimers()
+    const queue = (state: 'running' | 'finished') =>
+      json({
+        queue: {
+          id: 'q1',
+          project_id: 'p1',
+          created_at: 'a',
+          state,
+          progress: state === 'running' ? 0 : 1,
+          counts: { total: 1, pending: 0, running: 0, done: state === 'running' ? 0 : 1, error: 0, cancelled: 0, skipped: 0 },
+          items: [],
+          skipped: [],
+        },
+      })
+    const answers = [queue('running'), queue('finished')]
+    const fetchMock = stubRecordings(
+      [json({ recordings: [recording('a.wav', 1)] }), json({ recordings: [recording('a.wav', 1)] })],
+      () => answers.shift() ?? queue('finished'),
+    )
+    render(<ProjectScreen projectId="p1" onOpenJob={vi.fn()} />)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByText('Cola de transcripción')).toBeDefined()
+    expect(recordingCalls(fetchMock)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(screen.getByText('1 de 1 terminadas')).toBeDefined()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(recordingCalls(fetchMock)).toBe(2)
   })
 
   it('en inglés habla inglés', async () => {

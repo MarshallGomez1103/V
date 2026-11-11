@@ -33,6 +33,8 @@ export interface TranscriptionOptionsSelectorProps {
   disabled?: boolean
   /** Al cambiar, vuelve a pedir las opciones (p. ej. tras instalar o borrar un modelo). */
   refreshKey?: number
+  /** Solo opciones locales: oculta las que envían el audio fuera del equipo. */
+  localOnly?: boolean
   /** Grabación importada: permite estimar el coste de las opciones cloud. */
   mediaAssetId?: string
   /**
@@ -113,6 +115,7 @@ export function TranscriptionOptionsSelector({
   onChange,
   disabled = false,
   refreshKey = 0,
+  localOnly = false,
   mediaAssetId,
   onCloudConsentChange,
   onSelectedOptionChange,
@@ -199,7 +202,8 @@ export function TranscriptionOptionsSelector({
     const controller = new AbortController()
     void getTranscriptionOptions(controller.signal)
       .then((payload) => {
-        setState({ phase: 'ready', options: sortOptions(payload.options) })
+        const offered = localOnly ? payload.options.filter((option) => option.cloud !== true) : payload.options
+        setState({ phase: 'ready', options: sortOptions(offered) })
       })
       .catch((error: unknown) => {
         if (!isAbortError(error)) {
@@ -212,7 +216,7 @@ export function TranscriptionOptionsSelector({
     return () => {
       controller.abort()
     }
-  }, [attempt, refreshKey])
+  }, [attempt, refreshKey, localOnly])
 
   // Mantiene coherente la selección del padre con el catálogo observado:
   // descarta valores inexistentes o no iniciables y preselecciona la única viable

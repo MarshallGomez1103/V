@@ -1,0 +1,69 @@
+@use '../styles/carbon' as *;
+
+.voz-queue {
+  margin-block-start: $spacing-05;
+
+  .cds--progress-bar {
+    margin-block-end: $spacing-03;
+  }
+}
+
+.voz-queue__summary {
+  @include type-style('body-compact-01');
+
+  margin-block-end: $spacing-05;
+  color: $text-secondary;
+}
+
+.voz-queue__subtitle {
+  @include type-style('heading-compact-01');
+
+  margin-block: $spacing-05 $spacing-03;
+}
+
+.voz-queue__skipped ul {
+  display: grid;
+  gap: $spacing-02;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-03;
+  }
+}
+
+.voz-queue__reason {
+  @include type-style('helper-text-01');
+
+  color: $text-secondary;
+}
+
+.voz-queue__failure {
+  margin-block-start: $spacing-05;
+}
+
+.voz-queue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-05;
+  margin-block-start: $spacing-05;
+}
+
+.voz-queue__link {
+  color: $link-primary;
+  text-decoration: none;
+
+  &:hover {
+    color: $link-primary-hover;
+    text-decoration: underline;
+  }
+}
+
+.voz-queue__summary:focus-visible {
+  outline: 2px solid $focus;
+  outline-offset: 2px;
+}

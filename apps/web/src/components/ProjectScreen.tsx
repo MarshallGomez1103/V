@@ -24,10 +24,13 @@ import { routeToHash } from '../lib/navigation'
 import { Busy } from './Busy'
 import { Notice } from './Notice'
 import { Panel } from './Panel'
+import { ProjectQueue } from './ProjectQueue'
 import './ProjectScreen.scss'
 
 export interface ProjectScreenProps {
   projectId: string
+  /** Cambia cuando se instala o quita un modelo: refresca las opciones de motor de la cola. */
+  modelsVersion?: number
   onOpenJob: (jobId: string) => void
 }
 
@@ -55,7 +58,7 @@ function tagFor(state: JobState): 'green' | 'red' | 'blue' | 'gray' {
 }
 
 /** Pantalla de un proyecto: sus grabaciones y la subida de varias, una tras otra. */
-export function ProjectScreen({ projectId, onOpenJob }: ProjectScreenProps) {
+export function ProjectScreen({ projectId, modelsVersion = 0, onOpenJob }: ProjectScreenProps) {
   const { t, tn } = useI18n()
   const [recordings, setRecordings] = useState<Recordings>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -275,6 +278,10 @@ export function ProjectScreen({ projectId, onOpenJob }: ProjectScreenProps) {
             </Table>
           ) : null}
         </Panel>
+
+        {items.length > 0 ? (
+          <ProjectQueue projectId={projectId} modelsVersion={modelsVersion} onOpenJob={onOpenJob} onChanged={reload} />
+        ) : null}
       </Column>
     </Grid>
   )
