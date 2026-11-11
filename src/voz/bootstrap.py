@@ -40,6 +40,7 @@ from voz.application.import_media import ImportMedia
 from voz.application.job_runner import JobRunner
 from voz.application.job_status import job_has_transcript
 from voz.application.library import ListLibrary
+from voz.application.list_recordings import ListRecordings
 from voz.application.model_manager import ListModels, RemoveModel
 from voz.application.model_tasks import ModelTaskRunner
 from voz.application.normalize_media import NormalizeImportedMedia
@@ -223,6 +224,7 @@ from voz.interfaces.api.openai_compat import create_openai_compat_router
 from voz.interfaces.api.projects import create_projects_router
 from voz.interfaces.api.providers import create_providers_router
 from voz.interfaces.api.quality_profiles import create_quality_profiles_router
+from voz.interfaces.api.recordings import create_recordings_router
 from voz.interfaces.api.security_headers import SecurityHeadersMiddleware
 from voz.interfaces.api.segments import create_segments_router
 from voz.interfaces.api.server_auth import ServerAuthMiddleware
@@ -790,6 +792,11 @@ def create_app(
             delete=DeleteProject(
                 projects, jobs, media_storage, projects, admission=admission
             ),
+        )
+    )
+    application.include_router(
+        create_recordings_router(
+            ListRecordings(projects, media_assets, jobs, selections, transcripts)
         )
     )
     application.include_router(

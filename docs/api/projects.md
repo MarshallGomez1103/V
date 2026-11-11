@@ -38,6 +38,46 @@ text: whatever the engine returns is stored literally.
 - When a job is created, the current glossary is copied into its selection
   ([jobs.md](jobs.md)), so repeating that job uses the same terms.
 
+## Recordings of a project
+
+Every recording imported into a project (the upload is in [jobs.md](jobs.md)),
+in import order, each with the latest transcription job it has.
+
+| Method and path | Request | Response |
+| --- | --- | --- |
+| `GET /api/projects/{project_id}/recordings` | — | 200 `Recordings`; 404 `project_not_found` |
+
+```json
+{
+  "recordings": [
+    {
+      "media_asset_id": "uuid",
+      "filename": "class-1.mp3",
+      "media_type": "audio/mpeg",
+      "duration_ms": 3600000,
+      "created_at": "2026-10-01T12:00:00+00:00",
+      "latest_job": {
+        "id": "uuid",
+        "state": "COMPLETED",
+        "transcript_id": "uuid",
+        "model_id": "large-v3",
+        "created_at": "2026-10-01T12:05:00+00:00"
+      }
+    }
+  ]
+}
+```
+
+- Order: `created_at`, then `media_asset_id`, so it is the same on every call.
+- `latest_job` is the job with the greatest `created_at`, ties broken by job id.
+  It is `null` while the recording has no job. `transcript_id` is
+  `null` until the job has stored its transcript; `model_id` is the model the
+  job selected. `media_type` and `duration_ms` can be `null` when the probe did
+  not report them (the file extension fills a missing type).
+- A project with no recordings answers `{"recordings": []}`.
+- No value is a host path: the copy of each original lives in the data
+  directory and is never exposed.
+
 ## Quality profiles
 
 `GET /api/quality-profiles` (read-only; optional query `language`, for example
