@@ -21,9 +21,10 @@ explicit authorization (see [docs/release.md](docs/release.md)).
 ### Added
 
 - Single-instance protection: only one V server can use a data directory at a
-  time. A second `v` on the same data, even with another `--port`, prints
+  time. A second `v` on another port with the same data prints
   "Another V server is already using this data directory.", exits with code 1
-  and does not open the browser. The lock is an operating-system file lock
+  and does not open the browser; on the same port it reuses the open server
+  and exits with code 0. The lock is an operating-system file lock
   (`instance.lock` in the state directory) released automatically when the
   server stops, so no stale lock remains. Tested on Linux; Windows and macOS
   are experimental and not verified on real hardware.

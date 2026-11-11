@@ -1,12 +1,12 @@
 # Installing on Windows and macOS
 
-V keeps the `voz` data directory names; `v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs). See [ADR-0009](../adr/0009-rename-to-v.md).
+The command is `v`. V keeps the `voz` data directory names; see [ADR-0009](../adr/0009-rename-to-v.md).
 
 > **Verification status.** V has only been used by hand on Linux (Bazzite). The
 > code has Windows- and macOS-specific paths, and its CI (`Backend /
 > windows-latest` and `macos-latest`) runs the whole test suite and starts the
 > real server, but until someone uses it on a real machine it **is experimental**.
-> If something fails, open an issue with the output of `voz doctor --redact`. See
+> If something fails, open an issue with the output of `v doctor --redact`. See
 > also [Troubleshooting](../troubleshooting.md).
 
 ## Requirements
@@ -20,14 +20,14 @@ V keeps the `voz` data directory names; `v` and `voz` are the same command (`v` 
 From a checkout, the equivalent of "clone and double-click" is:
 
 ```bash
-uv run --extra asr-local --extra diarization voz
+uv run --extra asr-local --extra diarization v
 ```
 
 ## Launchers and native verification
 
 Use `Start-V-Windows.bat` on Windows or `Start-V-macOS.command` on macOS.
-Both launchers use the `voz` alias, which also works in environments created before
-the `v` entry point existed.
+Both launchers run the older `voz` alias of the same command, which also works in
+environments created before the `v` entry point existed.
 
 Shell forwarding tests on Linux use a local `uv` substitute. They check paths
 with spaces and argument forwarding without installing software. They do not
@@ -51,7 +51,7 @@ the `zackees/ffmpeg_bins` repository, pinned to a commit and verified with
 SHA-256, into V's cache folder (`…/cache/ffmpeg/`). It does not use the
 `static-ffmpeg` package (it pulls in `twine` and about 25 dependencies and
 downloads without checksums). An already installed FFmpeg always takes priority.
-Without network access, `voz doctor` tells you how to install it by hand
+Without network access, `v doctor` tells you how to install it by hand
 (`winget install ffmpeg`, `brew install ffmpeg`). To disable the download, set
 the environment variable `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
 
@@ -89,5 +89,5 @@ system (useful for tests or portable installs).
   the user profile's permissions instead of `0600`, and the mode is not checked
   when reading it.
 - Directory `fsync` does not exist on Windows (NTFS covers it with its journal).
-- The peak-memory figure of `voz bench` does not count child processes on
+- The peak-memory figure of `v bench` does not count child processes on
   Windows.

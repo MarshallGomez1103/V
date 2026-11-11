@@ -1,4 +1,4 @@
-# Speakers — S6.09, S6.10, S6.11, S6.12 (wave 5b, 2026-09-30)
+# Speakers
 
 Local (`127.0.0.1`), no network or models: all these operations edit existing
 rows and never rerun diarization. Errors use `{"detail": {"code", "message"}}`;

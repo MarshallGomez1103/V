@@ -1,25 +1,23 @@
-# VOZ engineering rules
+# V engineering rules
 
 These rules apply to every human or AI contributor working in this repository.
-They are deliberately stable: transient session notes and assignments belong in
-`.ai/`, not here.
+They are deliberately stable: transient session notes and assignments are kept
+privately, outside the repository, and never in this file.
 
 ## Before changing anything
 
 1. Read this file, `ROADMAP.md`, and the ADRs relevant to the change.
-2. Read `.ai/HANDOFF.md` when it exists.
+2. Read any private handoff notes you were given.
 3. Select one vertical slice containing no more than three closely related
    roadmap items.
-4. Record the assignment in the active-work table in `ROADMAP.md` before
-   implementation.
-5. Identify the layers and files affected, then run the smallest useful baseline
+4. Identify the layers and files affected, then run the smallest useful baseline
    checks.
-6. Preserve unrelated local changes. Do not rewrite a whole module when a small
+5. Preserve unrelated local changes. Do not rewrite a whole module when a small
    change is sufficient.
 
 ## Architecture and dependency boundaries
 
-- VOZ is a local-first modular monolith with Clean/Hexagonal boundaries.
+- V is a local-first modular monolith with Clean/Hexagonal boundaries.
 - Dependency direction is inward:
   `interfaces/infrastructure -> application -> domain`.
 - The domain must not import FastAPI, SQLAlchemy, FFmpeg, torch, OpenAI, cloud
@@ -44,7 +42,7 @@ They are deliberately stable: transient session notes and assignments belong in
   explicit option.
 - Uploaded originals are immutable. Derived files must be stored separately.
 - Never commit private recordings, transcripts, API keys, models, generated
-  media, local databases, caches, or `.ai/` session context.
+  media, local databases, caches, or local session context.
 - Store runtime data according to XDG Base Directory conventions; never inside
   the source checkout.
 - Never log secrets. Redact sensitive paths and values from diagnostic bundles.
@@ -82,35 +80,37 @@ A roadmap item is done only when all applicable conditions hold:
 - Failure and cancellation paths are covered when the change introduces them.
 - User-facing behavior and architecture changes are documented.
 - The result was verified, not merely inferred from generated files.
-- `ROADMAP.md` is updated only after verification, in the same atomic edit as the
-  active-work status and achievement.
-- `.ai/HANDOFF.md` records files touched, checks run, open risks, and exactly one
-  next objective before an agent/session handoff.
+- `ROADMAP.md` is updated when each sprint closes, and only with what was
+  verified: an item is ticked only after its checks have run.
+- Before a handoff, the private notes record files touched, checks run, open
+  risks, and exactly one next objective.
 
 Never mark an item complete because code was written but not checked. If a check
 cannot run, leave the item incomplete and record the blocker.
 
-## Planned development commands
+## Development commands
 
-Run commands from the repository root unless noted. The bootstrap roadmap item
-defines these as the target interface; a command may be unavailable until that
-item is complete.
+Run commands from the repository root unless noted. These are the commands the
+CI workflow (`.github/workflows/ci.yml`) runs.
 
 ### Backend and CLI
 
 ```bash
-uv sync --all-groups
-uv run voz --no-browser
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
+uv sync --locked --all-groups --extra diarization
+uv run --frozen v --no-browser
+uv run --frozen pytest
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen pyright
 ```
+
+The `diarization` extra brings `numpy`, which Pyright and the speaker-separation
+tests need.
 
 Run one backend test while iterating:
 
 ```bash
-uv run pytest tests/unit/path/to/test_file.py -q
+uv run --frozen pytest tests/unit/path/to/test_file.py -q
 ```
 
 ### Frontend
@@ -125,37 +125,40 @@ npm run test
 npm run build
 ```
 
+`npm run build` rewrites the bundle that is versioned under `src/voz/static`.
+Run it only when you mean to change that bundle, and review the resulting diff.
+
 ### Full local verification
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
+uv run --frozen pytest
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen pyright
 cd apps/web
 npm run lint
 npm run typecheck
 npm run test
-npm run build
 ```
+
+Add `npm run build` only when the bundle is meant to change.
 
 Do not install Whisper, download speech models, invoke paid providers, publish a
 package, push commits, or alter the host operating system as part of ordinary
-bootstrap verification.
+verification.
 
-## Handoff format
+## Handoff notes
 
-Keep public, durable status in `ROADMAP.md`. Keep private session continuity in
-`.ai/HANDOFF.md` with these sections:
+Keep public, durable status in `ROADMAP.md`. Keep session continuity in private
+notes outside the repository, and make them cover:
 
-- Estado
-- Terminado
-- Pendiente inmediato
-- Archivos tocados
-- Tests
-- Riesgos / bugs
-- No cambiar
-- Próximo agente
+- state and what was finished;
+- immediate next step;
+- files touched;
+- tests and checks run;
+- risks and known bugs;
+- what must not change;
+- the next objective, naming exact roadmap IDs and staying within one vertical
+  slice.
 
-The next objective must name exact roadmap IDs and remain within one vertical
-slice. Do not paste conversation transcripts into repository documentation.
+Do not paste conversation transcripts into repository documentation.

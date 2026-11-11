@@ -1,4 +1,4 @@
-# Transcription options — Cut B1 / S5.18
+# Transcription options
 
 `GET /api/transcription-options` returns HTTP 200 with `{ "options": [...] }`.
 OpenAPI (`/openapi.json`, `/docs`) publishes the real schema derived from the

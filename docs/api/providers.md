@@ -1,4 +1,4 @@
-# Cloud providers: keys and cost estimate (S11.01, S11.08)
+# Cloud providers: keys and cost estimate
 
 Loopback only (the server listens on `127.0.0.1` by default). No response ever
 returns a key. Errors use `{"detail": {"code", "message"}}`. Common rules:

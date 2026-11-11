@@ -93,7 +93,7 @@ tests (see [CHANGELOG.md](CHANGELOG.md) for the verified detail).
   the machine (for example Buzz's), and recommends a model for your hardware.
 - **Quality profiles and glossary**: reproducible profiles (`default`,
   `academic` with a silence filter), a per-project glossary, hallucination
-  warnings, and `voz bench` to measure speed and error rate
+  warnings, and `v bench` to measure speed and error rate
   ([docs/quality-profiles.md](docs/quality-profiles.md),
   [docs/benchmarks.md](docs/benchmarks.md)).
 - **Optional cloud providers (experimental)**: OpenAI and ElevenLabs Scribe, with
@@ -132,7 +132,7 @@ The Model Manager is shown under [Engines and models](#engines-and-models).
 "Instructions" means the steps and launchers exist in this repository, not
 that they were exercised on that system. CUDA is likewise experimental beyond
 the one GPU above. If something fails on your machine, open an issue with the
-output of `voz doctor --redact` (check it before posting: issues are public).
+output of `v doctor --redact` (check it before posting: issues are public).
 
 ## Installation
 
@@ -165,8 +165,8 @@ You do not need to install Python, Node or FFmpeg yourself.
 4. In the page, open **Models** and install one (`turbo` is recommended on a
    GPU), drop in a recording and press *Transcribe*.
 
-Launching a second time reuses the running server and just opens another tab.
-To quit, use the power button at the top right of the page.
+Launching a second time reuses the running server and just opens another tab
+([Running V](#running-v)). To quit, use the power button at the top right of the page.
 
 If your system blocks the launcher ("Windows protected your PC", or macOS
 refusing to open it) or the path is too long on Windows, see
@@ -200,8 +200,8 @@ uv sync --all-groups --extra diarization    # sherpa-onnx speaker separation
 
 ```bash
 v                  # start the server and open the browser
-voz                # same command; the old name stays as an alias
 v --no-browser     # start without opening a browser
+v --version        # print the version and exit
 v doctor           # check FFmpeg, port, data paths, disk, ASR runtime and GPU (--json, --redact)
 ```
 
@@ -209,15 +209,24 @@ v doctor           # check FFmpeg, port, data paths, disk, ASR runtime and GPU (
 `http://127.0.0.1:8765` and exposes `GET /api/health`.
 
 `v` is also the name of the V programming language compiler. If you have it
-installed, another `v` may come first in your `PATH`; use `voz`, which is
-unambiguous ([ADR-0009](docs/adr/0009-rename-to-v.md)).
+installed, another `v` may come first in your `PATH`; the same entry point is
+also installed as `voz`, which is unambiguous
+([ADR-0009](docs/adr/0009-rename-to-v.md)).
 
-Only one V server can use a data directory at a time. If you start a second
-`v` on the same data, even on another port, it prints
-`Another V server is already using this data directory.`, exits with code 1 and
-does not open the browser. Close the first one (power button in the page, or
-Ctrl+C in its terminal). The operating system releases the lock when the
-server stops, however it stops, so nothing stale is left to clean up. This is
+**Starting V twice.** The second `v` looks first for a V server answering at
+the same address and port:
+
+- If one answers (same `--host` and `--port`), the second `v` starts nothing.
+  It prints `VOZ ya está abierto en http://127.0.0.1:8765`, opens another tab
+  in your browser unless you gave `--no-browser`, and exits with code 0.
+- If none answers there but another V server already holds the same data
+  directory, for example one started on another port, the second `v` prints
+  `Another V server is already using this data directory.`, exits with code 1
+  and does not open the browser. Close the first one (power button in the page,
+  or Ctrl+C in its terminal).
+
+The data-directory check is an operating-system lock that is released when the
+server stops, however it stops, so nothing stale is left to clean up. It is
 tested on Linux; on Windows and macOS it is **experimental** and has not been
 checked by hand ([Supported platforms](#supported-platforms)).
 
@@ -257,7 +266,7 @@ measures (policy in
 
 These thresholds come from published CTranslate2/faster-whisper memory
 requirements and from timings on one machine (RTX 4060 Laptop, 8 GiB). They
-are a starting point, not a benchmark of your hardware; run `voz bench` to
+are a starting point, not a benchmark of your hardware; run `v bench` to
 measure.
 
 ## Engines and models
@@ -363,7 +372,7 @@ and the domain remain independent of web, database and engine libraries.
 | Frontend | React 19, TypeScript, IBM Carbon, SCSS and a Material 3 skin | Browser workspace, transcript editing, audio playback, model management and speech generation. |
 | Frontend tooling | Vite 8, npm and Sass | Builds the static JavaScript/CSS bundle; provides the development server and API proxy. Node.js is needed to develop the UI, not to serve its built bundle. |
 | API and server | Python 3.12+, FastAPI and Uvicorn | FastAPI defines HTTP routes and validation; Uvicorn is the ASGI server that runs the application and serves the bundled UI through FastAPI's static-file mount. |
-| CLI and composition | Typer, `src/voz/bootstrap.py` | The `v` / `voz` commands start the server and run diagnostics; the composition root wires use cases, adapters and routers. |
+| CLI and composition | Typer, `src/voz/bootstrap.py` | The `v` command starts the server and runs diagnostics; the composition root wires use cases, adapters and routers. |
 | Application and domain | Python use cases, read models, ports and dataclasses | Job orchestration, model selection, exports and business rules, with external operations expressed as ports. |
 | Persistence | SQLite, SQLAlchemy 2 and Alembic | Local project/transcript storage, durable jobs and checkpoints, and schema migrations. Media and model files use the XDG filesystem layout. |
 | Audio and voice engines | FFmpeg / ffprobe, faster-whisper / CTranslate2, whisper.cpp and sherpa-onnx | Media inspection, separate inference audio, transcription, diarization and synthesis, according to the installed engine and model. Optional remote adapters require explicit configuration and selection. |
@@ -517,6 +526,7 @@ Plans can change; do not rely on any of this until it appears in the
 
 - [Local OpenAI-compatible audio API](docs/api/openai-compat.md)
 - [Web asset budgets and browser checks](docs/web-quality.md)
+- [Design guide](docs/design/README.md) and [Material 3 evaluation](docs/design/material3.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - Install: [Linux](docs/install/linux.md), [Windows and macOS](docs/install/windows-macos.md)
 - [Models: download, import and removal](docs/models.md), [Buzz cache reuse](docs/buzz.md)

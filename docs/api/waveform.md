@@ -1,4 +1,4 @@
-# Waveform — S5.09 and S5.14
+# Waveform
 
 Precomputed peaks to draw the waveform in the browser. Local (`127.0.0.1`), no
 network or cloud providers. Errors use `{"detail": {"code", "message"}}`; host

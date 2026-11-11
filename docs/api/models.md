@@ -1,4 +1,4 @@
-# Model manager — query and delete (S8.02, S8.03, S8.07, S8.08)
+# Model manager: query and delete
 
 Section 8 of the roadmap. The canonical catalog (`faster_whisper_catalog()`,
 S8.01) defines six Faster Whisper models with pinned source and revision. This

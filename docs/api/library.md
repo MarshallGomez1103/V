@@ -1,4 +1,4 @@
-# Library, media info, rename and delete projects — plan v3, Slice A
+# Library, media info, rename and delete projects
 
 Local (`127.0.0.1`). Errors have the shape `{"detail": {"code", "message"}}`; no
 host paths. Common rules: [README.md](README.md). The library is the home screen:

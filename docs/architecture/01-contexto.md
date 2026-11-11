@@ -35,7 +35,7 @@ flowchart TB
     live["Live (microphone) transcription<br/>planned, not in the code"]
     mcp["MCP server for coding assistants<br/>planned, not in the code"]
 
-    usuario -->|"browser at 127.0.0.1, or the v / voz CLI"| voz
+    usuario -->|"browser at 127.0.0.1, or the v CLI"| voz
     cliente -->|"HTTP /v1/audio/*"| voz
     voz -->|"subprocess"| ffmpeg
     voz -->|"in-process call, local files only"| fw

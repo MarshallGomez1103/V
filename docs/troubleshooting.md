@@ -5,34 +5,35 @@ the project's own documentation or from the messages the code emits; if yours is
 not listed, run the diagnostics and open an issue with the result:
 
 ```bash
-voz doctor --redact                 # text report, absolute paths hidden
-voz doctor --bundle doctor.zip      # redacted zip to attach to a report
+v doctor --redact                 # text report, absolute paths hidden
+v doctor --bundle doctor.zip      # redacted zip to attach to a report
 ```
 
-`v` and `voz` are the same command (`v` since slice V1-02; an installation made before that only has `voz` until it is reinstalled or `uv sync` runs); see [ADR-0009](adr/0009-rename-to-v.md). Examples use `voz`. See [Diagnostics](diagnostics.md)
+The command is `v`; `voz` is an alias of the same entry point (see [ADR-0009](adr/0009-rename-to-v.md)). See [Diagnostics](diagnostics.md)
 for what each check means and what the bundle contains. Data directories keep the
 name `voz/` (for example `~/.local/share/voz/`).
 
 ## Starting V
 
-### `voz: command not found` (Linux)
+### `v: command not found` (Linux)
 
-`uv tool install` links `voz` into `~/.local/bin`. Add it to your `PATH` with
+`uv tool install` links `v` into `~/.local/bin`. Add it to your `PATH` with
 `uv tool update-shell` and open a new terminal.
 ([Linux](install/linux.md#common-problems))
 
 ### The port is busy
 
-`voz doctor` reports `puerto ... ocupado; posiblemente VOZ ya está corriendo` (port
+`v doctor` reports `puerto ... ocupado; posiblemente VOZ ya está corriendo` (port
 busy, V may already be running). If V is already serving on that address, running
-`voz` again does not start a second server: it prints that V is already open and
-opens another browser tab. If something else uses the port, start V on another
-one: `voz --port 9000`.
+`v` again with the same `--host` and `--port` does not start a second server: it
+prints `VOZ ya está abierto en <address>`, opens another browser tab (unless you
+gave `--no-browser`) and exits with code 0. If something else uses the port, start V
+on another one: `v --port 9000`.
 
 ### "Another V server is already using this data directory."
 
-Only one V server can use a data directory at a time. A second `v` (or `voz`)
-on the same data prints this message and exits with code 1 without opening the
+Only one V server can use a data directory at a time. A second `v`
+on the same data, on a port where no V server answers, prints this message and exits with code 1 without opening the
 browser, even if you gave it another port with `--port`. The other server is
 already serving your transcripts: use it, or close it (power button in the page,
 or Ctrl+C in the terminal where it runs) and start V again.
@@ -80,7 +81,7 @@ If you reach V under another name (a DNS alias, a reverse proxy, another
 machine's name), add it explicitly; the option is repeatable:
 
 ```bash
-voz --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.local --allow-host my-pc
+v --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.local --allow-host my-pc
 ```
 
 Reason: [ADR-0006](adr/0006-local-first-privacy.md).
@@ -91,7 +92,7 @@ V refuses writes (`POST`, `PUT`, `PATCH`, `DELETE`) and WebSocket connections
 that come from another origin: the `Origin` header must match the address the
 request was sent to, and `Sec-Fetch-Site`, if present, must be `same-origin` or
 `none`. Open V at the address it prints (for example `http://127.0.0.1:8765`)
-and not from another site, a different port or a page that embeds it. The `voz`
+and not from another site, a different port or a page that embeds it. The `v`
 CLI, `curl` and other clients that send no `Origin` are not affected.
 
 If you reach V through a reverse proxy that terminates TLS, the server must see
@@ -122,7 +123,7 @@ cloud notice to retry. Local jobs are resumed automatically.
 
 ## Warning when using `--host`
 
-If the bind address is not loopback (`127.0.0.1`, `::1`, `localhost`), `voz`
+If the bind address is not loopback (`127.0.0.1`, `::1`, `localhost`), `v`
 prints to stderr that V is listening beyond this machine. That is expected, not an
 error. A non-loopback bind requires `--auth-token-file`; create the file first
 with `v auth-token --output ../v-server-token.txt`. Credentials protect access
@@ -131,7 +132,7 @@ or return to the default (`127.0.0.1`).
 
 ## FFmpeg
 
-- **`ffmpeg` / `ffprobe` fail in `voz doctor`**: neither was found on the `PATH`.
+- **`ffmpeg` / `ffprobe` fail in `v doctor`**: neither was found on the `PATH`.
   At startup V downloads a pinned static build once if it can; otherwise install
   it yourself (`winget install ffmpeg`, `brew install ffmpeg`, or your
   distribution's package manager; on Bazzite, inside a Distrobox container).
@@ -142,7 +143,7 @@ or return to the default (`127.0.0.1`).
 
 ## Transcription runtime and speed
 
-- **`voz doctor` warns that `asr-local` is not installed**: Faster Whisper is an
+- **`v doctor` warns that `asr-local` is not installed**: Faster Whisper is an
   optional extra. Reinstall with it
   (`uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-<version>-py3-none-any.whl"`,
   replacing `<version>`). **Upgrading with `uv tool install --force` and no extra
@@ -150,7 +151,7 @@ or return to the default (`127.0.0.1`).
   ([Linux](install/linux.md#local-faster-whisper-the-asr-local-extra))
 - **It is slow**: without an NVIDIA GPU, V transcribes on the CPU. It works, but an
   hour of audio can take a long time; the `turbo` model is the fastest with good
-  quality. `voz doctor` shows `GPU/CUDA: solo CPU` when no CUDA was found.
+  quality. `v doctor` shows `GPU/CUDA: solo CPU` when no CUDA was found.
 - **CUDA does not load on Windows**: V falls back to the CPU (int8) with a warning;
   the job does not fail. You need the NVIDIA driver, not the CUDA Toolkit.
   macOS always uses the CPU. ([Windows and macOS](install/windows-macos.md#gpu))
@@ -168,7 +169,7 @@ are in [Model store](models.md).
 - **`model_installation_http_error`**: the server answered with an error status
   (carried in `error.status`).
 - **`disk_space_insufficient`**: there is not enough free space for the pending
-  bytes plus a margin. Free space in the data directory (`voz doctor` warns below
+  bytes plus a margin. Free space in the data directory (`v doctor` warns below
   5 GiB free in `data` or `cache`) or remove a model you do not use from the model
   manager.
 - **A model shows as not installed although you downloaded it**: if the manifest

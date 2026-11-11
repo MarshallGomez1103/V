@@ -1,8 +1,9 @@
 # V roadmap
 
 This file is the public source of truth for product progress. The long-term plan
-and its rationale are in [VOZ_PLAN_MAESTRO.md](VOZ_PLAN_MAESTRO.md). The
-repository is public.
+was first written in [VOZ_PLAN_MAESTRO.md](VOZ_PLAN_MAESTRO.md), which is kept as
+a historical document and is no longer updated; this file and the ADRs are the
+current record. The repository is public.
 
 ## Conventions
 
@@ -28,6 +29,9 @@ fail or cannot be run, the checkbox stays open and the row records the failure o
 blocker. Ranges are not ticked off by inference, and other agents' achievements
 are never deleted. The coordinator releases or reassigns abandoned IDs
 explicitly.
+
+From now on this file is updated when each sprint closes, with verified
+items only; the per-package board above is historical.
 
 ## Initial active work
 
@@ -551,6 +555,13 @@ their own recordings without presenting intuitions as results.
 - [x] **S14.14** Test resume idempotency.
 - [x] **S14.15** Rename a project `PATCH /api/projects/{id}` (`tests/integration/test_library_projects_api.py`).
 - [x] **S14.16** Delete a project with its media and 409 `project_busy` (`tests/integration/test_library_projects_api.py`).
+- [x] **S14.17** Cloud calls fail closed: a cloud transcription or speech request without an explicit `cloud_consent: true` is rejected with 422 `cloud_consent_required`, and cloud jobs left unfinished by a restart fail with `cloud_consent_expired` instead of being sent again (`tests/integration/test_jobs_api.py`, `tests/integration/test_synthesis_cloud_consent_api.py`, `tests/integration/application/test_cloud_consent_recovery.py`, `tests/integration/test_cloud_consent_recovery_wiring.py`).
+- [x] **S14.18** Reject requests with a foreign `Host` (400 `host_not_allowed`) and state-changing requests with a foreign `Origin` or `Sec-Fetch-Site` (403 `origin_not_allowed`) (`tests/integration/test_host_guard.py`, `tests/unit/test_origin_guard.py`, `tests/integration/test_cross_origin_guard.py`).
+- [x] **S14.19** Allow one server per data directory: a second `v` on the same port reuses the open server, and on another port it exits with code 1 without opening the browser (`tests/integration/test_second_instance.py`, `tests/unit/infrastructure/test_instance_lock.py`, `tests/unit/test_cli.py`; verified on Linux, experimental on Windows and macOS).
+- [x] **S14.20** Keep the job worker alive when a job crashes: the cause is logged, the job is left in `FAILED` with `job_runner_crashed`, and the queue continues (`tests/integration/application/test_job_runner.py`).
+- [x] **S14.21** Start child processes (engines, FFmpeg, probes) with a minimal environment that excludes variables whose names suggest secrets (`tests/unit/test_child_process_environment.py`).
+- [x] **S14.22** Accept plain `http://` OpenAI-compatible endpoints only for loopback hosts (422 `endpoint_invalid` otherwise) (`tests/integration/test_providers_api.py`, `tests/contract/test_openai_compatible.py`).
+- [x] **S14.23** Show a visible alert with a Retry action when opening a transcript fails (`apps/web/src/components/Workspace.test.tsx`).
 
 **Exit criterion:** closing or reopening V does not destroy confirmed work and
 failures give recoverable actions.
@@ -601,6 +612,7 @@ README, without depending on the checkout.
 - [x] **S16.18** Create `NOTICE` for reused code/dependencies.
 - [x] **S16.19** Audit secrets and ignored files before opening the repository.
 - [x] **S16.20** The repository is public, with the maintainer's authorization.
+- [x] **S16.21** Fail the build when a served route is missing from `docs/api/` or a page names an endpoint that is not served (`tests/contract/test_api_docs_match_routes.py`).
 
 **Exit criterion:** the repository is ready to receive external contributions,
 with real evidence and no private material.
@@ -619,6 +631,48 @@ providers as batch transcription. Planned: no design or technology is chosen yet
 
 **Exit criterion:** a person can transcribe live audio on their own machine with
 measured latency, with no cloud call unless they explicitly chose that provider.
+
+## Section 18 — Recording range and project queue
+
+Scope: transcribing only a chosen stretch of a recording, adding several
+recordings to one project, and transcribing a project's recordings one after
+another as a recoverable queue. Design: [ADR-0015](docs/adr/0015-transcription-range-and-project-queue.md).
+Items are ticked only after their checks have run.
+
+- [ ] **S18.01** Let a transcription job carry an optional range `[start_ms, end_ms)` in the original recording's times; no range means the whole recording.
+- [ ] **S18.02** Store the range and the queue in the schema: the migration upgrades and downgrades a populated database, and existing selections read as "no range".
+- [ ] **S18.03** Transcribe only the range: the engine receives no audio outside it, every segment, word and speaker turn lies inside it in original times, and a job without a range produces the same chunk plan as before.
+- [ ] **S18.04** Choose the range in the interface, with keyboard controls, in English and Spanish.
+- [ ] **S18.05** List a project's recordings through the API (documented in `docs/api/`), and keep the uploaded copy under the data directory with the dropped file unchanged.
+- [ ] **S18.06** Add the project screen: drop several recordings into one project and see them listed, with keyboard use, in English and Spanish.
+- [ ] **S18.07** Run a project's recordings as a queue in the backend: one at a time in import order, a failing item does not stop the others, no cloud provider (422 `transcription_queue_cloud_unsupported`), and after a restart the queue resumes in order without repeating finished items, also when every job has the same `created_at`.
+- [ ] **S18.08** Start and follow the queue in the interface: per-item state, and the recordings that were skipped with their reason.
+
+**Exit criterion:** a person can crop a recording to the part they need, put many
+recordings in one project and transcribe them in sequence, with every item
+resumable after a restart and nothing copied into the source checkout.
+
+## Section 19 — Organization and integration
+
+Scope: organizing recordings in folders, an honest model catalog with filters,
+policy-based transcript verification, and an MCP server for coding assistants.
+Design: [ADR-0012](docs/adr/0012-project-folders.md),
+[ADR-0013](docs/adr/0013-model-catalog-filters.md) and
+[ADR-0014](docs/adr/0014-mcp-and-transcript-verification.md), all **Proposed**:
+nothing in this section exists in the code yet.
+
+- [ ] **S19.01** Add nested folders inside a project: domain, migration with a backup before migrating, and API.
+- [ ] **S19.02** Show the folder tree in the project screen: create, rename and move, with keyboard use.
+- [ ] **S19.03** Expose catalog metadata (languages, size, device, license) from `GET /api/models`.
+- [ ] **S19.04** Add search and filters to the Model Manager without calling any model "best" without measurement.
+- [ ] **S19.05** Verify a transcript against versioned JSON policies with deterministic checks, through the API; the transcript text is never rewritten.
+- [ ] **S19.06** Show verification results and findings in the interface.
+- [ ] **S19.07** Serve an MCP server over stdio with `v mcp` for coding assistants.
+- [ ] **S19.08** Review path escapes, token handling and cloud consent for folders, verification and MCP, with tests.
+
+**Exit criterion:** recordings can be organized, a transcript can be checked
+against a readable policy, and a coding assistant can use V through MCP, with no
+new dependency.
 
 ---
 

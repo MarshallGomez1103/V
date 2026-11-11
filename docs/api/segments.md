@@ -1,4 +1,4 @@
-# Segment editing — S5.12 (wave 3, 2026-09-30)
+# Segment editing
 
 Local (`127.0.0.1`), no network or providers. Errors use
 `{"detail": {"code", "message"}}`; host paths and tracebacks are never returned.

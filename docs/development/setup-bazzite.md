@@ -7,10 +7,11 @@ base image. The commands of Option A were run as written on a clean checkout
 remains in [ROADMAP.md](../../ROADMAP.md). To **install** V as a user, without a
 development checkout, use [../install/linux.md](../install/linux.md).
 
-The Python package, the `voz` command, the `VOZ_*` variables and the
-`~/.local/share/voz` directories keep the old name on purpose
-([ADR-0009](../adr/0009-rename-to-v.md)), so the commands below still say
-`voz`.
+The command is `v`; `voz` remains as an alias of the same entry point. The
+Python package, the `VOZ_*` variables and the `~/.local/share/voz` directories
+keep the old name on purpose ([ADR-0009](../adr/0009-rename-to-v.md)). The
+verification record at the end of this guide reproduces the commands as they
+were run, before `v` existed.
 
 ## Principles for Bazzite/Fedora Atomic
 
@@ -62,7 +63,7 @@ npm ci
 npm run build
 cd ../..
 uv run pytest
-uv run voz --no-browser
+uv run v --no-browser
 ```
 
 The URL is `http://127.0.0.1:8765`. `--all-extras` also installs `asr-local`
@@ -109,7 +110,7 @@ scripts are subject to the bootstrap:
 Terminal 1:
 
 ```bash
-uv run voz --no-browser
+uv run v --no-browser
 ```
 
 Terminal 2:
@@ -145,7 +146,7 @@ npm run build
 ```
 
 The clean verification of Section 1 requires testing from a fresh checkout or
-an empty environment. Creating files is not enough: `voz` must start,
+an empty environment. Creating files is not enough: `v` must start,
 `/api/health` must respond and the Home screen must load on `127.0.0.1`. Record
 the environment and the commands actually run in the local handoff before
 marking S1.22.
@@ -181,7 +182,7 @@ declaration or let `uv` fetch Python 3.12; do not replace the host's Python.
 Check the existing process and use the documented flag:
 
 ```bash
-uv run voz --no-browser --port 9000
+uv run v --no-browser --port 9000
 ```
 
 Do not terminate unknown processes automatically.
@@ -198,13 +199,13 @@ Verify separately:
 ### FFmpeg is not available
 
 This blocks audio import, not the UI startup. Record the diagnostics
-(`uv run voz doctor`) and choose a user-level installation or Distrobox. Do not
+(`uv run v doctor`) and choose a user-level installation or Distrobox. Do not
 add base-system layering as an automatic response.
 
 ## Exit criterion
 
 The Bazzite setup is considered verified only when a clean checkout allows
-installing dependencies, running the relevant checks, starting `voz` and
+installing dependencies, running the relevant checks, starting `v` and
 opening the local UI. That verification has been done and is recorded below;
 repeat it and update the date when the dependencies or the flow change.
 

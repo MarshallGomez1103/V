@@ -18,8 +18,8 @@ Internal identifiers keep the old name on purpose: the Python package is
 directories. See [ADR-0009](docs/adr/0009-rename-to-v.md). Please do not
 rename them as part of an unrelated change.
 
-The command is `v`, with `voz` kept as an alias (for example
-`uv run voz --no-browser`).
+The command is `v` (for example `uv run v --no-browser`); `voz` remains as an
+alias of the same entry point.
 
 ## 1. Opening an issue
 
@@ -28,7 +28,7 @@ reports and feature requests. Before filing:
 
 - search the existing issues to avoid duplicates;
 - for a bug, include steps to reproduce, what you expected, what happened, your
-  operating system and the output of `voz doctor --redact` (review it before
+  operating system and the output of `v doctor --redact` (review it before
   posting);
 - issues and their attachments are public: never attach recordings,
   transcripts, credentials or other private data;
@@ -49,7 +49,7 @@ or Fedora Atomic,
 
 ```bash
 uv sync --all-groups
-uv run voz --no-browser          # backend + bundled UI at http://127.0.0.1:8765
+uv run v --no-browser            # backend + bundled UI at http://127.0.0.1:8765
 cd apps/web
 npm ci
 npm run dev                      # frontend development server

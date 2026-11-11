@@ -1,17 +1,18 @@
 # Installing on Linux
 
-V is a local application: a command (`voz` today) that starts a
+V is a local application: a command (`v`) that starts a
 server on `127.0.0.1` and serves a web interface from it. There is no
 tagged release yet, so you install it from a wheel built from the repository.
 
 > **Naming.** The product is now called V; see
 > [ADR-0009](../adr/0009-rename-to-v.md). The data directories are still named
-> `voz/` (nothing on disk is renamed). `v` and `voz` are the same command (`v`
-> since slice V1-02); this document uses `voz`, which works on every install.
+> `voz/` (nothing on disk is renamed). The command is `v`; `voz` is an alias of
+> the same entry point, and the verification run recorded at the end of this
+> document used it.
 
 > **Verification status.** Only Bazzite (Fedora Atomic) has been verified. These
 > steps are generic and have not been tried on other distributions. If something
-> fails, open an issue with the output of `voz doctor --redact`. See also
+> fails, open an issue with the output of `v doctor --redact`. See also
 > [Troubleshooting](../troubleshooting.md).
 
 ## Requirements
@@ -20,7 +21,7 @@ tagged release yet, so you install it from a wheel built from the repository.
 - [`uv`](https://docs.astral.sh/uv/) installed for your user.
 - **FFmpeg** (`ffmpeg` and `ffprobe` on the `PATH`) to import and normalize
   audio. Install it with your distribution's package manager or, on immutable
-  systems, inside a user container (Distrobox). If they are missing, `voz`
+  systems, inside a user container (Distrobox). If they are missing, V
   downloads a pinned, verified static build once (see
   [Windows and macOS](windows-macos.md)); disable that with
   `VOZ_FFMPEG_AUTO_DOWNLOAD=0`.
@@ -33,7 +34,7 @@ From a checkout (requires `uv`; the web bundle is already versioned in
 `src/voz/static`):
 
 ```bash
-git clone <repository-url> voz && cd voz
+git clone <repository-url> V && cd V
 uv build --wheel --out-dir dist
 sha256sum dist/*.whl
 ```
@@ -42,17 +43,17 @@ sha256sum dist/*.whl
 
 ```bash
 uv tool install dist/voz_transcriber-*.whl
-voz --help
-voz doctor
+v --help
+v doctor
 ```
 
-`uv tool install` creates an isolated environment and links `voz` into
+`uv tool install` creates an isolated environment and links `v` into
 `~/.local/bin` (run `uv tool update-shell` if that directory is not on your
 `PATH`). To start it:
 
 ```bash
-voz                       # http://127.0.0.1:8765, opens your browser
-voz --no-browser --port 9000
+v                         # http://127.0.0.1:8765, opens your browser
+v --no-browser --port 9000
 ```
 
 By default the server listens only on `127.0.0.1`. Passing `--host` with another
@@ -68,7 +69,7 @@ address exposes the service on the network and must be a deliberate decision:
   with the repeatable `--allow-host` option. With a wildcard bind (`0.0.0.0` or
   `::`), this machine's own host name and IP addresses are accepted too. To reach
   V under another name, add it explicitly, for example
-  `voz --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.local`.
+  `v --host 0.0.0.0 --auth-token-file ../v-server-token.txt --allow-host my-pc.local`.
 
 The rationale is in [ADR-0006](../adr/0006-local-first-privacy.md). If you hit
 `host_not_allowed`, see [Troubleshooting](../troubleshooting.md).
@@ -91,7 +92,7 @@ On Linux the extra includes `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`, so
 CTranslate2 finds CUDA 12 without touching the system. This only installs the
 dependency: the model weights are **not** downloaded until you choose and confirm
 a model in the interface. Without an NVIDIA GPU, V uses the CPU explicitly. Check
-the result with `voz doctor`.
+the result with `v doctor`.
 
 ## Where V stores its data
 
@@ -106,7 +107,7 @@ checkout). The directory name stays `voz` ([ADR-0009](../adr/0009-rename-to-v.md
 | State and logs | `${XDG_STATE_HOME:-~/.local/state}/voz/` |
 
 To try V without touching your data, export those four variables pointing to a
-temporary directory before running `voz`. Note that `uv` also honors
+temporary directory before running `v`. Note that `uv` also honors
 `XDG_CACHE_HOME` and `XDG_DATA_HOME`, so with them redirected it will download its
 package cache again, plus a managed CPython (3.12). To avoid that, also export
 `UV_CACHE_DIR` and `UV_PYTHON_INSTALL_DIR` pointing to their real locations.
@@ -114,7 +115,7 @@ package cache again, plus a managed CPython (3.12). To avoid that, also export
 ## Upgrade
 
 Build the new wheel and run `uv tool install --force dist/voz_transcriber-*.whl`.
-**Reinstalling without the extra removes it** (verified: `voz doctor` warns again
+**Reinstalling without the extra removes it** (verified: `doctor` warns again
 that `asr-local` is missing). If you use it, repeat the full command from the
 previous section. The database schema migrates itself on startup, and a copy is
 saved to `~/.local/state/voz/backups/` before migrating (see
@@ -133,10 +134,10 @@ recordings and transcripts).
 
 ## Common problems
 
-- `voz: command not found`: add `~/.local/bin` to your `PATH`
+- `v: command not found`: add `~/.local/bin` to your `PATH`
   (`uv tool update-shell`).
-- Port in use: pass `--port` with another number; `voz doctor` checks it.
-- FFmpeg missing: `voz doctor` reports it; importing will not work until it is
+- Port in use: pass `--port` with another number; `v doctor` checks it.
+- FFmpeg missing: `v doctor` reports it; importing will not work until it is
   installed.
 
 More cases are in [Troubleshooting](../troubleshooting.md).
@@ -150,7 +151,7 @@ FFmpeg 8.1.3 in `/usr/bin`, system Python 3.14.7.
 Method: a clean checkout (`git clone` of commit `435ed0a`) in a temporary
 directory, with **all** of `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` and the `XDG_*`
 variables pointing to another temporary directory, without touching
-`~/.local`. The steps are those of this document, in this order; network access
+`~/.local`. The steps are those of this document, in this order, with the commands reproduced as they were run; network access
 only to PyPI (plus the managed CPython download that `uv` performs, see the
 `XDG_*` note above).
 

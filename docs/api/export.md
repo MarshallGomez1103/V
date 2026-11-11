@@ -1,4 +1,4 @@
-# Transcript export — S10.07, S10.08, S10.14
+# Transcript export
 
 Local endpoint (`127.0.0.1`); it calls no providers and uses no network. Errors
 use `{"detail": {"code": "<snake_code>", "message": "<safe text>"}}`. Common
