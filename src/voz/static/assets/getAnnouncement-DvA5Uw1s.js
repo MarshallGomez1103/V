@@ -1,0 +1,1 @@
+var e=(e,t,n=`character`,r=`characters`)=>{if(t===void 0)return null;let i=t-e;return i<=10&&i>0?`${i} ${i===1?n:r} left.`:i<=0?`Maximum ${r} reached.`:null};export{e as t};

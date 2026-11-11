@@ -1,0 +1,1 @@
+import{c as e,l as t}from"./errors-qBmetwkd.js";function n(n){return n===null?e(`job.fail.generic`):t(`job.fail.`,n,`job.fail.code`)}export{n as t};
