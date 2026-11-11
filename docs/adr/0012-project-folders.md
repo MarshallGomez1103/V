@@ -70,7 +70,7 @@ the migration is a normal SQLite migration with a backup.
 
 ### 2. Data model
 
-New table `folders` (migration `0011_project_folders`) and one new nullable column:
+New table `folders` (migration `0012_project_folders`) and one new nullable column:
 
 | Column | Type | Rule |
 | --- | --- | --- |
@@ -198,7 +198,7 @@ Stable error codes:
 
 ### 7. Migration and rollback
 
-- Migration `0011_project_folders` creates `folders` and its two partial unique
+- Migration `0012_project_folders` creates `folders` and its two partial unique
   indexes and adds `media_assets.folder_id`. Existing rows get `NULL`, that is,
   every existing recording stays at the root of its project: no data is moved or
   rewritten.

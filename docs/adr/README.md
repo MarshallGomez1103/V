@@ -26,6 +26,7 @@ the former product name VOZ where they describe that moment (see
 | [0012](0012-project-folders.md) | Nested folders inside a project | Proposed | not scheduled |
 | [0013](0013-model-catalog-filters.md) | Model catalog metadata, filters and the meaning of "best model" | Proposed | not scheduled |
 | [0014](0014-mcp-and-transcript-verification.md) | MCP server for coding assistants and policy-based transcript verification | Proposed | not scheduled |
+| [0015](0015-transcription-range-and-project-queue.md) | Transcription range and per-project transcription queue | Accepted | S18 |
 
 ## Format
 
