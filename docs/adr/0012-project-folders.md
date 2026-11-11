@@ -6,7 +6,8 @@
 - Scope: how recordings (and therefore their transcripts) are organized inside a
   project: the folder tree, its storage, migration, HTTP contract and library UI.
   Nothing in this ADR exists in the code yet; everything it describes is
-  **planned**.
+  **planned**, except the recordings route and the project screen that
+  ADR-0015 delivered (see the amendment at the end).
 - Related: [ADR-0001](0001-modular-monolith.md) (boundaries),
   [ADR-0002](0002-sqlite-persistence.md) (SQLite, Alembic, XDG),
   [ADR-0003](0003-ffmpeg-ingestion.md) (immutable originals)
@@ -336,3 +337,18 @@ This decision is respected when:
 
 **Review criterion:** if recordings must move between projects, or the tree needs
 more than 500 folders or sharing, replace this ADR instead of stretching it.
+
+## Amendment (2026-11)
+
+The sections above keep their text. Two facts changed after they were written;
+this ADR stays **Proposed**.
+
+- **Migration number.** Migration `0011_transcription_clip_and_queue` (recording
+  range and project queue, [ADR-0015](0015-transcription-range-and-project-queue.md))
+  took the number 0011. The folder migration is `0012_project_folders` and
+  chains after it.
+- **Recordings route and project view.** `GET /api/projects/{project_id}/recordings`
+  and the project screen that lists a project's recordings already exist since
+  ADR-0015, with the `Recording` shape of section 4 and without `folder_id`.
+  The folders work adds `folder_id` to that response and to the project screen;
+  it does not create the route again.

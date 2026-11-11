@@ -639,14 +639,14 @@ recordings to one project, and transcribing a project's recordings one after
 another as a recoverable queue. Design: [ADR-0015](docs/adr/0015-transcription-range-and-project-queue.md).
 Items are ticked only after their checks have run.
 
-- [ ] **S18.01** Let a transcription job carry an optional range `[start_ms, end_ms)` in the original recording's times; no range means the whole recording.
-- [ ] **S18.02** Store the range and the queue in the schema: the migration upgrades and downgrades a populated database, and existing selections read as "no range".
-- [ ] **S18.03** Transcribe only the range: the engine receives no audio outside it, every segment, word and speaker turn lies inside it in original times, and a job without a range produces the same chunk plan as before.
-- [ ] **S18.04** Choose the range in the interface, with keyboard controls, in English and Spanish.
-- [ ] **S18.05** List a project's recordings through the API (documented in `docs/api/`), and keep the uploaded copy under the data directory with the dropped file unchanged.
+- [x] **S18.01** Let a transcription job carry an optional range `[start_ms, end_ms)` in the original recording's times; no range means the whole recording.
+- [x] **S18.02** Store the range and the queue in the schema: the migration upgrades and downgrades a populated database, and existing selections read as "no range".
+- [x] **S18.03** Transcribe only the range: the engine receives no audio outside it, every segment, word and speaker turn lies inside it in original times, and a job without a range produces the same chunk plan as before.
+- [x] **S18.04** Choose the range in the interface, with keyboard controls, in English and Spanish.
+- [x] **S18.05** List a project's recordings through the API (documented in `docs/api/`), and keep the uploaded copy under the data directory with the dropped file unchanged.
 - [ ] **S18.06** Add the project screen: drop several recordings into one project and see them listed, with keyboard use, in English and Spanish.
-- [ ] **S18.07** Run a project's recordings as a queue in the backend: one at a time in import order, a failing item does not stop the others, no cloud provider (422 `transcription_queue_cloud_unsupported`), and after a restart the queue resumes in order without repeating finished items, also when every job has the same `created_at`.
-- [ ] **S18.08** Start and follow the queue in the interface: per-item state, and the recordings that were skipped with their reason.
+- [x] **S18.07** Run a project's recordings as a queue in the backend: one at a time in import order, a failing item does not stop the others, no cloud provider (422 `transcription_queue_cloud_unsupported`), and after a restart the queue resumes in order without repeating finished items, also when every job has the same `created_at`.
+- [x] **S18.08** Start and follow the queue in the interface: per-item state, and the recordings that were skipped with their reason.
 
 **Exit criterion:** a person can crop a recording to the part they need, put many
 recordings in one project and transcribe them in sequence, with every item

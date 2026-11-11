@@ -65,6 +65,18 @@ review: the system decides, applies and reports counts.
 
 - **Atomic.** The queue row, every job, every selection snapshot and every
   position are written in one transaction. A failure leaves nothing behind.
+- **Order of validation.** The option is checked as for a single job, then the
+  queue rules, then the machine: project (404), prompt and quality profile
+  (422), option known (404 `option_unknown`) and startable (409
+  `option_not_startable`), engine limits (422 `job_options_unsupported`), cloud
+  (422 `transcription_queue_cloud_unsupported`), unfinished queue (409
+  `transcription_queue_active`), eligible recordings (409
+  `transcription_queue_empty`) and, last, memory and speaker models (409
+  `insufficient_vram`, `insufficient_ram`, `diarization_unavailable`,
+  `diarization_models_missing`). Consequently a cloud option that cannot start
+  (for example, no API key stored) answers 409 `option_not_startable`, not the
+  cloud refusal; a cloud option that can start answers 422
+  `transcription_queue_cloud_unsupported`. Either way nothing is created.
 - **One unfinished queue per project.** While any item of the project's latest
   queue is pending or running, a new request answers 409
   `transcription_queue_active`.

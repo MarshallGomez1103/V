@@ -11,6 +11,27 @@ former product name VOZ where they describe it.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-11
+
+### Added
+
+- Transcribe only part of a recording: choose a start and an end on the
+  waveform (mouse or keyboard), play that stretch, and transcribe it. Segment,
+  word and speaker times stay those of the full recording.
+- Project view: drop several recordings into one project; each is copied into
+  the data directory and the dropped file is never changed. Keyboard use of
+  this screen is not covered by an automated test yet.
+- "Transcribe project": transcribes a project's recordings one by one as a
+  queue with progress and counts. A failed recording does not stop the others,
+  already transcribed ones are skipped and reported, and the queue resumes in
+  order after V restarts. Local engines only.
+- `v --version`, and the version shown in Settings.
+
+### Changed
+
+- Database migration 0011 adds transcription ranges and queues; the database is
+  backed up automatically before it runs.
+
 ## [0.1.0] - 2026-11-11
 
 First versioned cut of the tree: everything that existed in the repository

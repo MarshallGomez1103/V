@@ -87,3 +87,30 @@ and checks: the job is left `TRANSCRIBING` with 3 checkpoints and 3/8 progress
 and no transcript; on reopening it ends `COMPLETED`; chunks 0–2 are not repeated
 (distinct audio per chunk, disjoint sets), there are exactly 8 segments in order,
 and a third opening does not run ASR again.
+
+## Project queue after a restart
+
+A [project transcription queue](api/transcription-queue.md) is a set of ordinary
+jobs, so it recovers like one. The queue row, its jobs, their selection
+snapshots and their positions are written in one transaction: a death before the
+`COMMIT` leaves no queue, and after it leaves every job.
+
+- **Order on reopening.** `list_recoverable`
+  (`src/voz/infrastructure/persistence/repositories.py`) returns the unfinished
+  jobs ordered by `created_at`, then queue position, then id. A queue creates all
+  its jobs at one instant, so position decides among them; jobs that belong to no
+  queue have no position and come first. `JobRunner.recover()` enqueues them in
+  that order.
+- **Finished items are not repeated.** Only non-terminal jobs are recovered; each
+  one resumes from its own chunk checkpoints.
+- **One failing item does not stop the others.** A failed item keeps its error
+  code and the worker goes on with the next one; failed items are not retried
+  automatically.
+
+Tests: `tests/integration/application/test_transcription_queue_runner.py`
+(`test_recover_orders_queue_items_by_position_under_frozen_clock`,
+`test_failure_of_one_item_does_not_stop_the_queue`,
+`test_restart_resumes_unfinished_items_in_order_without_repeating_finished`) and
+`tests/e2e/test_restart_during_queue.py`, which closes the app in the middle of
+the second of three recordings, reopens it on the same directories and checks
+that the first is not repeated, the second resumes and the third runs.

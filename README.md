@@ -11,7 +11,7 @@ local web app: you start a server on your machine and use it from your browser.
 ![V transcript workspace: editable segments labelled by speaker, audio player with waveform and a speaker timeline.](docs/assets/screenshots/v-workspace.png)
 
 > **Status:** pre-release. No version has been published or tagged; the tree
-> version is `0.1.0`. Expect rough edges, and see
+> version is `0.2.0`. Expect rough edges, and see
 > [Supported platforms](#supported-platforms) for what has actually been tested.
 
 ## Quick start
@@ -66,6 +66,12 @@ tests (see [CHANGELOG.md](CHANGELOG.md) for the verified detail).
   on an NVIDIA GPU when available and on the CPU otherwise. Long recordings are
   processed in chunks with SQLite checkpoints; interrupted jobs resume at
   startup and can be cancelled.
+- **Recording range and project queue**: transcribe only a chosen stretch of a
+  recording (segment, word and speaker times keep the original timeline), add
+  several recordings to a project at once, and transcribe a project as a
+  recoverable queue that resumes after a restart
+  ([queue API](docs/api/transcription-queue.md),
+  [ADR-0015](docs/adr/0015-transcription-range-and-project-queue.md)).
 - **whisper.cpp** as an optional second local engine, when a `whisper-cli`
   binary is available ([docs/whisper-cpp.md](docs/whisper-cpp.md)).
 - **Speaker diarization** with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)

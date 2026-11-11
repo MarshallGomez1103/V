@@ -11,6 +11,7 @@
     <p>V transcribes long recordings on your own machine and serves its interface on 127.0.0.1.</p>
   </description>
   <releases>
+    <release version="0.2.0" date="2026-11-11"/>
     <release version="0.1.0" date="2026-11-11"/>
   </releases>
 </component>

@@ -6,8 +6,7 @@
 - Scope: transcribing only a chosen stretch of a recording, adding several
   recordings to one project, and transcribing a project's recordings one after
   another as a recoverable queue: semantics, storage, migration, HTTP contract
-  and UI. Everything described here is **planned** until its evidence row says
-  otherwise.
+  and UI.
 - Related: [ADR-0002](0002-sqlite-persistence.md) (SQLite, Alembic, XDG),
   [ADR-0003](0003-ffmpeg-ingestion.md) (immutable originals),
   [ADR-0004](0004-local-asr-and-recoverable-chunks.md) (recoverable chunks),
@@ -220,7 +219,15 @@ Rejected: wasted work on long recordings for no gain.
 | Absolute times from chunk offsets | `src/voz/application/chunked_transcription.py` (`globalize_chunk_result`) |
 | Bounded clip of the normalized audio | `src/voz/infrastructure/inference_audio.py` (`_read_clip`) |
 | One global worker, recovery on start | `src/voz/application/job_runner.py` (`JobRunner`) |
-| Range, queue, recordings route, UI | **planned** |
+| Range: chunk plan and absolute times | `tests/unit/application/test_chunked_transcription.py` |
+| Range: job runner (transcription and speaker turns) | `tests/integration/application/test_job_runner_clip.py` |
+| Migration `0011_transcription_clip_and_queue` | `tests/integration/persistence/test_clip_queue_migration_0011.py` |
+| Recordings route | `tests/integration/test_project_recordings_api.py`; `src/voz/application/list_recordings.py` (`ListRecordings`), `src/voz/interfaces/api/recordings.py` |
+| Uploads into a project stay outside the checkout | `tests/integration/test_project_copy_outside_repo.py` |
+| Queue: creation, order, isolated failure | `tests/integration/application/test_transcription_queue_runner.py`; `src/voz/application/transcription_queue.py` (`CreateTranscriptionQueue`) |
+| Queue: HTTP contract | `tests/integration/test_transcription_queue_api.py`; `src/voz/interfaces/api/transcription_queue.py` |
+| Queue: resume after a restart | `tests/e2e/test_restart_during_queue.py`; `src/voz/infrastructure/persistence/repositories.py` (`list_recoverable`) |
+| UI: queue, trim controls, project screen | `apps/web/src/components/ProjectQueue.test.tsx`, `TrimControls.test.tsx`, `ProjectScreen.test.tsx` |
 
 ## Verification
 

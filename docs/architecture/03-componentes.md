@@ -34,7 +34,7 @@ flowchart TB
         cli["cli/main.py<br/>v, serve, doctor, bench, lab, auth-token"]
         mw["Middleware<br/>SecurityHeaders, HostGuard, ServerAuth"]
         r_core["Routers: health, shutdown, desktop-shortcut,<br/>transcription-options, quality-profiles"]
-        r_work["Routers: projects, library, media, media_stream,<br/>waveform, jobs, job_events, segments, speakers, export"]
+        r_work["Routers: projects, recordings, library, media, media_stream,<br/>waveform, jobs, transcription_queue, job_events,<br/>segments, speakers, export"]
         r_models["Routers: models, model_tasks,<br/>custom_model_uploads, providers"]
         r_voice["Routers: synthesis, openai_compat (/v1)"]
         static["StaticFiles at /<br/>only if src/voz/static exists"]
@@ -44,6 +44,7 @@ flowchart TB
         uc_proj["Project, glossary and library use cases"]
         uc_media["ImportMedia, NormalizeImportedMedia,<br/>PrepareInferenceAudio, GetWaveformPeaks"]
         uc_job["GetTranscriptionOptions, CreateTranscriptionJob,<br/>RediarizeTranscript, EstimateCloudTranscription"]
+        uc_queue["ListRecordings, CreateTranscriptionQueue,<br/>GetTranscriptionQueue, CancelTranscriptionQueue"]
         runner["JobRunner<br/>RecoverableTranscription, AssignSpeakers"]
         uc_edit["EditSegmentText, speaker use cases, ExportTranscript"]
         uc_models["ListModels, RemoveModel, ModelTaskRunner,<br/>ImportExternalModel, ImportCustomModel"]
@@ -54,12 +55,12 @@ flowchart TB
     end
 
     subgraph domain["domain: pure entities and invariants"]
-        ent["Project, MediaAsset, Transcript, Segment, Word,<br/>Speaker, SpeakerTurn, TranscriptionJob,<br/>SynthesisJob, SynthesizedAudio"]
+        ent["Project, MediaAsset, Transcript, Segment, Word,<br/>Speaker, SpeakerTurn, TranscriptionJob,<br/>TranscriptionQueue, SynthesisJob, SynthesizedAudio"]
         mdl["ModelDescriptor, ProcessingProfile, QualityProfile, Voice"]
     end
 
     subgraph infra["infrastructure: adapters"]
-        sql["persistence/<br/>Sqlite repositories, checkpoints,<br/>selections, glossaries, library, synthesis, migrate"]
+        sql["persistence/<br/>Sqlite repositories, checkpoints,<br/>selections, queues, glossaries, library, synthesis, migrate"]
         files["FileSystemMediaStorage, FileSystemInferenceAudioSource,<br/>FileSystemSynthesisStorage, ShutilDiskSpace"]
         av["FfprobeMediaProbe, FfmpegMediaNormalizer,<br/>FfmpegWaveformPeaks"]
         asr["asr/: FasterWhisperProvider, WhisperCppProvider,<br/>SherpaOnnxProvider, catalogs, probes"]
@@ -81,6 +82,7 @@ flowchart TB
     r_work --> uc_proj
     r_work --> uc_media
     r_work --> uc_job
+    r_work --> uc_queue
     r_work --> runner
     r_work --> uc_edit
     r_models --> uc_models
@@ -94,6 +96,7 @@ flowchart TB
     uc_proj --> ports
     uc_media --> ports
     uc_job --> ports
+    uc_queue --> ports
     runner --> ports
     uc_edit --> ports
     uc_models --> ports
@@ -129,23 +132,25 @@ below.
 | desktop shortcut | `desktop_shortcut.py` | 3 | |
 | transcription options | `transcription_options.py` | 4 | Options depend on the catalogs built earlier in `create_app`; whisper.cpp options only if `whisper-cli` is found. |
 | projects and glossary | `projects.py` | 5 | Rename, delete and glossary routes exist only when their use case is passed; the composition root always passes them. |
-| library | `library.py` | 6 | |
-| quality profiles | `quality_profiles.py` | 7 | |
-| media upload | `media.py` | 8 | Raw-body upload staged in the cache directory. |
-| jobs | `jobs.py` | 9 | Re-diarization route only when `rediarize` is passed (always). |
-| job events (SSE) | `job_events.py` | 10 | |
-| media stream | `media_stream.py` | 11 | Original with `Range`. |
-| segments | `segments.py` | 12 | |
-| speakers | `speakers.py` | 13 | |
-| waveform | `waveform.py` | 14 | |
-| models | `models.py` | 15 | Custom engines listed only if their runtime is importable (the `custom_engines` argument). |
-| custom model uploads | `custom_model_uploads.py` | 16 | |
-| model tasks | `model_tasks.py` | 17 | |
-| providers | `providers.py` | 18 | Keys and declared endpoints. |
-| export | `export.py` | 19 | |
-| synthesis | `synthesis.py` | 20 | |
-| OpenAI-compatible | `openai_compat.py` | 21 | Prefix `/v1`. |
-| static bundle | `StaticFiles` | 22 | Only `if STATIC_DIRECTORY.is_dir()`. |
+| recordings | `recordings.py` | 6 | `GET /api/projects/{project_id}/recordings`. |
+| library | `library.py` | 7 | |
+| quality profiles | `quality_profiles.py` | 8 | |
+| media upload | `media.py` | 9 | Raw-body upload staged in the cache directory. |
+| jobs | `jobs.py` | 10 | Re-diarization route only when `rediarize` is passed (always). |
+| transcription queue | `transcription_queue.py` | 11 | Start, read and cancel a project queue ([API](../api/transcription-queue.md)). |
+| job events (SSE) | `job_events.py` | 12 | |
+| media stream | `media_stream.py` | 13 | Original with `Range`. |
+| segments | `segments.py` | 14 | |
+| speakers | `speakers.py` | 15 | |
+| waveform | `waveform.py` | 16 | |
+| models | `models.py` | 17 | Custom engines listed only if their runtime is importable (the `custom_engines` argument). |
+| custom model uploads | `custom_model_uploads.py` | 18 | |
+| model tasks | `model_tasks.py` | 19 | |
+| providers | `providers.py` | 20 | Keys and declared endpoints. |
+| export | `export.py` | 21 | |
+| synthesis | `synthesis.py` | 22 | |
+| OpenAI-compatible | `openai_compat.py` | 23 | Prefix `/v1`. |
+| static bundle | `StaticFiles` | 24 | Only `if STATIC_DIRECTORY.is_dir()`. |
 
 ## Components by layer
 
@@ -158,6 +163,7 @@ imports.
 | --- | --- |
 | `Project`, `MediaAsset`, `Transcript`, `Segment`, `Word`, `Speaker`, `SpeakerTurn` | `project.py`, `media_asset.py`, `transcript.py`, `segment.py`, `word.py`, `speaker.py`, `speaker_turn.py` |
 | `TranscriptionJob`, `TranscriptionJobState` (validated transitions) | `transcription_job.py` |
+| `TranscriptionQueue`, `QueueItemStatus`, `QueueState`, `SkippedRecording`, `SkipReason` (status derived from the jobs; no state of its own) | `transcription_queue.py` |
 | `SynthesisJob`, `SynthesisRequest`, `SynthesizedAudio`, `Voice` | `synthesis_job.py`, `synthesis_request.py`, `synthesized_audio.py`, `voice.py` |
 | `ModelDescriptor`, `ModelCapability` | `model_descriptor.py` |
 | `ProcessingProfile`, `ProcessingProfileName`, `DevicePreference`, `ComputePrecision` | `processing_profile.py` |
@@ -171,12 +177,14 @@ imports.
 | `ProjectGlossary` | `project_glossary.py` | Per-project vocabulary hints. |
 | `ListLibrary` | `library.py` | One summary row per project. |
 | `ImportMedia` | `import_media.py` | Immutable copy, hash, probe, persistence of the `MediaAsset`. |
+| `ListRecordings` | `list_recordings.py` | The recordings of one project with the latest job of each. |
 | `NormalizeImportedMedia`, `PrepareInferenceAudio` | `normalize_media.py`, `prepare_inference_audio.py` | Mono 16 kHz PCM derivative by identity, no paths. |
 | `GetWaveformPeaks` | `waveform_peaks.py` | Cached waveform peaks. |
 | `GetTranscriptionOptions` | `get_transcription_options.py` | Options with `can_start` and blocking reasons. |
 | `CreateTranscriptionJob` | `create_transcription_job.py` | Revalidates the option, enforces cloud consent, stores the reproducible snapshot. |
 | `RediarizeTranscript` | `rediarize.py` | New speaker analysis of an existing transcript. |
 | `EstimateCloudTranscription` | `estimate_cloud_cost.py` | Price estimate before a cloud job. |
+| `CreateTranscriptionQueue`, `GetTranscriptionQueue`, `CancelTranscriptionQueue` | `transcription_queue.py` | One ordinary job per eligible recording of a project, created in one write; read and cancel the queue. See [ADR-0015](../adr/0015-transcription-range-and-project-queue.md). |
 | `JobRunner` | `job_runner.py` | One worker, explicit states, cancellation, `recover()`. |
 | `RecoverableTranscription` | `recoverable_transcription.py` | One atomic checkpoint per chunk; resumes without repeating work. |
 | `AssignSpeakers`, `AssignProviderSpeakers` | `assign_speakers.py` | Merge diarization or provider speakers into segments. |
@@ -192,6 +200,7 @@ imports.
 | Pure helpers | `asr_device_selection.py`, `hardware_recommendation.py`, `quality_flags.py`, `evaluation.py`, `quality_profiles.py`, `text_chunking.py` | Deterministic functions. |
 
 Ports live in `src/voz/application/ports/` (31 modules), among them
+`transcription_queue.py` (`TranscriptionQueueRepository`, `JobCanceller`),
 `repositories.py` (project, media, transcript, segment, word, speaker, speaker
 turn and job repository protocols), `transcription.py` (`TranscriptionProvider`
 and canonical types), `speech_synthesis.py`, `diarization.py`,
@@ -204,6 +213,7 @@ and canonical types), `speech_synthesis.py`, `diarization.py`,
 | `create_sqlite_engine` | `persistence/database.py` | WAL engine with per-connection pragmas. |
 | `SqliteProjectRepository`, `SqliteMediaAssetRepository`, `SqliteTranscriptRepository`, `SqliteSegmentRepository`, `SqliteSpeakerRepository`, `SqliteSpeakerTurnRepository`, `SqliteTranscriptionJobRepository` | `persistence/repositories.py` | Repository ports. Words are stored through the segment repository. |
 | `SqliteTranscriptionCheckpointStore`, `SqliteTranscriptionJobSelectionRepository`, `SqliteProjectGlossaryRepository` | `persistence/transcription_checkpoints.py`, `persistence/transcription_job_selections.py`, `persistence/project_glossaries.py` | Atomic chunk commit, selection snapshot, glossaries. |
+| `SqliteTranscriptionQueueRepository` | `persistence/transcription_queues.py` | Queue row, item positions and their jobs in one transaction. |
 | `SqliteLibraryReader` | `persistence/library.py` | Library read model. |
 | `SqliteSynthesisJobRepository`, `SqliteSynthesizedAudioRepository` | `persistence/synthesis.py` | Synthesis history. |
 | `upgrade_to_head` | `persistence/migrate.py` | Programmatic Alembic with a pre-migration backup. |
@@ -312,7 +322,7 @@ Directory layout today; the per-file list is not regenerated here.
 | Composition | `main.tsx`, `App.tsx`, `hooks/useRoute.ts` | Local screen state and a small own route hook; no router library and no global store. |
 | Contract clients | `api/*.ts` (health, projects, library, media, jobs, jobEvents, segments, speakers, models, customModels, providers, synthesis, glossary, exportDocument and others) | Type the responses and translate `{"detail": {"code", "message"}}`. |
 | Hooks | `hooks/` | SSE subscription, library loading and audio/segment synchronization. |
-| Components | `components/` | Library, new transcription, job screen, segment list and review queue, audio player, export dialog, model manager, providers settings and the speech workspace (`Speak*`), built on Carbon (`@carbon/react`). |
+| Components | `components/` | Library, new transcription, project screen (`ProjectScreen`: a project's recordings and multi-file upload), project queue (`ProjectQueue`: start, follow and cancel "Transcribe project"), trim controls (`TrimControls`: start and end of the stretch to transcribe), job screen, segment list and review queue, audio player, export dialog, model manager, providers settings and the speech workspace (`Speak*`), built on Carbon (`@carbon/react`). |
 | i18n | `i18n/` | English and Spanish message catalogs (`i18n/messages`). |
 | Styles and theme | `styles/`, `theme/`, `App.scss` | Tokens, themes and SCSS. |
 
