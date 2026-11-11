@@ -16,7 +16,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
 
 from voz.application.assign_speakers import AssignSpeakers
 from voz.application.create_transcription_job import CreateTranscriptionJob
@@ -29,6 +29,7 @@ from voz.application.ports.diarization import (
 )
 from voz.application.ports.transcription import (
     TranscriptionCancellationToken,
+    TranscriptionClip,
     TranscriptionOptions,
     TranscriptionResult,
 )
@@ -61,6 +62,7 @@ from voz.infrastructure.persistence.repositories import (
     SqliteTranscriptionJobRepository,
     SqliteTranscriptRepository,
 )
+from voz.infrastructure.persistence.schema import transcription_job_selections
 from voz.infrastructure.persistence.transcription_checkpoints import (
     SqliteTranscriptionCheckpointStore,
 )
@@ -293,6 +295,39 @@ def test_rerun_reopens_the_job_and_keeps_names_by_overlap(world: World) -> None:
     )
     # The split-off voice (cluster 9) is new: it gets a fresh name, no old one.
     assert {s.name for s in speakers} == {"Profesora", "Camila", "Speaker 3"}
+
+
+def test_speakers_rerun_keeps_clip(world: World) -> None:
+    """The stored range is reused: the diarizer hears the clip, turns shift back."""
+    with world.engine.begin() as connection:
+        connection.execute(
+            update(transcription_job_selections)
+            .where(transcription_job_selections.c.job_id == str(world.job.id))
+            .values(clip_start_ms=100, clip_end_ms=250)
+        )
+    heard: list[int] = []
+
+    class Hearing(Diarizer):
+        def diarize(self, *, audio: BinaryIO, **kwargs: object) -> DiarizationResult:  # type: ignore[override]
+            with wave.open(audio, "rb") as source:
+                heard.append(source.getnframes() * 1_000 // source.getframerate())
+            audio.seek(0)
+            return super().diarize(audio=audio, **kwargs)  # type: ignore[arg-type]
+
+    diarizer = Hearing(DiarizationResult((DiarizedTurn(0, 200, "7"),)))
+
+    started = world.use_case().execute(world.transcript_id, DiarizationOptions())
+    finished = world.runner(diarizer).run_job(world.job.id)
+
+    assert started.selection.clip == TranscriptionClip(100, 250)
+    assert finished is not None and finished.state is TranscriptionJobState.COMPLETED
+    assert heard == [150]
+    stored = SqliteTranscriptionJobSelectionRepository(world.engine).get(world.job.id)
+    assert stored is not None and stored.clip == TranscriptionClip(100, 250)
+    turns = SqliteSpeakerTurnRepository(world.engine).list_by_transcript(
+        world.transcript_id
+    )
+    assert [(turn.start_ms, turn.end_ms) for turn in turns] == [(100, 300)]
 
 
 def test_rerun_drops_speakers_nobody_references(world: World) -> None:

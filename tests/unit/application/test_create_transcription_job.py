@@ -24,6 +24,7 @@ from voz.application.get_transcription_options import (
     option_identity,
 )
 from voz.application.ports.diarization import DiarizationOptions
+from voz.application.ports.transcription import TranscriptionClip
 from voz.application.ports.transcription_job_selection import JobSelection
 from voz.application.ports.transcription_options import (
     InstallationStatus,
@@ -301,6 +302,112 @@ def test_second_job_for_active_media_asset_is_rejected() -> None:
         option_id=option_identity(MODEL),
     )
     assert second.job.id != active.id
+
+
+def _clip_use_case(
+    duration_ms: int | None,
+) -> tuple[CreateTranscriptionJob, Jobs, MediaAsset]:
+    create, jobs, _ = use_case()
+    asset = MediaAsset(PROJECT.id, "c" * 64, "long.wav", 1, duration_ms=duration_ms)
+    create.media_assets.add(asset)
+    return create, jobs, asset
+
+
+def test_clip_is_stored_in_the_selection_snapshot() -> None:
+    create, _, asset = _clip_use_case(60_000)
+    clip = TranscriptionClip(10_000, 20_000)
+
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=asset.id,
+        option_id=option_identity(MODEL),
+        clip=clip,
+    )
+
+    assert created.selection.clip == clip
+
+
+def test_without_clip_the_selection_covers_the_whole_recording() -> None:
+    create, _, selections = use_case()
+
+    created = create.execute(
+        project_id=PROJECT.id, media_asset_id=ASSET.id, option_id=option_identity(MODEL)
+    )
+
+    assert created.selection.clip is None
+    assert selections.get(created.job.id) == created.selection
+
+
+def test_clip_shorter_than_one_second_is_invalid() -> None:
+    create, jobs, asset = _clip_use_case(60_000)
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=asset.id,
+            option_id=option_identity(MODEL),
+            clip=TranscriptionClip(5_000, 5_999),
+        )
+
+    assert error.value.code is CreateJobFailureCode.CLIP_INVALID
+    assert not jobs.items
+
+
+def test_one_second_clip_up_to_the_end_is_accepted() -> None:
+    create, _, asset = _clip_use_case(60_000)
+
+    created = create.execute(
+        project_id=PROJECT.id,
+        media_asset_id=asset.id,
+        option_id=option_identity(MODEL),
+        clip=TranscriptionClip(59_000, 60_000),
+    )
+
+    assert created.selection.clip == TranscriptionClip(59_000, 60_000)
+
+
+def test_clip_past_the_end_is_out_of_range() -> None:
+    create, jobs, asset = _clip_use_case(60_000)
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=asset.id,
+            option_id=option_identity(MODEL),
+            clip=TranscriptionClip(50_000, 60_001),
+        )
+
+    assert error.value.code is CreateJobFailureCode.CLIP_OUT_OF_RANGE
+    assert not jobs.items
+
+
+def test_clip_needs_a_known_duration() -> None:
+    create, jobs, asset = _clip_use_case(None)
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=asset.id,
+            option_id=option_identity(MODEL),
+            clip=TranscriptionClip(0, 5_000),
+        )
+
+    assert error.value.code is CreateJobFailureCode.CLIP_DURATION_UNKNOWN
+    assert not jobs.items
+
+
+def test_clip_is_checked_right_after_finding_the_asset() -> None:
+    create, _, asset = _clip_use_case(60_000)
+
+    with pytest.raises(CreateJobError) as error:
+        create.execute(
+            project_id=PROJECT.id,
+            media_asset_id=asset.id,
+            option_id="option-v1-missing",
+            clip=TranscriptionClip(0, 100),
+        )
+
+    assert error.value.code is CreateJobFailureCode.CLIP_INVALID
 
 
 LARGE = replace(MODEL, model_id="large-v3")

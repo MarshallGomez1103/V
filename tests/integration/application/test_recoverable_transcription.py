@@ -568,3 +568,84 @@ def test_resume_accepts_a_job_ahead_of_its_last_checkpoint(tmp_path: Path) -> No
     assert outcome.job.progress == 1.0
     assert outcome.completed_chunks == 3
     engine.dispose()
+
+
+def test_resume_with_clip_keeps_the_clipped_plan(tmp_path: Path) -> None:
+    database_path = (tmp_path / "voz.db").absolute()
+    job, first_engine = _seed_job(database_path)
+    clip = TranscriptionClip(10_000, 50_000)
+    options = TranscriptionOptions(model=DESCRIPTOR, language="es")
+    first_provider = _Provider()
+    first_jobs = SqliteTranscriptionJobRepository(first_engine)
+
+    with pytest.raises(SimulatedCrash):
+        RecoverableTranscription(
+            first_provider,
+            _AudioSource(),
+            SqliteTranscriptionCheckpointStore(first_engine),
+            first_jobs,
+            clock=lambda: BASE_TIME + timedelta(seconds=1),
+        ).execute(
+            job=job,
+            duration_ms=65_000,
+            options=options,
+            clip=clip,
+            chunk_duration_ms=15_000,
+            overlap_ms=5_000,
+            on_progress=lambda progress: (_ for _ in ()).throw(SimulatedCrash),
+        )
+
+    assert first_provider.clips == [(10_000, 30_000)]
+    first_engine.dispose()
+
+    second_engine = create_sqlite_engine(database_path)
+    second_jobs = SqliteTranscriptionJobRepository(second_engine)
+    resumed_job = second_jobs.get(job.id)
+    assert resumed_job is not None
+    checkpoints = SqliteTranscriptionCheckpointStore(second_engine)
+
+    # Checkpoints of another plan (no clip, or a shifted clip) are refused.
+    for other in (None, TranscriptionClip(11_000, 51_000)):
+        rejected = _Provider()
+        with pytest.raises(ValueError):
+            RecoverableTranscription(
+                rejected,
+                _AudioSource(),
+                checkpoints,
+                second_jobs,
+                clock=lambda: BASE_TIME + timedelta(seconds=2),
+            ).execute(
+                job=resumed_job,
+                duration_ms=65_000,
+                options=options,
+                clip=other,
+                chunk_duration_ms=15_000,
+                overlap_ms=5_000,
+            )
+        assert rejected.clips == []
+
+    second_provider = _Provider()
+    outcome = RecoverableTranscription(
+        second_provider,
+        _AudioSource(),
+        checkpoints,
+        second_jobs,
+        clock=lambda: BASE_TIME + timedelta(seconds=2),
+    ).execute(
+        job=resumed_job,
+        duration_ms=65_000,
+        options=options,
+        clip=clip,
+        chunk_duration_ms=15_000,
+        overlap_ms=5_000,
+    )
+
+    assert second_provider.clips == [(20_000, 45_000), (35_000, 50_000)]
+    assert outcome.completed_chunks == outcome.total_chunks == 3
+    assert [(s.start_ms, s.end_ms) for s in outcome.result.segments] == [
+        (10_000, 25_000),
+        (25_000, 40_000),
+        (40_000, 50_000),
+    ]
+    assert len(checkpoints.list_for_job(job.id)) == 3
+    second_engine.dispose()

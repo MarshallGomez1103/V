@@ -24,6 +24,7 @@ from voz.application.ports.repositories import (
     ProjectRepository,
     TranscriptionJobRepository,
 )
+from voz.application.ports.transcription import TranscriptionClip
 from voz.application.ports.transcription_job_selection import (
     JobSelection,
     JobWithSelectionWriter,
@@ -31,6 +32,7 @@ from voz.application.ports.transcription_job_selection import (
 )
 from voz.application.quality_profiles import DEFAULT_PROFILE_NAME, get_profile
 from voz.application.resource_requirements import find_shortfall
+from voz.domain.entities.media_asset import MediaAsset
 from voz.domain.entities.model_descriptor import ModelDescriptor
 from voz.domain.entities.transcription_job import TranscriptionJob
 
@@ -51,9 +53,13 @@ class CreateJobFailureCode(StrEnum):
     QUALITY_PROFILE_UNKNOWN = "quality_profile_unknown"
     OPTIONS_UNSUPPORTED = "job_options_unsupported"
     CLOUD_CONSENT_REQUIRED = "cloud_consent_required"
+    CLIP_INVALID = "job_clip_invalid"
+    CLIP_OUT_OF_RANGE = "job_clip_out_of_range"
+    CLIP_DURATION_UNKNOWN = "job_clip_duration_unknown"
 
 
 MAX_PROMPT_CHARS = 600
+MIN_CLIP_MS = 1_000
 
 
 class CreateJobError(RuntimeError):
@@ -113,11 +119,13 @@ class CreateTranscriptionJob:
         profile: str | None = None,
         prompt: str | None = None,
         cloud_consent: bool = False,
+        clip: TranscriptionClip | None = None,
     ) -> CreatedJob:
         """Validate and persist under the admission gate, so every check holds.
 
         ``cloud_consent`` must be ``True`` for an option that sends audio off
-        this machine; it is ignored for local options.
+        this machine; it is ignored for local options. ``clip`` limits the job to
+        a range of the original; ``None`` means the whole recording.
         """
         with self.admission.hold():
             return self._create(
@@ -129,6 +137,7 @@ class CreateTranscriptionJob:
                 profile=profile,
                 prompt=prompt,
                 cloud_consent=cloud_consent,
+                clip=clip,
             )
 
     def _create(
@@ -142,6 +151,7 @@ class CreateTranscriptionJob:
         profile: str | None,
         prompt: str | None,
         cloud_consent: bool,
+        clip: TranscriptionClip | None,
     ) -> CreatedJob:
         if self.projects.get(project_id) is None:
             raise CreateJobError(
@@ -154,6 +164,7 @@ class CreateTranscriptionJob:
                 CreateJobFailureCode.MEDIA_ASSET_NOT_FOUND,
                 "The media asset does not exist in this project.",
             )
+        _check_clip(clip, media_asset)
         prompt = (prompt or "").strip() or None
         if prompt is not None and len(prompt) > MAX_PROMPT_CHARS:
             raise CreateJobError(
@@ -214,6 +225,7 @@ class CreateTranscriptionJob:
             quality_profile=quality_profile,
             glossary=glossary,
             prompt=prompt,
+            clip=clip,
         )
         if self.job_writer is None:
             self.jobs.add(job)
@@ -306,8 +318,30 @@ class CreateTranscriptionJob:
         )
 
 
+def _check_clip(clip: TranscriptionClip | None, media_asset: MediaAsset) -> None:
+    """The range must fit the duration probed at import (originals are immutable)."""
+    if clip is None:
+        return
+    if clip.end_ms - clip.start_ms < MIN_CLIP_MS:
+        raise CreateJobError(
+            CreateJobFailureCode.CLIP_INVALID,
+            f"The range must be at least {MIN_CLIP_MS // 1_000} second long.",
+        )
+    if media_asset.duration_ms is None:
+        raise CreateJobError(
+            CreateJobFailureCode.CLIP_DURATION_UNKNOWN,
+            "This recording has no known duration, so it cannot be trimmed.",
+        )
+    if clip.end_ms > media_asset.duration_ms:
+        raise CreateJobError(
+            CreateJobFailureCode.CLIP_OUT_OF_RANGE,
+            "The range ends after the end of the recording.",
+        )
+
+
 __all__ = [
     "MAX_PROMPT_CHARS",
+    "MIN_CLIP_MS",
     "CreateJobError",
     "CreateJobFailureCode",
     "CreateTranscriptionJob",

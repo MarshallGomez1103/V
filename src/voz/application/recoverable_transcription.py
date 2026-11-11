@@ -20,6 +20,7 @@ from voz.application.ports.inference_audio import InferenceAudioSource
 from voz.application.ports.repositories import TranscriptionJobRepository
 from voz.application.ports.transcription import (
     TranscriptionCancellationToken,
+    TranscriptionClip,
     TranscriptionError,
     TranscriptionFailureCode,
     TranscriptionOptions,
@@ -85,6 +86,7 @@ class RecoverableTranscription:
         job: TranscriptionJob,
         duration_ms: int,
         options: TranscriptionOptions,
+        clip: TranscriptionClip | None = None,
         chunk_duration_ms: int = 30 * 60 * 1_000,
         overlap_ms: int = 5_000,
         on_progress: ChunkProgressCallback | None = None,
@@ -103,11 +105,15 @@ class RecoverableTranscription:
         ``cancellation`` is the user's cancel (the job ends CANCELLED);
         ``shutdown`` stops between or inside chunks without touching the job
         state, so the outcome is ``stopped`` and the job stays resumable.
+
+        ``clip`` limits the plan to a range of the original; times stay on the
+        original's timeline and the checkpoints are validated against that plan.
         """
         if job.state is not TranscriptionJobState.TRANSCRIBING:
             raise ValueError("recoverable transcription requires a TRANSCRIBING job")
         chunks = plan_audio_chunks(
             duration_ms,
+            clip=clip,
             chunk_duration_ms=chunk_duration_ms,
             overlap_ms=overlap_ms,
         )

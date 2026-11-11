@@ -33,6 +33,7 @@ from voz.application.ports.diarization import (
     DiarizationFailureCode,
     DiarizationProvider,
     DiarizationResult,
+    DiarizedTurn,
 )
 from voz.application.ports.inference_audio import (
     InferenceAudioError,
@@ -500,6 +501,7 @@ class JobRunner:
                     ).execute(
                         job=job,
                         duration_ms=media_asset.duration_ms,
+                        clip=selection.clip,
                         options=TranscriptionOptions(
                             model=selection.model,
                             language=selection.language,
@@ -602,13 +604,15 @@ class JobRunner:
                     media_asset_id=job.media_asset_id,
                     cancellation=stop,
                 )
-            with audio_source.open() as audio:
+            with audio_source.open(selection.clip) as audio:
                 result = provider.diarize(
                     audio=audio,
                     options=options,
                     cancellation=stop,
                     on_progress=on_progress,
                 )
+            if selection.clip is not None:
+                result = _shift_turns(result, selection.clip.start_ms)
             return result, selection
         except Exception as error:
             # Diarization is best-effort: its failure is recorded (and logged
@@ -816,6 +820,18 @@ def _domain_words(segment_id: UUID, item: TranscriptionSegment) -> tuple[Word, .
         )
         for index, word in enumerate(
             clamp_words(tuple(stripped), item.start_ms, item.end_ms)
+        )
+    )
+
+
+def _shift_turns(result: DiarizationResult, offset_ms: int) -> DiarizationResult:
+    """Move turns heard in a clip onto the original recording's timeline."""
+    return DiarizationResult(
+        tuple(
+            DiarizedTurn(
+                turn.start_ms + offset_ms, turn.end_ms + offset_ms, turn.cluster
+            )
+            for turn in result.turns
         )
     )
 

@@ -29,6 +29,7 @@ from voz.application.ports.repositories import (
     TranscriptionJobRepository,
     TranscriptRepository,
 )
+from voz.application.ports.transcription import TranscriptionClip
 from voz.application.ports.transcription_checkpoint import (
     TranscriptionCheckpointStore,
 )
@@ -64,6 +65,9 @@ _CREATE_STATUS: dict[CreateJobFailureCode, int] = {
     CreateJobFailureCode.QUALITY_PROFILE_UNKNOWN: 422,
     CreateJobFailureCode.OPTIONS_UNSUPPORTED: 422,
     CreateJobFailureCode.CLOUD_CONSENT_REQUIRED: 422,
+    CreateJobFailureCode.CLIP_INVALID: 422,
+    CreateJobFailureCode.CLIP_OUT_OF_RANGE: 422,
+    CreateJobFailureCode.CLIP_DURATION_UNKNOWN: 409,
 }
 
 MAX_DIARIZATION_SPEAKERS = 32
@@ -84,6 +88,8 @@ class CreateJobRequest:
     """Style instruction for the ASR engine; at most 600 characters once stripped."""
     cloud_consent: StrictBool = False
     """Explicit consent to send audio to a cloud option; local options ignore it."""
+    clip: object = None
+    """``{"start_ms": int, "end_ms": int}``; ``None`` means the whole recording."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +109,10 @@ _REDIARIZE_STATUS: dict[RediarizeFailureCode, int] = {
 
 def _invalid_diarization(message: str) -> HTTPException:
     return api_error(422, "diarization_options_invalid", message)
+
+
+def _invalid_clip(message: str) -> HTTPException:
+    return api_error(422, "job_clip_invalid", message)
 
 
 def parse_diarization(raw: object) -> DiarizationOptions | None:
@@ -137,6 +147,26 @@ def parse_diarization(raw: object) -> DiarizationOptions | None:
             "Use either exact, or minimum not greater than maximum."
         ) from None
     return DiarizationOptions(hint) if enabled else None
+
+
+def parse_clip(raw: object) -> TranscriptionClip | None:
+    """Validate the request body; ``None`` means the whole recording."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise _invalid_clip("clip must be an object.")
+    body = cast(dict[str, object], raw)
+    if set(body) != {"start_ms", "end_ms"}:
+        raise _invalid_clip("clip needs exactly start_ms and end_ms.")
+    start, end = body["start_ms"], body["end_ms"]
+    if type(start) is not int or type(end) is not int:
+        raise _invalid_clip("clip bounds must be integer milliseconds.")
+    try:
+        return TranscriptionClip(start, end)
+    except ValueError:
+        raise _invalid_clip(
+            "clip must start at 0 or later and end after its start."
+        ) from None
 
 
 def selection_view(selection: JobSelection) -> dict[str, object]:
@@ -178,6 +208,9 @@ def selection_view(selection: JobSelection) -> dict[str, object]:
         ),
         "glossary": list(selection.glossary),
         "prompt": selection.prompt,
+        "clip": None
+        if selection.clip is None
+        else {"start_ms": selection.clip.start_ms, "end_ms": selection.clip.end_ms},
         "diarization": {
             "enabled": selection.diarization is not None,
             "speakers": {
@@ -251,6 +284,7 @@ def create_jobs_router(
 
     def post_job(request: CreateJobRequest) -> dict[str, object]:
         diarization = parse_diarization(request.diarization)
+        clip = parse_clip(request.clip)
         try:
             created = create_job.execute(
                 project_id=request.project_id,
@@ -261,6 +295,7 @@ def create_jobs_router(
                 profile=request.profile,
                 prompt=request.prompt,
                 cloud_consent=request.cloud_consent,
+                clip=clip,
             )
         except CreateJobError as error:
             extra: dict[str, object] = {}
@@ -373,6 +408,7 @@ __all__ = [
     "create_jobs_router",
     "job_has_transcript",
     "job_view",
+    "parse_clip",
     "parse_diarization",
     "selection_view",
 ]

@@ -44,7 +44,7 @@ returned something unusable), 503 `media_storage_unavailable`, 507
 
 | Method and path | Request | Response |
 | --- | --- | --- |
-| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str, "prompt"?: str\|null, "cloud_consent"?: bool}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; see "Insufficient memory") / `diarization_unavailable` / `diarization_models_missing` (see "Diarization"); 422 `diarization_options_invalid` (see "Diarization") / `quality_profile_unknown` (see "Quality profile and glossary") / `job_prompt_invalid` (see "Style instructions") / `cloud_consent_required` (see "Cloud consent") |
+| `POST /api/jobs` | `{"project_id","media_asset_id","option_id","language": str\|null, "diarization"?: {...}, "profile"?: str, "prompt"?: str\|null, "cloud_consent"?: bool, "clip"?: {"start_ms": int, "end_ms": int}\|null}` | 201 `JobView`; 404 `project_not_found` / `media_asset_not_found` / `option_unknown`; 409 `option_not_startable` (+`blocking_reasons`) / `job_already_active` / `job_clip_duration_unknown` (see "Transcribing only a range") / `insufficient_vram` / `insufficient_ram` (+`required_mib`, `available_mib`; see "Insufficient memory") / `diarization_unavailable` / `diarization_models_missing` (see "Diarization"); 422 `diarization_options_invalid` (see "Diarization") / `quality_profile_unknown` (see "Quality profile and glossary") / `job_prompt_invalid` (see "Style instructions") / `cloud_consent_required` (see "Cloud consent") / `job_clip_invalid` / `job_clip_out_of_range` (see "Transcribing only a range") |
 | `GET /api/jobs/{job_id}` | — | `JobView`; 404 `job_not_found` |
 | `GET /api/jobs?project_id=` | — | `{"jobs": [JobView]}` of that project, newest first. `project_id` is required (a missing or malformed value gives the standard 422 validation payload) |
 | `POST /api/jobs/{job_id}/cancel` | — | 202 `JobView` (CANCELLING/CANCELLED); 404 `job_not_found`; 409 `job_terminal` |
@@ -76,6 +76,7 @@ returned something unusable), 503 `media_storage_unavailable`, 507
     "quality_profile": { "name": "default", "version": 1, "beam_size": 5, "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], "condition_on_previous_text": true, "no_speech_threshold": 0.6, "vad": null },
     "glossary": [],
     "prompt": null,
+    "clip": null,
     "diarization": { "enabled": false, "speakers": { "exact": null, "minimum": null, "maximum": null } }
   },
   "created_at": "…", "updated_at": "…"
@@ -181,6 +182,36 @@ Consent covers a single run. If V stops while a cloud job is not finished, the
 job is not resumed at the next start (see "Execution and recovery"): it becomes
 `FAILED` with `error_code` `cloud_consent_expired` and nothing is sent to the
 provider. Start a new job with `cloud_consent: true` to retry.
+
+### Transcribing only a range (`clip`)
+
+`POST /api/jobs` accepts `clip`: `{"start_ms": int, "end_ms": int}`, a half-open
+range `[start_ms, end_ms)` in integer milliseconds on the timeline of the
+original recording. Missing or `null` means the whole recording. The range is
+part of the job's selection snapshot (`selection.clip`, `null` when there is
+none, in every job view), so it never changes after creation and a resumed job
+keeps its plan.
+
+| Code | Status | When |
+| --- | --- | --- |
+| `job_clip_invalid` | 422 | `clip` is not an object with exactly `start_ms` and `end_ms`; a bound is not an integer (booleans and floats are refused); `start_ms` is negative or not smaller than `end_ms`; or the range is shorter than 1000 ms. |
+| `job_clip_out_of_range` | 422 | `end_ms` is greater than the duration probed at import. |
+| `job_clip_duration_unknown` | 409 | The recording has no probed duration, so it cannot be trimmed. |
+
+Errors of form in `clip` (not an object, wrong keys, a bound that is not an
+integer, a negative `start_ms`, `start_ms` not smaller than `end_ms`) are checked
+before anything is looked up, so they answer 422 `job_clip_invalid` even when the
+project does not exist. The minimum length, `job_clip_out_of_range` and
+`job_clip_duration_unknown` need the recording, so they are checked right after
+the media asset is found (a missing project or media asset keeps its own 404),
+before the prompt, the profile and the option. Nothing is created on failure. Nothing is written to the original and no trimmed
+file is created: only the requested range is sent to the engine, and the
+normalized audio of the whole recording is still prepared once and reused.
+Segment, word and speaker-turn times stay on the original's timeline (a word
+spoken at 12:03 of the file is stored at 12:03 even when the range starts at
+10:00), so the player, the waveform and the exports need no offset. Speakers are
+computed over the same range, and recomputing them (see "Recomputing speakers")
+reuses the stored range.
 
 ### Shutting down the server (`POST /api/shutdown`)
 

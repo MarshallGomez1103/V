@@ -83,10 +83,15 @@ ChunkProgressCallback = Callable[[ChunkProgress], None]
 def plan_audio_chunks(
     duration_ms: int,
     *,
+    clip: TranscriptionClip | None = None,
     chunk_duration_ms: int = 30 * 60 * 1_000,
     overlap_ms: int = 5_000,
 ) -> tuple[AudioChunk, ...]:
-    """Build deterministic chunks whose ownership spans the timeline once."""
+    """Build deterministic chunks whose ownership spans the timeline once.
+
+    With ``clip`` the plan covers only that range of the original: processing and
+    ownership bounds stay inside it and keep the original's timeline.
+    """
     if type(duration_ms) is not int or duration_ms <= 0:
         raise ValueError("duration_ms must be a positive integer")
     if type(chunk_duration_ms) is not int or chunk_duration_ms <= 0:
@@ -94,15 +99,21 @@ def plan_audio_chunks(
     if type(overlap_ms) is not int or not 0 <= overlap_ms < chunk_duration_ms:
         raise ValueError("overlap_ms must be non-negative and smaller than a chunk")
 
+    start_ms, end_ms = (
+        (0, duration_ms) if clip is None else (clip.start_ms, clip.end_ms)
+    )
+    if end_ms > duration_ms:
+        raise ValueError("clip must lie inside the duration")
+
     chunks: list[AudioChunk] = []
-    owned_start = 0
-    while owned_start < duration_ms:
-        owned_end = min(owned_start + chunk_duration_ms, duration_ms)
+    owned_start = start_ms
+    while owned_start < end_ms:
+        owned_end = min(owned_start + chunk_duration_ms, end_ms)
         chunks.append(
             AudioChunk(
                 index=len(chunks),
-                process_start_ms=max(0, owned_start - overlap_ms),
-                process_end_ms=min(duration_ms, owned_end + overlap_ms),
+                process_start_ms=max(start_ms, owned_start - overlap_ms),
+                process_end_ms=min(end_ms, owned_end + overlap_ms),
                 owned_start_ms=owned_start,
                 owned_end_ms=owned_end,
             )

@@ -502,6 +502,155 @@ def test_prompt_limit_is_600_characters_after_strip(tmp_path: Path) -> None:
         harness.close()
 
 
+def _long_asset(harness: Harness, duration_ms: int | None = 60_000) -> MediaAsset:
+    asset = MediaAsset(
+        harness.project.id, "b" * 64, "long.wav", 1, duration_ms=duration_ms
+    )
+    SqliteMediaAssetRepository(harness.engine).add(asset)
+    return asset
+
+
+def test_clip_is_snapshotted_and_exposed_in_every_view(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        asset = _long_asset(harness)
+        status, created = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(
+                media_asset_id=str(asset.id),
+                clip={"start_ms": 10_000, "end_ms": 20_000},
+            ),
+        )
+        assert status == 201
+        expected = {"start_ms": 10_000, "end_ms": 20_000}
+        assert cast(dict[str, object], created["selection"])["clip"] == expected
+
+        status, fetched = harness.request("GET", f"/api/jobs/{created['id']}")
+        assert status == 200
+        assert cast(dict[str, object], fetched["selection"])["clip"] == expected
+        status, listed = harness.request(
+            "GET", "/api/jobs", query=f"project_id={harness.project.id}"
+        )
+        (item,) = cast(list[dict[str, object]], listed["jobs"])
+        assert cast(dict[str, object], item["selection"])["clip"] == expected
+    finally:
+        harness.close()
+
+
+def test_job_without_clip_exposes_null(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        other = _long_asset(harness)
+        for body in (
+            harness.create_body(),
+            harness.create_body(media_asset_id=str(other.id), clip=None),
+        ):
+            status, created = harness.request("POST", "/api/jobs", body=body)
+            assert status == 201
+            assert cast(dict[str, object], created["selection"])["clip"] is None
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    "clip",
+    [
+        "10",
+        [10, 20],
+        {"start_ms": "a", "end_ms": 5_000},
+        {"start_ms": 5, "end_ms": 5},
+        {"start_ms": 9_000, "end_ms": 5_000},
+        {"start_ms": -1, "end_ms": 5_000},
+        {"start_ms": 1.5, "end_ms": 5_000},
+        {"start_ms": True, "end_ms": 5_000},
+        {"start_ms": 0, "end_ms": True},
+        {"start_ms": 0, "end_ms": 5_000.0},
+        {"start_ms": None, "end_ms": 5_000},
+        {"start_ms": 0, "end_ms": None},
+        {},
+        {"start_ms": 0},
+        {"start_ms": 0, "end_ms": 5_000, "extra": 1},
+        {"start_ms": 0, "end_ms": 999},
+    ],
+)
+def test_malformed_or_too_short_clip_is_422_and_creates_no_job(
+    tmp_path: Path, clip: object
+) -> None:
+    harness = Harness(tmp_path)
+    try:
+        asset = _long_asset(harness)
+        status, body = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(media_asset_id=str(asset.id), clip=clip),
+        )
+        assert (status, _detail(body)["code"]) == (422, "job_clip_invalid")
+        jobs = SqliteTranscriptionJobRepository(harness.engine)
+        assert not jobs.list_by_project(harness.project.id)
+    finally:
+        harness.close()
+
+
+def test_malformed_clip_is_422_even_when_the_project_does_not_exist(
+    tmp_path: Path,
+) -> None:
+    harness = Harness(tmp_path)
+    try:
+        status, body = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(project_id=str(uuid4()), clip={}),
+        )
+        assert (status, _detail(body)["code"]) == (422, "job_clip_invalid")
+
+        # Range checks need the asset, so they come after the project lookup.
+        status, body = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(
+                project_id=str(uuid4()), clip={"start_ms": 0, "end_ms": 999}
+            ),
+        )
+        assert (status, _detail(body)["code"]) == (404, "project_not_found")
+    finally:
+        harness.close()
+
+
+def test_clip_past_the_end_is_422_out_of_range(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        asset = _long_asset(harness)
+        status, body = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(
+                media_asset_id=str(asset.id),
+                clip={"start_ms": 50_000, "end_ms": 60_001},
+            ),
+        )
+        assert (status, _detail(body)["code"]) == (422, "job_clip_out_of_range")
+    finally:
+        harness.close()
+
+
+def test_clip_on_a_recording_without_duration_is_409(tmp_path: Path) -> None:
+    harness = Harness(tmp_path)
+    try:
+        asset = _long_asset(harness, duration_ms=None)
+        status, body = harness.request(
+            "POST",
+            "/api/jobs",
+            body=harness.create_body(
+                media_asset_id=str(asset.id),
+                clip={"start_ms": 0, "end_ms": 5_000},
+            ),
+        )
+        assert (status, _detail(body)["code"]) == (409, "job_clip_duration_unknown")
+    finally:
+        harness.close()
+
+
 def test_job_view_carries_stage_timing_fields(tmp_path: Path) -> None:
     harness = Harness(tmp_path)
     try:
