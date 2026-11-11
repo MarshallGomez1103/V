@@ -9,7 +9,7 @@ Native Windows/macOS launcher verification is also pending.
 
 The historical measurements describe the **2026-09-30 builds**, before the rename,
 on Bazzite (Fedora Atomic) x86-64 with an RTX 4060 Laptop and wheel
-`voz_transcriber-0.1.0`. They are not measurements of the current recipes.
+`voz_transcriber-0.1.0` (measured with 0.1.0). They are not measurements of the current recipes.
 There is no CI for these formats.
 
 Reproducible recipes in `packaging/`:
@@ -24,7 +24,7 @@ Reproducible recipes in `packaging/`:
 ```bash
 packaging/appimage/build.sh [wheel]            # VOZ_EXTRAS=asr-local, VOZ_FFMPEG_DIR=<dir with static ffmpeg/ffprobe>
 packaging/flatpak/build.sh [wheel]             # VOZ_EXTRAS=asr-local; builds without installing
-packaging/common/smoke.sh ./V-0.1.0-x86_64.AppImage
+packaging/common/smoke.sh ./V-<version>-x86_64.AppImage
 ```
 
 `smoke.sh` gives the child a temporary HOME and XDG directories, checks both
@@ -51,7 +51,7 @@ resolved and no engine extras or model weights were included. These checks did
 not execute the online recipes end to end. The base payload contains the
 application and 24 third-party Python distributions.
 
-| Observation | AppImage | Flatpak |
+| Observation (measured with 0.1.0) | AppImage | Flatpak |
 | --- | --- | --- |
 | Artifact | `V-0.1.0-x86_64.AppImage`, 36,596,216 B | `V-0.1.0-x86_64.flatpak`, 7,320,640 B |
 | Python | Standalone CPython 3.12.14 | CPython 3.13 in existing Freedesktop Platform 25.08 |
@@ -61,7 +61,7 @@ application and 24 third-party Python distributions.
 | Payload inventory | 6,086 entries: 4,739 files, 1,049 symlinks, 298 directories | 2,056 entries: 1,862 files, 194 directories, no symlinks |
 | FFmpeg | Uses the host executable | Uses the existing Platform runtime |
 
-The wheel is `voz_transcriber-0.1.0-py3-none-any.whl`, **1,098,115 B**.
+The wheel measured with 0.1.0 is `voz_transcriber-0.1.0-py3-none-any.whl`, **1,098,115 B**.
 All 277 package files, including 50 static web files, match the source checkout;
 296 wheel RECORD entries and its embedded README were checked. Both payloads
 preserve the three original font/JavaScript notice files exactly. No personal
@@ -108,7 +108,7 @@ within the ELF `.digest_md5` section written by appimagetool.
 The actual AppImage launch used extraction rather than FUSE:
 
 ```bash
-packaging/common/smoke.sh ./V-0.1.0-x86_64.AppImage --appimage-extract-and-run
+packaging/common/smoke.sh ./V-<version>-x86_64.AppImage --appimage-extract-and-run
 ```
 
 These individual Linux x86-64 checks are not a startup benchmark. They exercise

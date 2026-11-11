@@ -763,7 +763,7 @@ def create_app(
     lifespan = Lifespan()
 
     application = FastAPI(
-        title="VOZ",
+        title="V",
         description="Local-first transcription workspace API.",
         version=__version__,
         lifespan=lifespan,

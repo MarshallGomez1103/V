@@ -366,3 +366,17 @@ def test_local_addresses_tolerates_resolver_failures(
     monkeypatch.setattr(socket, "getaddrinfo", boom)
 
     assert main.local_addresses() == ()
+
+
+def test_version_flag_prints_version_and_exits_before_any_setup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from voz import __version__
+
+    def forbidden() -> None:
+        raise AssertionError("--version must not prepare FFmpeg or start a server")
+
+    monkeypatch.setattr("voz.interfaces.cli.main.prepare_ffmpeg", forbidden)
+    result = CliRunner().invoke(cli_app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == f"V {__version__}"

@@ -11,9 +11,12 @@ former product name VOZ where they describe it.
 
 ## [Unreleased]
 
-No release has been published yet: the tree version is `0.1.0`
-(`pyproject.toml` and `voz.__version__`) and nobody has tagged or published
-artifacts. What follows is everything that already exists in the repository.
+## [0.1.0] - 2026-11-11
+
+First versioned cut of the tree: everything that existed in the repository
+up to this date. The version number in this file is not a release; a release
+is a tag plus published artifacts and only happens with the maintainer's
+explicit authorization (see [docs/release.md](docs/release.md)).
 
 ### Added
 

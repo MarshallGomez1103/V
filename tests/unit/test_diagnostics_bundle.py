@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 from typing import cast
 
+import voz
 from voz.infrastructure.paths import VozPaths, resolve_voz_paths
 from voz.infrastructure.persistence.database import create_sqlite_engine
 from voz.infrastructure.persistence.migrate import head_revision, upgrade_to_head
@@ -111,7 +112,7 @@ def test_bundle_versions_and_readme(tmp_path: Path) -> None:
 
     assert versions["python"]
     assert versions["packages"]["sqlalchemy"]
-    assert versions["packages"]["voz-transcriber"] == "0.1.0"
+    assert versions["packages"]["voz-transcriber"] == voz.__version__
     assert set(versions["packages"]) >= {"fastapi", "faster-whisper", "ctranslate2"}
     assert "nunca incluye" in files["README.txt"].lower()
 

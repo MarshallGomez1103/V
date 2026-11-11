@@ -20,6 +20,7 @@ from typing import Annotated, Protocol, cast
 import typer
 import uvicorn
 
+from voz import __version__
 from voz.bootstrap import create_app
 from voz.infrastructure.audio.ffmpeg_tools import ensure_ffmpeg
 from voz.infrastructure.instance_lock import InstanceLock, InstanceLockError
@@ -339,9 +340,24 @@ def prepare_ffmpeg() -> None:
         typer.echo(result.message, err=True)
 
 
+def _print_version(value: bool) -> None:
+    if value:
+        typer.echo(f"V {__version__}")
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
 def root(
     ctx: typer.Context,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_print_version,
+            is_eager=True,
+            help="Show the version and exit.",
+        ),
+    ] = False,
     host: str = HOST_OPTION,
     port: int = PORT_OPTION,
     no_browser: bool = NO_BROWSER_OPTION,

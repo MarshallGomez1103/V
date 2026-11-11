@@ -80,10 +80,10 @@ Local transcription uses Faster Whisper, which is optional and still
 
 ```bash
 uv tool install --force \
-  "voz-transcriber[asr-local] @ ./dist/voz_transcriber-0.1.0-py3-none-any.whl"
+  "voz-transcriber[asr-local] @ ./dist/voz_transcriber-<version>-py3-none-any.whl"
 ```
 
-(Adjust the file name to the version you built. The CUDA wheels weigh hundreds of
+(Replace `<version>` with the version you built. The CUDA wheels weigh hundreds of
 MB: the tool environment with the extra takes about 2.6 GB, and the install took
 about 4 minutes with an empty `uv` cache.)
 
@@ -156,12 +156,12 @@ only to PyPI (plus the managed CPython download that `uv` performs, see the
 
 | Step | Command | Result |
 | --- | --- | --- |
-| Build | `uv build --wheel --out-dir dist` | `voz_transcriber-0.1.0-py3-none-any.whl` |
+| Build | `uv build --wheel --out-dir dist` | `voz_transcriber-0.1.0-py3-none-any.whl` (measured with 0.1.0) |
 | Install | `uv tool install dist/voz_transcriber-*.whl` | installs the `voz` executable (about 11 s) |
 | Help | `voz --help` (from a cwd outside the checkout) | shows `serve` and `doctor` |
 | Diagnostics | `voz doctor` | 7 ok, 3 warnings (no models, no `asr-local`, no GPU detection), 0 failures, exit code 0 |
 | Start | `voz --no-browser --port 9000` | `GET /` 200, `GET /api/health` 200 `{"status":"ok"}`, listens only on `127.0.0.1:9000`, SIGINT shuts down cleanly |
-| Extra | `uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-0.1.0-py3-none-any.whl"` | installs `faster-whisper`, `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` (about 4 min, 2.6 GB) |
+| Extra | `uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-<version>-py3-none-any.whl"` | installs `faster-whisper`, `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` (about 4 min, 2.6 GB) |
 | Diagnostics with extra | `voz doctor` | 9 ok, 1 warning (no models), 0 failures; `runtime ASR: faster-whisper disponible`; `GPU/CUDA: float16, int8, int8_float16` |
 | Options | `GET /api/transcription-options` | lists the Faster Whisper models in the catalog; no weights are downloaded |
 | Upgrade | `uv tool install --force dist/voz_transcriber-*.whl` | works, but **removes the extra** (see Upgrade) |

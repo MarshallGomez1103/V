@@ -144,8 +144,8 @@ or return to the default (`127.0.0.1`).
 
 - **`voz doctor` warns that `asr-local` is not installed**: Faster Whisper is an
   optional extra. Reinstall with it
-  (`uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-0.1.0-py3-none-any.whl"`,
-  adjusting the file name). **Upgrading with `uv tool install --force` and no extra
+  (`uv tool install --force "voz-transcriber[asr-local] @ ./dist/voz_transcriber-<version>-py3-none-any.whl"`,
+  replacing `<version>`). **Upgrading with `uv tool install --force` and no extra
   removes it**, so repeat the full command after each upgrade.
   ([Linux](install/linux.md#local-faster-whisper-the-asr-local-extra))
 - **It is slow**: without an NVIDIA GPU, V transcribes on the CPU. It works, but an

@@ -6,6 +6,14 @@ source of truth, `pyproject.toml` (`[project] version`), and
 `tests/packaging/test_version_consistency.py` checks this and fails if they
 diverge. The user-visible history is in [CHANGELOG.md](../CHANGELOG.md).
 
+The tree version goes up when a sprint closes, and `CHANGELOG.md` gets a
+`## [x.y.z] - date` section for it. A number in the changelog is not a
+release: a release is a tag plus published artifacts and is only done with the
+maintainer's explicit authorization. The same version is repeated in
+`apps/web/package.json`, `apps/web/package-lock.json` (two places) and the
+Flatpak metainfo `<release>`; `tests/packaging/test_version_consistency.py`
+fails naming every file left behind.
+
 ## Rules while the version is 0.x
 
 - Incrementing the **minor** (`0.2.0`) may break the public API; the changelog
@@ -17,9 +25,10 @@ diverge. The user-visible history is in [CHANGELOG.md](../CHANGELOG.md).
 
 ## What counts as the public API
 
-1. **CLI**: the `voz` command, its subcommands (`serve`, `doctor`, `bench`), its
-   options (`--host`, `--port`, `--allow-host`, `--no-browser`, `--json`,
-   `--redact`) and its exit codes.
+1. **CLI**: the `v` command (and its `voz` alias), its subcommands (`serve`,
+   `doctor`, `bench`, `auth-token`, `lab`), its options (`--version`, `--host`,
+   `--port`, `--allow-host`, `--no-browser`, `--json`, `--redact`) and its exit
+   codes.
 2. **HTTP `/api`**: routes, methods, bodies, status codes and the stable error
    codes (`{"detail": {"code", "message"}}`) documented in [api/](api/README.md).
    This includes the `Host` header rule (`host_not_allowed`).
